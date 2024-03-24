@@ -30,7 +30,7 @@ namespace blib
 	template<class T, size_t align>
 	__blib_inline void AlignedAllocator<T, align>::deallocate(T* pBlock, size_t blockSize)
 	{
-		free(pBlock);
+		_aligned_free(pBlock);
 	}
 
 	template<class T, size_t align>

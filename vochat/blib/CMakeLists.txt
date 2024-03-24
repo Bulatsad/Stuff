@@ -38,7 +38,8 @@ file (GLOB core_header_src "*core/*.h")
 file (GLOB core_impl_src "*core/*.cpp")
 
 if(WIN32)
-    file (GLOB sound_impl_src "*sound/impl/win/*.cpp" "*sound/impl/*.cpp")
+    file (GLOB sound_impl_src "*sound/impl/win/*.cpp" "*sound/impl/*.cpp" "*sound/impl/win/*.h")
+    file (GLOB sound_impl_header "*sound/impl/win/*.h")
     file (GLOB thread_impl_src "*thread/impl/win/*.cpp" "*thread/impl/*.cpp")
 else()
 endif()
@@ -46,6 +47,7 @@ endif()
 GroupSoureces("" "${blibGloabal}")   
 
 GroupSoureces("${HeaderGroupPrefix}/sound" "${sound_header_src}")
+GroupSoureces("${HeaderGroupPrefix}/sound" "${sound_impl_header}")
 GroupSoureces("${SourceGroupPrefix}/sound" "${sound_impl_src}")  
 
 GroupSoureces("${HeaderGroupPrefix}/thread" "${thread_header_src}")
@@ -54,7 +56,7 @@ GroupSoureces("${SourceGroupPrefix}/thread" "${thread_impl_src}")
 GroupSoureces("${HeaderGroupPrefix}/core" "${core_header_src}")  
 GroupSoureces("${SourceGroupPrefix}/core" "${core_impl_src}")  
 
-add_library(${BIN} STATIC ${blibGloabal} ${sound_header_src} ${sound_impl_src} ${thread_header_src} ${thread_impl_src} ${core_header_src} ${core_impl_src})
+add_library(${BIN} STATIC ${blibGloabal} ${sound_header_src} ${sound_impl_header} ${sound_impl_src} ${thread_header_src} ${thread_impl_src} ${core_header_src} ${core_impl_src})
 
 target_include_directories(${BIN} PUBLIC  "${CMAKE_CURRENT_SOURCE_DIR}/../")
 #target_include_directories(${BIN} PRIVATE  "${CMAKE_CURRENT_SOURCE_DIR}/sound")

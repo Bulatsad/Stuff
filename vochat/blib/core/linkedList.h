@@ -12,17 +12,28 @@ namespace blib
         T data;
         LinkedListNode* next;
 
-        template<typename ...Args>
-        LinkedListNode(Args&&... args)
+        LinkedListNode(const T&obj)
         {
-            data = T(std::forward<Args>(args)...);
+            new (const_cast<void*>(static_cast<const volatile void*>(&data))) T(obj);
             next = nullptr;
         }
-        LinkedListNode()
+        LinkedListNode(T&& obj)
         {
-            data = T();
+            new (const_cast<void*>(static_cast<const volatile void*>(&this->data))) T(std::move(obj));
             next = nullptr;
         }
+
+        //template<typename ...Args>
+        //LinkedListNode(Args&&... args)
+        //{
+        //    new (const_cast<void*>(static_cast<const volatile void*>(&data))) T(std::forward<Args>(args)...);
+        //    next = nullptr;
+        //}
+        LinkedListNode() = delete;
+        //{
+        //    data = T();
+        //    next = nullptr;
+        //}
     };
     template<typename T, typename AllocatorT = std::allocator<LinkedListNode<T> > >
     class LinkedList
