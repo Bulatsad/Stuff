@@ -63,5 +63,6 @@ bool blib::SoundPlayer::close()
 
 blib::SoundPlayer::~SoundPlayer()
 {
+    this->procThread->join();
     delete this->procThread;
 }
