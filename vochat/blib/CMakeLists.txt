@@ -33,9 +33,15 @@ project(${BIN})
 file (GLOB blibGloabal "CmakeLists.txt" "*.h")
 
 file (GLOB sound_header_src "*sound/*.h")
+
 file (GLOB thread_header_src "*thread/*.h")
+
 file (GLOB core_header_src "*core/*.h")
 file (GLOB core_impl_src "*core/*.cpp")
+
+file (GLOB algorithm_header_src "*algorithm/*.h")
+file (GLOB algorithm_impl_src "*algorithm/impl/*.cpp")
+
 
 if(WIN32)
     file (GLOB sound_impl_src "*sound/impl/win/*.cpp" "*sound/impl/*.cpp" "*sound/impl/win/*.h")
@@ -56,7 +62,21 @@ GroupSoureces("${SourceGroupPrefix}/thread" "${thread_impl_src}")
 GroupSoureces("${HeaderGroupPrefix}/core" "${core_header_src}")  
 GroupSoureces("${SourceGroupPrefix}/core" "${core_impl_src}")  
 
-add_library(${BIN} STATIC ${blibGloabal} ${sound_header_src} ${sound_impl_header} ${sound_impl_src} ${thread_header_src} ${thread_impl_src} ${core_header_src} ${core_impl_src})
+GroupSoureces("${HeaderGroupPrefix}/algorithm" "${algorithm_header_src}")  
+GroupSoureces("${SourceGroupPrefix}/algorithm" "${algorithm_impl_src}")  
+
+add_library(${BIN} STATIC 
+    ${blibGloabal} 
+    ${sound_header_src}
+    ${sound_impl_header}
+    ${sound_impl_src} 
+    ${thread_header_src}
+    ${thread_impl_src} 
+    ${core_header_src} 
+    ${core_impl_src}
+    ${algorithm_header_src}
+    ${algorithm_impl_src}
+)
 
 target_include_directories(${BIN} PUBLIC  "${CMAKE_CURRENT_SOURCE_DIR}/../")
 #target_include_directories(${BIN} PRIVATE  "${CMAKE_CURRENT_SOURCE_DIR}/sound")
