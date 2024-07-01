@@ -1,7 +1,17 @@
-#include <blib/network/impl/win/util.h>
+#pragma once
+
+#include <blib/network/socket.h>
+#include <blib/network/address.h>
+
 #include <blib/inline.h>
 
 #include <WinSock2.h>
+
+int blibToWinApi(const blib::network::SocketType type);
+int blibToWinApi(const blib::network::SocketProtocol protocol);
+int blibToWinApi(const blib::network::AddressType af);
+
+blib::network::AddressType blibWinApiToBlib(ADDRESS_FAMILY af);
 
 __blib_inline int blibToWinApi(const blib::network::SocketType type)
 {
@@ -64,3 +74,5 @@ __blib_inline int blibToWinApi(const blib::network::AddressType af)
 		return AF_UNSPEC;
 	}
 }
+
+

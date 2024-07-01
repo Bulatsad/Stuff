@@ -102,6 +102,7 @@ set_target_properties(${BIN} PROPERTIES LINKER_LANGUAGE CXX)
 
 if(WIN32)
 	target_link_libraries(${BIN} PRIVATE Winmm)
+	target_link_libraries(${BIN} PRIVATE Ws2_32)
 
 	set_target_properties(${BIN} PROPERTIES VS_DEBUGGER_ENVIRONMENT "${MY_PATH}" LINKER_LANGUAGE CXX)
     set (CMAKE_CXX_FLAGS_RELEASE "/EHsc /Gd /Gy /Oi /Gm- /MP /O2 /W3 /ZI /MD" )

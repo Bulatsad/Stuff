@@ -13,6 +13,8 @@ namespace blib
             IRDA,
             Bluetooth,
 
+            UNDEFINED,
+
             END_OF_ENUM
         }; 
 
@@ -23,8 +25,12 @@ namespace blib
 
             Address();
             Address(AddressType _type);
+
+            void setPort(int port);
+
+            AddressType getType() const;
+            void* __getHandler();
         private:
-            AddressType type;
             void* ctx;
         };
     }
