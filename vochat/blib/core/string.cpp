@@ -10,8 +10,8 @@ blib::core::StringList blib::core::split(const std::string& str, const std::stri
     while (pos != std::string::npos)
     {
         res.emplace_back(str.substr(start, pos - start));
-        start = pos;
-        pos = str.find(delimeter);
+        start = pos + 1;
+        pos = str.find(delimeter, start);
     }
 
     res.emplace_back(str.substr(start, str.size() - start));

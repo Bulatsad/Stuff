@@ -50,7 +50,6 @@ template<class _Ty, class _Alloc>
 template<class ...Args>
 __blib_inline blib::LocklessProducerConcumerCircleQueue<_Ty, _Alloc>::LocklessProducerConcumerCircleQueue(size_t _capacity, Args&& ... args)
 {
-    this->~LocklessProducerConcumerCircleQueue();
     this->reset(_capacity, std::forward<Args>(args)...);
 }
 
@@ -59,7 +58,7 @@ __blib_inline blib::LocklessProducerConcumerCircleQueue<_Ty, _Alloc> ::~Lockless
 {
     for (size_t i = 0; i < this->capacity; i++)
         this->allocator.destroy(&(this->data[i]));
-    this->allocator.deallocate((this->data), this->capacity);
+    this->allocator.deallocate((this->data), this->capacity * sizeof(_Ty));
 }
 
 template<class _Ty, class _Alloc>
@@ -67,7 +66,7 @@ template<class ...Args>
 __blib_inline void blib::LocklessProducerConcumerCircleQueue<_Ty, _Alloc>::reset(size_t _capacity, Args && ...args)
 {
     _capacity++;
-    this->data = this->allocator.allocate(_capacity);
+    this->data = this->allocator.allocate(_capacity * sizeof(_Ty));
     this->capacity = _capacity;
     this->writer.store(0, std::memory_order::memory_order_release);
     this->reader.store(0, std::memory_order::memory_order_release);

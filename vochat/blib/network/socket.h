@@ -6,9 +6,10 @@ namespace blib
 {
     namespace network
     {
-        enum class Status
+        enum class SocketStatus
         {
             OK,
+            Error,
 
             END_OF_ENUM
         };
@@ -26,7 +27,7 @@ namespace blib
 
         enum class SocketProtocol
         {
-            ICMP,
+            ICMP = 1,
             IGMP,
             RFCOMM,
             TCP,
@@ -37,19 +38,27 @@ namespace blib
             END_OF_ENUM
         };
 
+        void InitBlibSocket();
+
         class Socket
         {
         public:
-            Socket(const AddressType af, const SocketType type, const SocketProtocol protocol);
+            Socket();
+            SocketStatus create(const AddressType af, const SocketType type, const SocketProtocol protocol);
+            SocketStatus close();
+            void destroy();
             ~Socket();
-            Status connetc(const Address& addr);
-            Status bind(const Address& addr);
-            Socket accept(Address);
-            Status listen();
-            Status send(const void*, size_t size);
-            Status receive(void*, size_t size, size_t& received);
 
+            //SocketStatus connetc(Address& addr); //TODO: make const arg
+            //SocketStatus bind(Address& addr); //TODO: make const arg
+            //Socket accept(Address& addr);
+            //SocketStatus listen(int backlog = 200);
+            //SocketStatus send(const void* , size_t size);
+            //SocketStatus receive(void*, size_t size, size_t& received);
+
+            void* __getHandler();
         private:
+            bool closed;
             void* ctx;
         };
  

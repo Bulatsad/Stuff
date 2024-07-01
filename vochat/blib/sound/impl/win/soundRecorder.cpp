@@ -33,12 +33,11 @@ void blib::SoundRecorder::select(size_t index)
 void blib::SoundRecorder::setFormat(const SoundFormat& fmt)
 {
     this->recorder.setFormat(fmt);
-    this->recorder.setBufferInfo(2, 1000);
 }
 
 void blib::SoundRecorder::setBufferInfo(uint32_t countOfBuffers, uint32_t timeOfBuffers)
 {
-    this->setBufferInfo(countOfBuffers, timeOfBuffers);
+    this->recorder.setBufferInfo(countOfBuffers, timeOfBuffers);
 }
 
 bool blib::SoundRecorder::open()

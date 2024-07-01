@@ -46,7 +46,8 @@ namespace blib
         return c;
     }
 
-    coefs expFastFourierTransform(const coefs& wave)
+    template<class Ty>
+    coefs expFastFourierTransform(const std::vector<Ty>& wave)
     {
         if(wave.size() == 1)
             return { wave[0] };
@@ -77,6 +78,7 @@ namespace blib
 
         return c;
     }
+
     coefs expFastInverseFourierTransform(const coefs& wave)
     {
         if (wave.size() == 1)
