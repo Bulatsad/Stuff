@@ -18,6 +18,11 @@ struct InWinCtx
 
     __blib_cache_aligned blib::LocklessProducerConcumerCircleQueue<blib::RealTimeSoundFrame>queueToUser;
     __blib_cache_aligned blib::LocklessProducerConcumerCircleQueue<blib::RealTimeSoundFrame>queueToDriver;
+
+    InWinCtx()
+    {
+        memset(&(this->wfex), 0, sizeof(WAVEFORMATEX));
+    }
 };
 
 #define __blib_this_context(__this) reinterpret_cast<InWinCtx*>(__this->ctx)

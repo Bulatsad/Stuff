@@ -18,6 +18,8 @@ void soundInProc(blib::SoundRecorder* sr)
 
 blib::SoundRecorder::SoundRecorder()
 {
+    this->procThread = nullptr;
+    this->capturing = false;
 }
 
 const blib::SoundDevices blib::SoundRecorder::getDevices() const
