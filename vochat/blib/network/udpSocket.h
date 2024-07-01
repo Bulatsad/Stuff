@@ -12,6 +12,9 @@ namespace blib
             Socket socket;
         public:
             UdpSocket();
+
+            bool setBlocking(bool isBlocking);
+
             SocketStatus bind(Address& addr);
             SocketStatus send(Address& addr, const void* data, int size);
             SocketStatus recv(Address& addr, void* data, int& szie);

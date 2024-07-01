@@ -21,6 +21,11 @@ struct OutWinCtx
 
     __blib_cache_aligned blib::LocklessProducerConcumerCircleQueue<blib::RealTimeSoundFrame>queueToUser;
     __blib_cache_aligned blib::LocklessProducerConcumerCircleQueue<blib::RealTimeSoundFrame>queueToDriver;
+
+    OutWinCtx()
+    {
+        memset(&(this->wfex), 0, sizeof(WAVEFORMATEX));
+    }
 };
 
 #define __blib_this_context(__this) reinterpret_cast<OutWinCtx*>(__this->ctx)

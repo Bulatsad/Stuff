@@ -176,76 +176,79 @@ void fft(std::vector<base>& a, bool invert) {
 //    return 0;
 //}
 
-//int main()
-//{
-//    blib::network::InitBlibSocket();
-//
-//    blib::network::UdpSocket udps;
-//
-//    char mode;
-//    std::cin >> mode;
-//
-//    char data[5] = { 1,2,3,4,5 };
-//
-//    if (mode == 'c')
-//    {
-//        bool ok = false;
-//        auto addr = blib::network::Address::fromIPv4("192.168.1.51", &ok);
-//        addr.setPort(8080);
-//        udps.send(addr, data, 5);
-//    }
-//
-//    if (mode == 's')
-//    {
-//        char rd[5] = {0,0,0,0,0};
-//        size_t rs = 5;
-//        bool ok = false;
-//        auto addr = blib::network::Address::fromIPv4("0.0.0.0", &ok);
-//        addr.setPort(8080);
-//        udps.bind(addr, 8080);
-//        udps.recv(rd, rs);
-//
-//        std::cout
-//            << (int)rd[0] << " " 
-//            << (int)rd[1] << " " 
-//            << (int)rd[2] << " " 
-//            << (int)rd[3] << " "
-//            << (int)rd[4] << " ";
-//    }
-//
-//
-//    return 0;
-//}
-
 int main()
 {
-    blib::RealTimeSoundRecorder recorder;
-    recorder.setFormat(blib::SoundFormat(1, 44100, 16));
-    recorder.setBufferInfo(10, 50);
+    blib::network::InitBlibSocket();
 
-    blib::RealTimeSoundPlayer player;
-    player.setFormat(blib::SoundFormat(1, 44100, 16));
-    player.setBufferInfo(10, 50);
+    blib::network::UdpSocket udps;
 
-    recorder.open();
-    player.open();
+    char mode;
+    std::cin >> mode;
 
-    recorder.start();
+    char data[5] = { 1,2,3,4,5 };
 
-    while (1)
+    if (mode == 'c')
     {
-        auto recordedFrame = recorder.acquireBuffer();
-
-        auto playingFrame = player.acquireBuffer();
-        memcpy(playingFrame.sndFrame->getData(), recordedFrame.sndFrame->getData(), recordedFrame.sndFrame->getSize());
-        
-        recorder.releaseBuffer(std::move(recordedFrame));
-
-        player.releaseBuffer(std::move(playingFrame));
+        bool ok = false;
+        auto addr = blib::network::Address::fromIPv4("192.168.1.51", &ok);
+        addr.setPort(8080);
+        udps.send(addr, data, 5);
     }
 
-    recorder.stop();
+    if (mode == 's')
+    {
+        char rd[5] = {0,0,0,0,0};
+        int rs = 5;
+        bool ok = false;
+        auto addr = blib::network::Address::fromIPv4("0.0.0.0", &ok);
+        addr.setPort(8080);
+        udps.bind(addr);
+
+        blib::network::Address sender;
+
+        udps.recv(sender, rd, rs);
+
+        std::cout
+            << (int)rd[0] << " " 
+            << (int)rd[1] << " " 
+            << (int)rd[2] << " " 
+            << (int)rd[3] << " "
+            << (int)rd[4] << " ";
+    }
+
 
     return 0;
-
 }
+
+//int main()
+//{
+//    blib::RealTimeSoundRecorder recorder;
+//    recorder.setFormat(blib::SoundFormat(1, 44100, 16));
+//    recorder.setBufferInfo(10, 50);
+//
+//    blib::RealTimeSoundPlayer player;
+//    player.setFormat(blib::SoundFormat(1, 44100, 16));
+//    player.setBufferInfo(10, 50);
+//
+//    recorder.open();
+//    player.open();
+//
+//    recorder.start();
+//
+//    while (1)
+//    {
+//        auto recordedFrame = recorder.acquireBuffer();
+//
+//        auto playingFrame = player.acquireBuffer();
+//        memcpy(playingFrame.sndFrame->getData(), recordedFrame.sndFrame->getData(), recordedFrame.sndFrame->getSize());
+//        
+//        recorder.releaseBuffer(std::move(recordedFrame));
+//
+//        player.releaseBuffer(std::move(playingFrame));
+//    }
+//
+//    recorder.stop();
+//
+//    return 0;
+//
+//}

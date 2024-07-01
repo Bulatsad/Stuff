@@ -30,6 +30,10 @@ namespace blib
 
             AddressType getType() const;
             void* __getHandler();
+
+            static const Address AnyIPv4;
+            static const Address LocalhostIPv4;
+            static const Address BroadcastIPv4;
         private:
             void* ctx;
         };

@@ -4,16 +4,17 @@
 #include <blib/network/udpSocket.h>
 #include <blib/network/impl/win/winNetworkUtil.h>
 
-#define __blib_cast_socket_handler(handler) (reinterpret_cast<SOCKET*>(handler))
-#define __blib_cast_address_handler(handler) (reinterpret_cast<sockaddr*>(handler))
-#define __blib_cast_internet_address_handler(handler) (reinterpret_cast<sockaddr_in*>(handler))
-
 blib::network::UdpSocket::UdpSocket()
 {
     this->socket.create(AddressType::IPv4, SocketType::Dgram, SocketProtocol::UDP);
-    u_long arg = 0;
+    setBlocking(true);
+}
+
+bool blib::network::UdpSocket::setBlocking(bool isBlocking)
+{
+    u_long arg = isBlocking ? 0 : 1;
     int res = ioctlsocket(*__blib_cast_socket_handler(this->socket.__getHandler()), FIONBIO, &arg);
-    res = res;
+    return !!res;
 }
 
 blib::network::SocketStatus blib::network::UdpSocket::bind(Address& addr)
