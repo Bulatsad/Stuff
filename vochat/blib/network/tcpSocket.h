@@ -6,16 +6,17 @@ namespace blib
 {
     namespace network
     {
-        class UdpSocket
+        class TcpSocket
         {
         private:
             Socket socket;
         public:
-            UdpSocket(AddressType type);
+            TcpSocket(AddressType type);
 
             bool setBlocking(bool isBlocking);
 
             SocketStatus bind(Address& addr);
+            SocketStatus connect(Address& addr);
             SocketStatus send(Address& addr, const void* data, int size);
             SocketStatus recv(Address& addr, void* data, int& szie);
         };

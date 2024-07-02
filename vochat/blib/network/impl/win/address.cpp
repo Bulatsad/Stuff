@@ -10,6 +10,7 @@
 #include <stdio.h>
 
 const blib::network::Address blib::network::Address::AnyIPv4       = blib::network::Address::fromIPv4("0.0.0.0");
+const blib::network::Address blib::network::Address::NoneIPv4      = blib::network::Address::fromIPv4("255.255.255.255");
 const blib::network::Address blib::network::Address::LocalhostIPv4 = blib::network::Address::fromIPv4("127.0.0.1");
 const blib::network::Address blib::network::Address::BroadcastIPv4 = blib::network::Address::fromIPv4("255.255.255.255");
 
@@ -17,45 +18,22 @@ const blib::network::Address blib::network::Address::BroadcastIPv4 = blib::netwo
 
 blib::network::Address blib::network::Address::fromIPv4(const char* str, bool* ok)
 {
-    Address res;
+    auto inetAddr = inet_addr(str);
 
-    std::string ipv4(str);
-
-    blib::core::StringList octets = blib::core::split(ipv4, ".");
-    char tmpbuf[4] = { 0,0,0,0 };
-
-    if (octets.size() != 4)
+    if (inetAddr == INADDR_NONE)
     {
         if (ok)
             *ok = false;
-
-        return res;
+        Address::NoneIPv4;
     }
+    
+    Address res;
 
-    for (size_t i = 0; i < octets.size(); ++i)
-    {
-        int iOctet = std::stoi(octets[i].c_str());
-        if (iOctet <= 255 && iOctet >= 0)
-        {
-            tmpbuf[i] = iOctet;
-        }
-        else
-        {
-            if (ok)
-                *ok = false;
+    __blib_cast_internet_address_handler(res.__getHandler())->sin_family = blibToWinApi(AddressType::IPv4);
+    __blib_cast_internet_address_handler(res.__getHandler())->sin_addr.s_addr = inetAddr;
 
-            return res;
-        }
-    }
-
-    __blib_cast_internet_address_handler(res.ctx)->sin_family = blibToWinApi(AddressType::IPv4);
-    __blib_cast_internet_address_handler(res.ctx)->sin_addr.S_un.S_un_b.s_b1 = tmpbuf[0];
-    __blib_cast_internet_address_handler(res.ctx)->sin_addr.S_un.S_un_b.s_b2 = tmpbuf[1];
-    __blib_cast_internet_address_handler(res.ctx)->sin_addr.S_un.S_un_b.s_b3 = tmpbuf[2];
-    __blib_cast_internet_address_handler(res.ctx)->sin_addr.S_un.S_un_b.s_b4 = tmpbuf[3];
     if (ok)
         *ok = true;
-
 
     return res;
 }
