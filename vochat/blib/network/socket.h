@@ -9,6 +9,9 @@ namespace blib
         enum class SocketStatus
         {
             OK,
+            Partial, //Socket sent only part of data
+            Disconnected,
+
             Error,
 
             END_OF_ENUM
@@ -45,6 +48,11 @@ namespace blib
         public:
             Socket();
             SocketStatus create(const AddressType af, const SocketType type, const SocketProtocol protocol);
+
+            bool setBlocking(bool isBlocking);
+
+            SocketStatus bind(Address& addr);
+
             SocketStatus close();
             void destroy();
             ~Socket();
@@ -56,9 +64,11 @@ namespace blib
             //SocketStatus send(const void* , size_t size);
             //SocketStatus receive(void*, size_t size, size_t& received);
 
+            Socket(const Socket&) = delete;
+            Socket(Socket&&) = delete;
+
             void* __getHandler();
         private:
-            bool closed;
             void* ctx;
         };
  

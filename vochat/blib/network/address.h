@@ -32,6 +32,7 @@ namespace blib
             void* __getHandler();
 
             static const Address AnyIPv4;
+            static const Address NoneIPv4;
             static const Address LocalhostIPv4;
             static const Address BroadcastIPv4;
         private:
