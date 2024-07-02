@@ -180,7 +180,7 @@ int main()
 {
     blib::network::InitBlibSocket();
 
-    blib::network::UdpSocket udps;
+    blib::network::UdpSocket udps(blib::network::AddressType::IPv4);
 
     char mode;
     std::cin >> mode;
