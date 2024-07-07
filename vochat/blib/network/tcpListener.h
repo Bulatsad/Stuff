@@ -11,17 +11,18 @@ namespace blib
         {
         private:
             Socket socket;
+
         public:
+            TcpListener();
             TcpListener(AddressType type);
+            TcpListener(const TcpListener&) = delete;
+            TcpListener(TcpListener&&) = delete;
 
             bool setBlocking(bool isBlocking);
 
             SocketStatus bind(Address& addr);
             SocketStatus listen(int backlog = 16);
-            TcpSocket accept();
-
-            SocketStatus send(Address& addr, const void* data, int size);
-            SocketStatus recv(Address& addr, void* data, int& szie);
+            SocketStatus accept(TcpSocket& accepted);
         };
     }
 }

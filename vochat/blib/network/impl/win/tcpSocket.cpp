@@ -4,6 +4,10 @@
 #include <blib/network/tcpSocket.h>
 #include <blib/network/impl/win/winNetworkUtil.h>
 
+blib::network::TcpSocket::TcpSocket()
+{
+}
+
 blib::network::TcpSocket::TcpSocket(AddressType type)
 {
     this->socket.create(type, SocketType::Stram, SocketProtocol::TCP);
@@ -59,7 +63,7 @@ blib::network::SocketStatus blib::network::TcpSocket::connect(Address& addr)
     return SocketStatus::Error;
 }
 
-blib::network::SocketStatus blib::network::TcpSocket::send(Address& addr, const void* data, int size)
+blib::network::SocketStatus blib::network::TcpSocket::send(const void* data, int size)
 {
     if (!data || (size == 0))
     {
@@ -85,13 +89,13 @@ blib::network::SocketStatus blib::network::TcpSocket::send(Address& addr, const 
     return SocketStatus::OK;
 }
 
-blib::network::SocketStatus blib::network::TcpSocket::recv(Address& addr, void* data, int& size)
+blib::network::SocketStatus blib::network::TcpSocket::recv(void* data, int& size)
 {
     int result = ::recv(*__blib_cast_socket_handler(this->socket.__getHandler()), reinterpret_cast<char*>(data), size, 0);
 
     if (result == SOCKET_ERROR)
     {
-        //auto a = WSAGetLastError();
+        auto a = WSAGetLastError();
         return SocketStatus::Error;
     }
 
@@ -106,6 +110,11 @@ blib::network::SocketStatus blib::network::TcpSocket::recv(Address& addr, void* 
     }
 
     return SocketStatus::Partial;
+}
+
+blib::network::Socket* blib::network::TcpSocket::getSocket()
+{
+    return &(this->socket);
 }
 
 
