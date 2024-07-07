@@ -20,6 +20,13 @@ blib::network::SocketStatus blib::network::Socket::create(const AddressType af, 
     return SocketStatus::Error;
 }
 
+blib::network::SocketStatus blib::network::Socket::create(void* ctx)
+{
+    this->ctx = new platform_socket_handler_t;
+    memcpy(this->ctx, ctx, sizeof(platform_socket_handler_t));
+    return SocketStatus::OK;
+}
+
 bool blib::network::Socket::setBlocking(bool isBlocking)
 {
     u_long arg = isBlocking ? 0 : 1;

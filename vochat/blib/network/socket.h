@@ -48,6 +48,7 @@ namespace blib
         public:
             Socket();
             SocketStatus create(const AddressType af, const SocketType type, const SocketProtocol protocol);
+            SocketStatus create(void* ctx);
 
             bool setBlocking(bool isBlocking);
 
