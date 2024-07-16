@@ -27,3 +27,10 @@
 
 #endif // !__blib_inline
 
+#ifndef __blib_private_func
+#define __blib_private_func static
+#endif // !__blib_private_func
+
+
+
+

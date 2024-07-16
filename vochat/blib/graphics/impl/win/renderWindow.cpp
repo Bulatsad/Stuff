@@ -1,0 +1,143 @@
+#include <blib/graphics/renderWindow.h>
+
+#include <Windows.h>
+
+#include <gl/GL.h>
+
+struct WinCtx
+{
+    bool open;
+    HWND hwnd;
+    HDC hdc;
+    HGLRC context;
+};
+
+#define __blib_this_context(__this) reinterpret_cast<WinCtx*>(__this->ctx)
+
+static LRESULT wndProc(HWND hwnd, UINT uMsg, WPARAM wparam, LPARAM lparam)
+{
+    switch (uMsg)
+    {
+    case WM_DESTROY:
+    case WM_CLOSE:
+    {
+        PostQuitMessage(EXIT_SUCCESS);
+    }
+    return 0;
+    }
+    return DefWindowProc(hwnd, uMsg, wparam, lparam);
+}
+
+blib::graphics::RenderWindow::RenderWindow(uint16_t width, uint16_t height, const std::string& title, WindowStile style)
+{
+    this->ctx = new WinCtx;
+    HINSTANCE hInstance = GetModuleHandle(NULL);
+    int nCmdShow = SW_SHOW;
+
+    WNDCLASSEX wc;
+
+    wc.cbSize = sizeof(WNDCLASSEX);
+    wc.cbClsExtra = 0;
+    wc.cbWndExtra = 0;
+    wc.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
+    wc.hCursor = LoadCursor(NULL, IDC_HAND);
+    wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+    wc.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
+    wc.hInstance = hInstance;
+    wc.lpfnWndProc = &wndProc;
+    wc.lpszClassName = "RenderWindow";
+    wc.lpszMenuName = NULL;
+    wc.style = CS_VREDRAW | CS_HREDRAW | CS_OWNDC;
+
+    if (!RegisterClassEx(&wc))
+    {
+        //TODO : logging
+    }
+
+    __blib_this_context(this)->hwnd = CreateWindow(wc.lpszClassName,
+        title.c_str(),
+        WS_OVERLAPPEDWINDOW,
+        0,
+        0,
+        width, 
+        height, 
+        NULL, 
+        NULL, 
+        wc.hInstance,
+        NULL
+    );
+    if (__blib_this_context(this)->hwnd == INVALID_HANDLE_VALUE)
+    {
+        //TODO : logging
+    }
+
+    __blib_this_context(this)->hdc = GetDC(__blib_this_context(this)->hwnd);
+    PIXELFORMATDESCRIPTOR pfd =
+    {
+        sizeof(PIXELFORMATDESCRIPTOR),
+        1,
+        PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    // Flags
+        PFD_TYPE_RGBA,        // The kind of framebuffer. RGBA or palette.
+        32,                   // Colordepth of the framebuffer.
+        0, 0, 0, 0, 0, 0,
+        0,
+        0,
+        0,
+        0, 0, 0, 0,
+        24,                   // Number of bits for the depthbuffer
+        8,                    // Number of bits for the stencilbuffer
+        0,                    // Number of Aux buffers in the framebuffer.
+        PFD_MAIN_PLANE,
+        0,
+        0, 0, 0
+    };
+    int PixelFormat = ChoosePixelFormat(__blib_this_context(this)->hdc, &pfd);
+    SetPixelFormat(__blib_this_context(this)->hdc, PixelFormat, &pfd);
+    HGLRC glContext = wglCreateContext(__blib_this_context(this)->hdc);
+    wglMakeCurrent(__blib_this_context(this)->hdc, glContext);
+
+    ShowWindow(__blib_this_context(this)->hwnd, nCmdShow);
+    UpdateWindow(__blib_this_context(this)->hwnd);
+
+    __blib_this_context(this)->open = true;
+
+    glEnable(GL_DEPTH_TEST);
+}
+
+void blib::graphics::RenderWindow::update()
+{
+    MSG msg;
+    if (PeekMessage(&msg, __blib_this_context(this)->hwnd, 0, 0, PM_REMOVE))
+    {
+        if (msg.message == WM_CLOSE || msg.message == WM_QUIT || msg.message == WM_DESTROY)
+        {
+            __blib_this_context(this)->open = false;
+        }
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+
+    }
+}
+
+bool blib::graphics::RenderWindow::isOpen()
+{
+    return __blib_this_context(this)->open;
+}
+
+void blib::graphics::RenderWindow::clear(const Color& color)
+{
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClearColor(
+        (color.red) / static_cast<float>(255),
+        color.green / static_cast<float>(255),
+        color.blue / static_cast<float>(255),
+        color.alpha / static_cast<float>(255)
+    );
+}
+
+void blib::graphics::RenderWindow::display()
+{
+    SwapBuffers(__blib_this_context(this)->hdc);
+}
+
+#undef __blib_this_context

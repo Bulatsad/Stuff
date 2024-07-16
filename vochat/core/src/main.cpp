@@ -12,6 +12,9 @@
 #include<blib/network/tcpListener.h>
 #include <blib/core/string.h>
 
+#include <blib/graphics/renderWindow.h>
+#include <blib/graphics/model.h>
+
 //int main()
 //{
 //    {
@@ -141,19 +144,11 @@ void fft(std::vector<base>& a, bool invert) {
 //    
 //    std::vector<std::complex<double> >sw;
 //    for (auto& s : wave)
-//        sw.push_back(std::complex<double>(s, 0));
+//        sw.push_back(std::complex<double>(s - 8, 0));
 //
-//    sw.resize(512);
-//    wave.resize(512);
+//    sw.resize(16);//512
+//    wave.resize(16); //512
 //    std::vector<std::complex<double> >sw1(sw);
-//
-//
-//    clock_t fftstart = clock();
-//    fft(sw, false);
-//    clock_t fftend = clock();
-//    clock_t ffttime = fftend - fftstart;
-//    fft(sw, true);
-//    clock_t ifftt = clock() - fftend;
 //
 //    //auto c = blib::expFastFourierTransform(sw1);
 //    //auto wave1 = blib::expInverseFourierTransform(c);
@@ -163,6 +158,10 @@ void fft(std::vector<base>& a, bool invert) {
 //    
 //    clock_t ftstart = clock();
 //    auto spectre = blib::expFastFourierTransform(sw1);
+//
+//    for (size_t i = 0/*spectre.size() / 2*/; i < spectre.size(); ++i)
+//        spectre[i].imag(0);
+//
 //    clock_t ftend = clock();
 //    clock_t fttime = ftend - ftstart;
 //    auto wave1 = blib::expFastInverseFourierTransform(spectre);
@@ -320,76 +319,97 @@ void fft(std::vector<base>& a, bool invert) {
 //    return 0;
 //}
 
+//int main() //vo chat
+//{
+//    blib::network::InitBlibSocket();
+//    std::string connectionIp;
+//    std::string connectinPort;
+//    std::string mode;
+//
+//    std::cout << "mode s/c" << std::endl;
+//    std::cin >> mode;
+//
+//    std::cout << "connection ip" << std::endl;
+//    std::cin >> connectionIp;
+//    std::cout << "connection port" << std::endl;
+//    std::cin >> connectinPort;
+//
+//    blib::network::TcpSocket socket(blib::network::AddressType::IPv4);
+//
+//    if (mode == "c")
+//    {
+//        bool ok = false;
+//        auto addr = blib::network::Address::fromIPv4(connectionIp.c_str(), &ok); //
+//        addr.setPort(atoi(connectinPort.c_str()));
+//        while (socket.connect(addr) != blib::network::SocketStatus::OK);
+//        std::cout << "connected" << std::endl;
+//    }
+//
+//    if (mode == "s")
+//    {
+//        blib::network::TcpListener listner(blib::network::AddressType::IPv4);
+//
+//        bool ok = false;
+//        auto addr = blib::network::Address::fromIPv4(connectionIp.c_str(), &ok);
+//        addr.setPort(atoi(connectinPort.c_str()));
+//        listner.bind(addr);
+//        while (listner.listen() != blib::network::SocketStatus::OK);
+//        while (listner.accept(socket) != blib::network::SocketStatus::OK);
+//        std::cout << "accepted" << std::endl;
+//    }
+//
+//    socket.setBlocking(false);
+//
+//    blib::RealTimeSoundRecorder recorder;
+//    recorder.setFormat(blib::SoundFormat(1, 44100, 16));
+//    recorder.setBufferInfo(10, 50);
+//
+//    blib::RealTimeSoundPlayer player;
+//    player.setFormat(blib::SoundFormat(1, 44100, 16));
+//    player.setBufferInfo(10, 50);
+//
+//    recorder.open();
+//    player.open();
+//
+//    recorder.start();
+//
+//    while (1)
+//    {
+//        auto recordedFrame = recorder.acquireBuffer();
+//        socket.send(recordedFrame.sndFrame->getData(), recordedFrame.sndFrame->getSize());
+//        recorder.releaseBuffer(std::move(recordedFrame));
+//
+//
+//        auto playingFrame = player.acquireBuffer();
+//        memset(playingFrame.sndFrame->getData(), playingFrame.sndFrame->getSize(), 0);
+//        
+//        int recvsize = playingFrame.sndFrame->getSize();
+//        socket.recv(playingFrame.sndFrame->getData(), recvsize);
+//        player.releaseBuffer(std::move(playingFrame));
+//    }
+//
+//    recorder.stop();
+//
+//    return 0;
+//}//192.168.1.51
+
 int main()
 {
-    blib::network::InitBlibSocket();
-    std::string connectionIp;
-    std::string connectinPort;
-    std::string mode;
+    blib::graphics::ObjModel obj;
+    obj.loadFromFile("D:\\Stuff\\vochat\\obj_spider\\oneFrame.txt");
 
-    std::cout << "mode s/c" << std::endl;
-    std::cin >> mode;
+    auto rw = blib::graphics::RenderWindow(800, 600, "test");
 
-    std::cout << "connection ip" << std::endl;
-    std::cin >> connectionIp;
-    std::cout << "connection port" << std::endl;
-    std::cin >> connectinPort;
 
-    blib::network::TcpSocket socket(blib::network::AddressType::IPv4);
-
-    if (mode == "c")
+    while (rw.isOpen())
     {
-        bool ok = false;
-        auto addr = blib::network::Address::fromIPv4(connectionIp.c_str(), &ok); //
-        addr.setPort(atoi(connectinPort.c_str()));
-        while (socket.connect(addr) != blib::network::SocketStatus::OK);
-        std::cout << "connected" << std::endl;
+        rw.clear(blib::graphics::Color::Black);
+        rw.update();
+
+        obj.testDraw();
+
+        rw.display();
     }
-
-    if (mode == "s")
-    {
-        blib::network::TcpListener listner(blib::network::AddressType::IPv4);
-
-        bool ok = false;
-        auto addr = blib::network::Address::fromIPv4(connectionIp.c_str(), &ok);
-        addr.setPort(atoi(connectinPort.c_str()));
-        listner.bind(addr);
-        while (listner.listen() != blib::network::SocketStatus::OK);
-        while (listner.accept(socket) != blib::network::SocketStatus::OK);
-        std::cout << "accepted" << std::endl;
-    }
-
-    socket.setBlocking(false);
-
-    blib::RealTimeSoundRecorder recorder;
-    recorder.setFormat(blib::SoundFormat(1, 44100, 16));
-    recorder.setBufferInfo(10, 50);
-
-    blib::RealTimeSoundPlayer player;
-    player.setFormat(blib::SoundFormat(1, 44100, 16));
-    player.setBufferInfo(10, 50);
-
-    recorder.open();
-    player.open();
-
-    recorder.start();
-
-    while (1)
-    {
-        auto recordedFrame = recorder.acquireBuffer();
-        socket.send(recordedFrame.sndFrame->getData(), recordedFrame.sndFrame->getSize());
-        recorder.releaseBuffer(std::move(recordedFrame));
-
-
-        auto playingFrame = player.acquireBuffer();
-        memset(playingFrame.sndFrame->getData(), playingFrame.sndFrame->getSize(), 0);
-        
-        int recvsize = playingFrame.sndFrame->getSize();
-        socket.recv(playingFrame.sndFrame->getData(), recvsize);
-        player.releaseBuffer(std::move(playingFrame));
-    }
-
-    recorder.stop();
 
     return 0;
-}//192.168.1.51
+}
