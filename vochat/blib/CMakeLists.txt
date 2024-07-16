@@ -45,13 +45,21 @@ file (GLOB algorithm_impl_src "*algorithm/impl/*.cpp")
 file (GLOB network_header_src "*network/*.h")
 file (GLOB network_impl_src "*network/impl/*.cpp")
 
+file (GLOB graphics_header_src "*graphics/*.h")
+#file (GLOB graphics_impl_src "*graphics/impl/*.cpp")
+
 
 if(WIN32)
     file (GLOB sound_platform_impl_src "*sound/impl/win/*.cpp" "*sound/impl/*.cpp" "*sound/impl/win/*.h")
     file (GLOB sound_platform_impl_header "*sound/impl/win/*.h")
+
     file (GLOB thread_platform_impl_src "*thread/impl/win/*.cpp")
+    
     file (GLOB network_platform_impl_src "*network/impl/win/*.cpp")
     file (GLOB network_platform_impl_header "*network/impl/win/*.h")
+
+    file (GLOB graphics_platform_impl_src "*graphics/impl/win/*.cpp")
+    #file (GLOB network_platform_impl_header "*graphics/impl/win/*.h")
 else()
 endif()
 
@@ -75,22 +83,35 @@ GroupSoureces("${HeaderGroupPrefix}/network" "${network_platform_impl_header}")
 GroupSoureces("${SourceGroupPrefix}/network" "${network_impl_src}")  
 GroupSoureces("${SourceGroupPrefix}/network" "${network_platform_impl_src}")  
 
+GroupSoureces("${HeaderGroupPrefix}/graphics" "${graphics_header_src}")  
+GroupSoureces("${HeaderGroupPrefix}/graphics" "${graphics_platform_impl_header}")  
+GroupSoureces("${SourceGroupPrefix}/graphics" "${graphics_platform_impl_src}")  
+
 
 add_library(${BIN} STATIC 
     ${blibGloabal} 
+
     ${sound_header_src}
     ${sound_platform_impl_header}
     ${sound_platform_impl_src} 
+
     ${thread_header_src}
     ${thread_platform_impl_src} 
+
     ${core_header_src} 
     ${core_impl_src}
+
     ${algorithm_header_src}
     ${algorithm_impl_src}
+
     ${network_header_src}
     ${network_impl_src}
     ${network_platform_impl_src}
     ${network_platform_impl_header}
+
+    ${graphics_header_src}
+    ${graphics_platform_impl_header}
+    ${graphics_platform_impl_src}
 )
 
 target_include_directories(${BIN} PUBLIC  "${CMAKE_CURRENT_SOURCE_DIR}/../")
@@ -103,6 +124,7 @@ set_target_properties(${BIN} PROPERTIES LINKER_LANGUAGE CXX)
 if(WIN32)
 	target_link_libraries(${BIN} PRIVATE Winmm)
 	target_link_libraries(${BIN} PRIVATE Ws2_32)
+    target_link_libraries(${BIN} PUBLIC Opengl32)
 
 	set_target_properties(${BIN} PROPERTIES VS_DEBUGGER_ENVIRONMENT "${MY_PATH}" LINKER_LANGUAGE CXX)
     set (CMAKE_CXX_FLAGS_RELEASE "/EHsc /Gd /Gy /Oi /Gm- /MP /O2 /W3 /ZI /MD" )
