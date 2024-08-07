@@ -121,7 +121,7 @@ __blib_inline size_t blib::SoundBufferTemplate<Allocator>::getSize() const
 }
 
 template<class Allocator>
-inline blib::SoundFormat blib::SoundBufferTemplate<Allocator>::getFormat() const
+__blib_inline blib::SoundFormat blib::SoundBufferTemplate<Allocator>::getFormat() const
 {
     return this->format;
 }

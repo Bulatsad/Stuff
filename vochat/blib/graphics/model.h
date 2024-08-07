@@ -1,5 +1,7 @@
 #pragma once
 
+#include <blib/config.h>
+
 #include <string>
 
 namespace blib
@@ -14,7 +16,7 @@ namespace blib
 
             END_OF_ENUM
         };
-        class ObjModel
+        class __blib_api ObjModel
         {
         private:
             void* ctx;

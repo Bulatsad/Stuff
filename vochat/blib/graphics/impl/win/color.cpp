@@ -1,5 +1,13 @@
 #include <blib/graphics/color.h>
 
+blib::graphics::Color::Color()
+{
+    this->red = 0;
+    this->green = 0;
+    this->blue = 0;
+    this->alpha = 0;
+}
+
 blib::graphics::Color::Color(uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha)
 {
     this->red = red;
@@ -9,3 +17,4 @@ blib::graphics::Color::Color(uint8_t red, uint8_t green, uint8_t blue, uint8_t a
 }
 
 const blib::graphics::Color blib::graphics::Color::Black = blib::graphics::Color(0, 0, 0, 0);
+const blib::graphics::Color blib::graphics::Color::BlackAlpha = blib::graphics::Color(0, 0, 0, 255);

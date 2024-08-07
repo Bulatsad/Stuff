@@ -9,6 +9,8 @@
 constexpr double PI = M_PI;
 constexpr double _2PI = PI * 2;
 
+#include <blib/inline.h>
+
 namespace blib
 {
     template<class T, class Allocator>
@@ -32,7 +34,7 @@ namespace blib
 }
 
 template<class T, class Allocator>
-inline blib::Spectre<T, Allocator>::Spectre(size_t _size)
+__blib_inline blib::Spectre<T, Allocator>::Spectre(size_t _size)
 {
     //this->size = _size;
     //
@@ -48,7 +50,7 @@ inline blib::Spectre<T, Allocator>::Spectre(size_t _size)
 }
 
 template<class T, class Allocator>
-inline blib::Spectre<T, Allocator>::~Spectre()
+__blib_inline blib::Spectre<T, Allocator>::~Spectre()
 {
     //this->allocator.deallocate(this->a, this->size);
     //this->allocator.deallocate(this->b, this->size);

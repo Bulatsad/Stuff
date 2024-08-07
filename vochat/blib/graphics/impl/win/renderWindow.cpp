@@ -1,20 +1,12 @@
 #include <blib/graphics/renderWindow.h>
 
 #include <Windows.h>
-
 #include <gl/GL.h>
 
-struct WinCtx
-{
-    bool open;
-    HWND hwnd;
-    HDC hdc;
-    HGLRC context;
-};
+#include <blib/inline.h>
+#include <blib/graphics/impl/win/winRenderWindowUtil.h>
 
-#define __blib_this_context(__this) reinterpret_cast<WinCtx*>(__this->ctx)
-
-static LRESULT wndProc(HWND hwnd, UINT uMsg, WPARAM wparam, LPARAM lparam)
+__blib_private_func LRESULT wndProc(HWND hwnd, UINT uMsg, WPARAM wparam, LPARAM lparam)
 {
     switch (uMsg)
     {
@@ -28,9 +20,9 @@ static LRESULT wndProc(HWND hwnd, UINT uMsg, WPARAM wparam, LPARAM lparam)
     return DefWindowProc(hwnd, uMsg, wparam, lparam);
 }
 
-blib::graphics::RenderWindow::RenderWindow(uint16_t width, uint16_t height, const std::string& title, WindowStile style)
+blib::graphics::RenderWindow::RenderWindow(uint16_t _width, uint16_t _height, const std::string& title, WindowStile style)
 {
-    this->ctx = new WinCtx;
+    this->ctx = new RenderWindowContext;
     HINSTANCE hInstance = GetModuleHandle(NULL);
     int nCmdShow = SW_SHOW;
 
@@ -54,24 +46,24 @@ blib::graphics::RenderWindow::RenderWindow(uint16_t width, uint16_t height, cons
         //TODO : logging
     }
 
-    __blib_this_context(this)->hwnd = CreateWindow(wc.lpszClassName,
+    __blib_render_window_this_context(this)->hwnd = CreateWindow(wc.lpszClassName,
         title.c_str(),
         WS_OVERLAPPEDWINDOW,
         0,
         0,
-        width, 
-        height, 
+        _width, 
+        _height, 
         NULL, 
         NULL, 
         wc.hInstance,
         NULL
     );
-    if (__blib_this_context(this)->hwnd == INVALID_HANDLE_VALUE)
+    if (__blib_render_window_this_context(this)->hwnd == INVALID_HANDLE_VALUE)
     {
         //TODO : logging
     }
 
-    __blib_this_context(this)->hdc = GetDC(__blib_this_context(this)->hwnd);
+    __blib_render_window_this_context(this)->hdc = GetDC(__blib_render_window_this_context(this)->hwnd);
     PIXELFORMATDESCRIPTOR pfd =
     {
         sizeof(PIXELFORMATDESCRIPTOR),
@@ -91,27 +83,41 @@ blib::graphics::RenderWindow::RenderWindow(uint16_t width, uint16_t height, cons
         0,
         0, 0, 0
     };
-    int PixelFormat = ChoosePixelFormat(__blib_this_context(this)->hdc, &pfd);
-    SetPixelFormat(__blib_this_context(this)->hdc, PixelFormat, &pfd);
-    HGLRC glContext = wglCreateContext(__blib_this_context(this)->hdc);
-    wglMakeCurrent(__blib_this_context(this)->hdc, glContext);
+    int PixelFormat = ChoosePixelFormat(__blib_render_window_this_context(this)->hdc, &pfd);
+    SetPixelFormat(__blib_render_window_this_context(this)->hdc, PixelFormat, &pfd);
+    HGLRC glContext = wglCreateContext(__blib_render_window_this_context(this)->hdc);
+    wglMakeCurrent(__blib_render_window_this_context(this)->hdc, glContext);
 
-    ShowWindow(__blib_this_context(this)->hwnd, nCmdShow);
-    UpdateWindow(__blib_this_context(this)->hwnd);
+    ShowWindow(__blib_render_window_this_context(this)->hwnd, nCmdShow);
+    UpdateWindow(__blib_render_window_this_context(this)->hwnd);
 
-    __blib_this_context(this)->open = true;
+    __blib_render_window_this_context(this)->open = true;
 
-    glEnable(GL_DEPTH_TEST);
+    this->width = _width;
+    this->height = _height;
+
+    glMatrixMode(GL_PROJECTION);
+    glFrustum(-1,1, -1,1, 1,1000 );
+    //glEnable(GL_DEPTH_TEST);
+}
+
+void blib::graphics::RenderWindow::enableIsometricTileGreed()
+{
+    glPushMatrix();
+
+
+
+    glPopMatrix();
 }
 
 void blib::graphics::RenderWindow::update()
 {
     MSG msg;
-    if (PeekMessage(&msg, __blib_this_context(this)->hwnd, 0, 0, PM_REMOVE))
+    if (PeekMessage(&msg, __blib_render_window_this_context(this)->hwnd, 0, 0, PM_REMOVE))
     {
         if (msg.message == WM_CLOSE || msg.message == WM_QUIT || msg.message == WM_DESTROY)
         {
-            __blib_this_context(this)->open = false;
+            __blib_render_window_this_context(this)->open = false;
         }
         TranslateMessage(&msg);
         DispatchMessage(&msg);
@@ -121,7 +127,7 @@ void blib::graphics::RenderWindow::update()
 
 bool blib::graphics::RenderWindow::isOpen()
 {
-    return __blib_this_context(this)->open;
+    return __blib_render_window_this_context(this)->open;
 }
 
 void blib::graphics::RenderWindow::clear(const Color& color)
@@ -137,7 +143,10 @@ void blib::graphics::RenderWindow::clear(const Color& color)
 
 void blib::graphics::RenderWindow::display()
 {
-    SwapBuffers(__blib_this_context(this)->hdc);
+    SwapBuffers(__blib_render_window_this_context(this)->hdc);
 }
 
-#undef __blib_this_context
+void* blib::graphics::RenderWindow::__getCtx()
+{
+    return this->ctx;
+}

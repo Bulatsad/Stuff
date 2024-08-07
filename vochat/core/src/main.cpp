@@ -1,19 +1,19 @@
-#include <SoundRecorder.h>
-#include <soundPlayer.h>
-
-#include <Windows.h>
-
-#include <iostream>
-#include<blib/algorithm/dtfExp.h>
-#include<blib/algorithm/dft.h>
-
-#include<blib/network/udpSocket.h>
-#include<blib/network/tcpSocket.h>
-#include<blib/network/tcpListener.h>
-#include <blib/core/string.h>
-
-#include <blib/graphics/renderWindow.h>
-#include <blib/graphics/model.h>
+//#include <SoundRecorder.h>
+//#include <soundPlayer.h>
+//
+//#include <Windows.h>
+//
+//#include <iostream>
+//#include<blib/algorithm/dtfExp.h>
+//#include<blib/algorithm/dft.h>
+//
+//#include<blib/network/udpSocket.h>
+//#include<blib/network/tcpSocket.h>
+//#include<blib/network/tcpListener.h>
+//#include <blib/core/string.h>
+//
+//#include <blib/graphics/renderWindow.h>
+//#include <blib/graphics/model.h>
 
 //int main()
 //{
@@ -76,31 +76,31 @@
 //
 //}
 
-typedef std::complex<double> base;
-
-void fft(std::vector<base>& a, bool invert) {
-    int n = (int)a.size();
-    if (n == 1)  
-        return;
-
-    std::vector<base> a0(n / 2), a1(n / 2);
-    for (int i = 0, j = 0; i < n; i += 2, ++j) {
-        a0[j] = a[i];
-        a1[j] = a[i + 1];
-    }
-    fft(a0, invert);
-    fft(a1, invert);
-
-    double ang = 2 * PI / n * (invert ? -1 : 1);
-    base w(1), wn(cos(ang), sin(ang));
-    for (int i = 0; i < n / 2; ++i) {
-        a[i] = a0[i] + w * a1[i];
-        a[i + n / 2] = a0[i] - w * a1[i];
-        if (invert)
-            a[i] /= 2, a[i + n / 2] /= 2;
-        w *= wn;
-    }
-}
+//typedef std::complex<double> base;
+//
+//void fft(std::vector<base>& a, bool invert) {
+//    int n = (int)a.size();
+//    if (n == 1)  
+//        return;
+//
+//    std::vector<base> a0(n / 2), a1(n / 2);
+//    for (int i = 0, j = 0; i < n; i += 2, ++j) {
+//        a0[j] = a[i];
+//        a1[j] = a[i + 1];
+//    }
+//    fft(a0, invert);
+//    fft(a1, invert);
+//
+//    double ang = 2 * PI / n * (invert ? -1 : 1);
+//    base w(1), wn(cos(ang), sin(ang));
+//    for (int i = 0; i < n / 2; ++i) {
+//        a[i] = a0[i] + w * a1[i];
+//        a[i + n / 2] = a0[i] - w * a1[i];
+//        if (invert)
+//            a[i] /= 2, a[i + n / 2] /= 2;
+//        w *= wn;
+//    }
+//}
 
 //int main()
 //{
@@ -393,23 +393,52 @@ void fft(std::vector<base>& a, bool invert) {
 //    return 0;
 //}//192.168.1.51
 
+#include <blib/graphics/image.h>
+#include <blib/graphics/texture.h>
+#include <blib/graphics/sprite.h>
+#include <blib/graphics/camera.h>
+#include <blib/graphics/renderWindow.h>
+
 int main()
 {
-    blib::graphics::ObjModel obj;
-    obj.loadFromFile("D:\\Stuff\\vochat\\obj_spider\\oneFrame.txt");
+    //blib::graphics::ObjModel obj;
+    //obj.loadFromFile("D:\\Stuff\\vochat\\obj_spider\\oneFrame.txt");
 
-    auto rw = blib::graphics::RenderWindow(800, 600, "test");
+    auto rw = blib::graphics::RenderWindow(1800, 1000, "test");
 
+    blib::graphics::Image img;
+    img.loadFromTgx("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Stronghold Crusader Extreme\\gfx\\frontend_loading_ex.tgx");
+    
+    blib::graphics::Texture txr;
+    txr.create(img);
+    
+    blib::graphics::Sprite spr;
+    spr.setTexture(txr);
+    spr.setPosition(-100, -100, -999);
 
+    blib::graphics::Camera camera;
+    camera.setPosition({0,0,0});
+    auto cp = camera.getPosition();
+    
     while (rw.isOpen())
     {
         rw.clear(blib::graphics::Color::Black);
         rw.update();
+    
+        //obj.testDraw();
+    
+        spr.draw(rw);
+       
+        //cp.x += 0.001;
+        //cp.y += 0.001;
+        //cp.z += 0.1;
+        //camera.setPosition(cp);
+    
+        printf("%f\n", camera.getPosition().z);
 
-        obj.testDraw();
-
-        rw.display();
+        camera.display(rw);
+        //rw.display();
     }
-
+    
     return 0;
 }

@@ -9,7 +9,7 @@
 #define __blib_force_inline __attribute__((__always_inline__))
 #define __blib_noinline __attribute__((__noinline__))
 #else
-#error "can not bin force inline specifiers"
+#error "can not bind force inline specifiers"
 #define __blib_force_inline
 #define __blib_noinline
 #endif
@@ -29,7 +29,7 @@
 
 #ifndef __blib_private_func
 #define __blib_private_func static
-#endif // !__blib_private_func
+#endif // !__blib___blib_private_func
 
 
 
