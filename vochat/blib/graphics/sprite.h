@@ -26,9 +26,24 @@ namespace blib
             ~Sprite();
 
             void setTexture(const Texture& texture);
-            void setPosition(float x, float y, float z);
-            void setOrigin(float x, float y);
             void draw(RenderWindow& window);
+            
+            // Tramsormable
+            void setPosition(const Vector3f& _position);
+            Vector3f getPosition() const;
+
+            void setRotation(const Vector3f& _rotation);
+            Vector3f getRotation() const;
+
+            void setScale(const Vector3f& _scale);
+            Vector3f getScale() const;
+
+            void setOrigin(const Vector3f& _origin);
+            Vector3f getOrigin() const;
+
+            void Move(const Vector3f& _position);
+            void Rotate(const Vector3f& _rotatation);
+
         };
     }
 }

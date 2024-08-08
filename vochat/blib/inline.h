@@ -22,7 +22,8 @@
 #elif __blib_inline_compiler
 #define __blib_inline inline
 #else
-#error "choose inline mode"
+#pragma message("Inline mode is not selected. Used default inline mode")
+#define __blib_inline inline
 #endif 
 
 #endif // !__blib_inline

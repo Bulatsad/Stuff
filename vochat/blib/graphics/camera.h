@@ -12,12 +12,12 @@ namespace blib
         /*!
         * \brief Camera
         * 
-        * implement Transormable, Directional
+        * implement Transormable
         */
         class __blib_api Camera
         {
         private:
-            Vector3f postion;
+            Transform3f transform;
         public:
             enum class ProjectionMode
             {
@@ -31,12 +31,18 @@ namespace blib
             ~Camera();
 
             // Tramsormable
-            void setPosition(const Vector3f& position);
+            void setPosition(const Vector3f& _position);
             Vector3f getPosition() const;
 
-            //Directional
-            void setDirection(const Vector3f& direction);
-            Vector3f getDirection() const;
+            void setRotation(const Vector3f& _rotation);
+            Vector3f getRotation() const;
+
+            void setScale(const Vector3f& _scale);
+            Vector3f getScale() const;
+            
+            void setOrigin(const Vector3f& _origin);
+            Vector3f getOrigin() const;
+
 
             void setProjectionMode(ProjectionMode mode);
 

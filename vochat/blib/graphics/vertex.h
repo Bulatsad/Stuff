@@ -1,6 +1,7 @@
 #pragma once
 
 #include <blib/config.h>
+#include <blib/inline.h>
 
 #include <blib/graphics/color.h>
 
@@ -53,9 +54,16 @@ namespace blib
         struct __blib_api Transform3f
         {
             Vector3f position;
+            Vector3f rotation; //direction
+            Vector3f scale = { 1,1,1 };
             Vector3f origin;
-            float rotation = 0.f;
-            Vector3f scale;
         };
+
+        __blib_inline void operator+=(Vector3f& lhs, const Vector3f& rhs)
+        {
+            lhs.x += rhs.x;
+            lhs.y += rhs.y;
+            lhs.z += rhs.z;
+        }
     }
 }
