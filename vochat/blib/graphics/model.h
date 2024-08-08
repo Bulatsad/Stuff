@@ -24,6 +24,9 @@ namespace blib
             ObjModel();
             ~ObjModel();
             ModelParsingStatus loadFromFile(const std::string& file);
+
+            //if you want use origin on load you must recalculate all coords
+            //using origin an then use it. Can`t change origin at run time
             void testDraw();
         };
     }

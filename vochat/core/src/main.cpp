@@ -414,10 +414,16 @@ int main()
     
     blib::graphics::Sprite spr;
     spr.setTexture(txr);
-    spr.setPosition(-100, -100, -999);
+    spr.setPosition({ 0, -500, -1000 });
+    spr.setOrigin({0, 0, 0});
+
+    blib::graphics::Sprite spr1;
+    spr1.setTexture(txr);
+    spr1.setPosition({ 0, 0, -1000 });
+    spr1.setOrigin({ 512,384, 0 });
 
     blib::graphics::Camera camera;
-    camera.setPosition({0,0,0});
+    camera.setPosition({ 0,0,0 });
     auto cp = camera.getPosition();
     
     while (rw.isOpen())
@@ -427,13 +433,18 @@ int main()
     
         //obj.testDraw();
     
+        spr1.Rotate({ 0,1,0 });
+        spr.Move({ -1,1,0 });
+
+        spr1.draw(rw);
         spr.draw(rw);
        
         //cp.x += 0.001;
         //cp.y += 0.001;
         //cp.z += 0.1;
         //camera.setPosition(cp);
-    
+        //camera.setRotation({ 0,1,0 });
+
         printf("%f\n", camera.getPosition().z);
 
         camera.display(rw);
