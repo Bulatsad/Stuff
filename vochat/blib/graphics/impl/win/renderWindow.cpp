@@ -95,10 +95,6 @@ blib::graphics::RenderWindow::RenderWindow(uint16_t _width, uint16_t _height, co
 
     this->width = _width;
     this->height = _height;
-
-    glMatrixMode(GL_PROJECTION);
-    glFrustum(-1,1, -1,1, 1,2000 );
-    //glEnable(GL_DEPTH_TEST);
 }
 
 void blib::graphics::RenderWindow::enableIsometricTileGreed()

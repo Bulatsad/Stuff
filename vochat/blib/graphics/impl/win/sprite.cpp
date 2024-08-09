@@ -11,20 +11,8 @@ blib::graphics::Sprite::Sprite()
 
     this->transform.scale.x = 1.f;
     this->transform.scale.y = 1.f;
+    this->transform.scale.z = 1.f;
 
-    this->verties[0].textureCoord.x = 0;
-    this->verties[0].textureCoord.y = 0;
-
-    this->verties[1].textureCoord.x = 1;
-    this->verties[1].textureCoord.y = 0;
-
-    this->verties[2].textureCoord.x = 1;
-    this->verties[2].textureCoord.y = 1;
-
-    this->verties[3].textureCoord.x = 0;
-    this->verties[3].textureCoord.y = 1;
-
-    this->updateCache = true;
     this->pTexture = nullptr;
 }
 
@@ -97,8 +85,6 @@ void blib::graphics::Sprite::draw(RenderWindow& window)
 
     glPushMatrix();
     {
-        //glLoadIdentity();
-
         glTranslatef(
             this->transform.position.x,
             this->transform.position.y,
@@ -124,21 +110,6 @@ void blib::graphics::Sprite::draw(RenderWindow& window)
             glTexCoord3f(1, 1, 0); glVertex3f(x1, y1, 0);
         }
         glEnd();
-
-        GLfloat m[16];
-        glGetFloatv(GL_PROJECTION_MATRIX, m);
-        printf("spritePROJECTION\n");
-        for (int i = 0; i < 4; ++i)
-        {
-            for (int j = 0; j < 4; ++j)
-            {
-                printf("%f ", m[i * 4 + j]);
-            }
-            printf("\n");
-        }
-        printf("\n");
-        printf("\n");
-        printf("\n");
     }
     glPopMatrix();
 

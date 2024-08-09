@@ -43,8 +43,11 @@ namespace blib
             void setOrigin(const Vector3f& _origin);
             Vector3f getOrigin() const;
 
+            void move(const Vector3f& _position);
+            void rotate(const Vector3f& _rotatation);
 
-            void setProjectionMode(ProjectionMode mode);
+
+            void setProjectionMode(ProjectionMode mode, const RenderWindow& wnd);
 
             template<class Tramsormable>
             void alignTo(const Tramsormable directToObject);
