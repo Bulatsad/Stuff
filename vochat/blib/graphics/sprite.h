@@ -17,9 +17,6 @@ namespace blib
         private:
             const Texture* pTexture;
             Transform3f transform;
-            float matrixTransform[16];
-            bool updateCache;
-            verties_2f_t verties[4];
 
         public:
             Sprite();
