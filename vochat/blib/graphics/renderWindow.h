@@ -31,8 +31,8 @@ namespace blib
 
         public:
             RenderWindow(uint16_t _width, uint16_t _height, const std::string& title, WindowStile style = WindowStile::None);
-            uint16_t getHeight() const { return this->width; }
-            uint16_t getWight() const { return this->height; }
+            uint16_t getHeight() const { return this->height; }
+            uint16_t getWight() const { return this->width; }
 
             void enableIsometricTileGreed();
 
