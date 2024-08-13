@@ -18,3 +18,5 @@ blib::graphics::Color::Color(uint8_t red, uint8_t green, uint8_t blue, uint8_t a
 
 const blib::graphics::Color blib::graphics::Color::Black = blib::graphics::Color(0, 0, 0, 0);
 const blib::graphics::Color blib::graphics::Color::BlackAlpha = blib::graphics::Color(0, 0, 0, 255);
+const blib::graphics::Color blib::graphics::Color::White = blib::graphics::Color(255, 255, 255, 0);
+const blib::graphics::Color blib::graphics::Color::Red = blib::graphics::Color(255, 0, 0, 0);

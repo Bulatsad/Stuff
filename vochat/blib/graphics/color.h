@@ -20,6 +20,8 @@ namespace blib
 
             static const Color Black; 
             static const Color BlackAlpha;
+            static const Color White;
+            static const Color Red;
         };
     }
 }

@@ -22,6 +22,17 @@ __blib_private_func LRESULT wndProc(HWND hwnd, UINT uMsg, WPARAM wparam, LPARAM 
 
 blib::graphics::RenderWindow::RenderWindow(uint16_t _width, uint16_t _height, const std::string& title, WindowStile style)
 {
+    this->width = _width;
+    this->height = _height;
+
+    //if (!m_fullscreen)
+    {
+        RECT rectangle = { 0, 0, width, height };
+        AdjustWindowRect(&rectangle, WS_VISIBLE, false);
+        width = rectangle.right - rectangle.left;
+        height = rectangle.bottom - rectangle.top;
+    }
+
     this->ctx = new RenderWindowContext;
     HINSTANCE hInstance = GetModuleHandle(NULL);
     int nCmdShow = SW_SHOW;
@@ -51,10 +62,10 @@ blib::graphics::RenderWindow::RenderWindow(uint16_t _width, uint16_t _height, co
         WS_OVERLAPPEDWINDOW,
         0,
         0,
-        _width, 
-        _height, 
-        NULL, 
-        NULL, 
+        this->width,
+        this->height,
+        NULL,
+        NULL,
         wc.hInstance,
         NULL
     );
@@ -93,8 +104,15 @@ blib::graphics::RenderWindow::RenderWindow(uint16_t _width, uint16_t _height, co
 
     __blib_render_window_this_context(this)->open = true;
 
-    this->width = _width;
-    this->height = _height;
+    RECT rectangle = { 0, 0, static_cast<long>(this->width), static_cast<long>(this->height) };
+    AdjustWindowRect(&rectangle, static_cast<DWORD>(GetWindowLongPtr(__blib_render_window_this_context(this)->hwnd, GWL_STYLE)), false);
+    int width = rectangle.right - rectangle.left;
+    int height = rectangle.bottom - rectangle.top;
+
+    SetWindowPos(__blib_render_window_this_context(this)->hwnd, NULL, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER);
+
+    glViewport(0, 0, this->width, this->width);
+    glLoadIdentity();
 }
 
 void blib::graphics::RenderWindow::enableIsometricTileGreed()

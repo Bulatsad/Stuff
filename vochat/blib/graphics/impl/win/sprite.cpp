@@ -107,7 +107,7 @@ void blib::graphics::Sprite::draw(RenderWindow& window)
             glTexCoord3f(0, 0, 0); glVertex3f(x0, y0, 0);
             glTexCoord3f(0, 1, 0); glVertex3f(x0, y1, 0);
             glTexCoord3f(1, 0, 0); glVertex3f(x1, y0, 0);
-            glTexCoord3f(1, 1, 0); glVertex3f(x1, y1, 0);
+            glTexCoord3f(1, 1.5, 0); glVertex3f(x1, y1, 0);
         }
         glEnd();
     }
