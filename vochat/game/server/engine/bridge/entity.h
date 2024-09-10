@@ -3,16 +3,24 @@
 
 #include <blib/blibint.h>
 
-typedef buint64 ID;
-
 namespace eng
 {
+    typedef buint64 ID;
+    typedef buint8 EntityType;
+
+
+    class EntityController
+    {
+    public:
+        bool registerEnity();
+    };
+
     class Entity
     {
     private:
-
-    public:
         ID id;
+        EntityType type;
+    public:
 
     };
 }
