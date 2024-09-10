@@ -19,8 +19,8 @@ file (GLOB bridge_impl "*engine/bridge/*.cpp")
 file (GLOB components_header "*engine/components/*.h")
 file (GLOB components_impl "*engine/components/*.cpp")
 
-file (GLOB commands_header "*engine/commands/*.h")
-file (GLOB commands_impl "*engine/commands/*.cpp")
+file (GLOB events_header "*engine/events/*.h")
+file (GLOB events_impl "*engine/events/*.cpp")
 
 GroupSoureces("${HeaderGroupPrefix}/main" "${engine_header}")
 GroupSoureces("${SourceGroupPrefix}/main" "${engine_impl}")
@@ -31,8 +31,8 @@ GroupSoureces("${SourceGroupPrefix}/bridge" "${bridge_impl}")
 GroupSoureces("${HeaderGroupPrefix}/components" "${components_header}")
 GroupSoureces("${SourceGroupPrefix}/components" "${components_impl}")
 
-GroupSoureces("${HeaderGroupPrefix}/commands" "${commands_header}")
-GroupSoureces("${SourceGroupPrefix}/commands" "${commands_impl}")
+GroupSoureces("${HeaderGroupPrefix}/events" "${events_header}")
+GroupSoureces("${SourceGroupPrefix}/events" "${events_impl}")
 
 
 add_executable(${BIN} 
@@ -46,8 +46,8 @@ ${bridge_impl}
 ${components_header}
 ${components_impl}
 
-${commands_header}
-${commands_impl}
+${events_header}
+${events_impl}
 
 )
 
@@ -66,6 +66,8 @@ else()
 endif()
 
 target_link_libraries(${BIN} PUBLIC blib)
+
+target_include_directories(${BIN} PUBLIC  "${CMAKE_CURRENT_SOURCE_DIR}/")
 
 if(WIN32)
 	#set_target_properties(${BIN} PROPERTIES VS_DEBUGGER_ENVIRONMENT)
