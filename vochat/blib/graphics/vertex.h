@@ -4,6 +4,7 @@
 #include <blib/inline.h>
 
 #include <blib/graphics/color.h>
+#include <blib/blibint.h>
 
 namespace blib
 {
@@ -17,8 +18,8 @@ namespace blib
 
         struct __blib_api vector2i
         {
-            int x = 0;
-            int y = 0;
+            bint32 x = 0;
+            bint32 y = 0;
         };
 
         struct __blib_api transform_t2f
@@ -38,6 +39,18 @@ namespace blib
 
         struct __blib_api Vector3f
         {
+            Vector3f()
+            {
+                float x = 0;
+                float y = 0;
+                float z = 0;
+            }
+            Vector3f(float _x, float _y, float _z)
+            {
+                this->x = _x;
+                this->y = _y;
+                this->z = _z;
+            }
             float x = 0;
             float y = 0;
             float z = 0;

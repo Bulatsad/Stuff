@@ -21,7 +21,13 @@ namespace blib
             buint16 height;
 
             __blib_api Image();
+            __blib_api Image(
+                decltype(blib::graphics::Image::width) _width,
+                decltype(blib::graphics::Image::height) _height,
+                const Color* pdata);
             __blib_api ~Image();
+
+            __blib_api std::vector<Color>& data();
 
             __blib_api bool loadFromTgx(const char* path);
             __blib_api const void* getData() const;

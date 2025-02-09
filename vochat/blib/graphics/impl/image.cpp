@@ -153,6 +153,11 @@ __blib_private_func bool loadTGXPixelData(
     {
     }
 
+    __blib_api std::vector<blib::graphics::Color>& blib::graphics::Image::data()
+    {
+        return this->bitmap;
+    }
+
     bool blib::graphics::Image::loadFromTgx(const char* path)
 {
     std::ifstream tempfin;
