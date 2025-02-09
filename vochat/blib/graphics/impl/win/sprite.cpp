@@ -97,6 +97,8 @@ void blib::graphics::Sprite::draw(RenderWindow& window)
         
         glScalef(this->transform.scale.x, this->transform.scale.y, this->transform.scale.z);
 
+        glBindTexture(GL_TEXTURE_2D, *((GLuint*)this->pTexture->getContext()));
+
         glBegin(GL_TRIANGLE_STRIP);
         {
             float x0 = this->transform.position.x - this->transform.origin.x;
