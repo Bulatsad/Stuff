@@ -17,14 +17,6 @@
 #endfunction()
 #filter("${src}")
 
-set(HeaderGroupPrefix "Header Files")
-set(SourceGroupPrefix "Source Files")
-function(GroupSoureces Prefix_ sources_)
-    foreach(FILE ${sources_})
-        source_group("${Prefix_}" FILES "${FILE}")
-    endforeach()
-endfunction()
-
 set (BIN blib)
 
 project(${BIN})
@@ -175,6 +167,7 @@ if(WIN32)
 	target_link_libraries(${BIN} PRIVATE Winmm)
 	target_link_libraries(${BIN} PRIVATE Ws2_32)
     target_link_libraries(${BIN} PUBLIC Opengl32)
+    #target_link_libraries(${BIN} PUBLIC Glu32)
 
 	set_target_properties(${BIN} PROPERTIES VS_DEBUGGER_ENVIRONMENT "${MY_PATH}" LINKER_LANGUAGE CXX)
     set (CMAKE_CXX_FLAGS_RELEASE "/EHsc /Gd /Gy /Oi /Gm- /MP /O2 /W3 /ZI /MD" )

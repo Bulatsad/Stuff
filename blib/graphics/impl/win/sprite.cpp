@@ -99,7 +99,8 @@ void blib::graphics::Sprite::draw(RenderWindow& window)
 
         glBindTexture(GL_TEXTURE_2D, *((GLuint*)this->pTexture->getContext()));
 
-        glBegin(GL_TRIANGLE_STRIP);
+        glBegin(GL_QUADS);
+        //glBegin(GL_TRIANGLE_STRIP);
         {
             float x0 = this->transform.position.x - this->transform.origin.x;
             float x1 = this->transform.position.x - this->transform.origin.x + this->pTexture->width;
