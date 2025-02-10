@@ -1,6 +1,7 @@
 #pragma once
 
 #include <blib/config.h>
+#include <blib/graphics/vertex.h>
 
 #include <string>
 
@@ -21,6 +22,7 @@ namespace blib
         private:
             void* ctx;
         public:
+            Transform3f transform;
             ObjModel();
             ~ObjModel();
             ModelParsingStatus loadFromFile(const std::string& file);

@@ -72,8 +72,11 @@ __blib_private_func __blib_inline blib::graphics::ModelParsingStatus loadFace(
 
         if (vertexIndex < 0)
             vertexIndex = model.verchies.size() + vertexIndex;
-        else
+        else if(vertexIndex > 0)
             --vertexIndex;
+        else
+        {
+        }
 
         tempFace.push_back(vertexIndex);
     }
@@ -134,23 +137,27 @@ void blib::graphics::ObjModel::testDraw()
 {
     glPushMatrix();
 
+    glTranslatef(-(this->transform.position.x), -(this->transform.position.y), -(this->transform.position.z));
+
+    glRotatef(this->transform.rotation.x, 1, 0, 0);
+    glRotatef(this->transform.rotation.y, 0, 1, 0);
+    glRotatef(this->transform.rotation.z, 0, 0, 1);
+
+
     for (const auto& face : __blib_this_context(this)->faces)
     {
         glBegin(GL_TRIANGLE_STRIP);
 
         for (const auto& index : face)
         {
-            auto x = __blib_this_context(this)->verchies[index].x / 51;
-            auto y = __blib_this_context(this)->verchies[index].y / 51;
-            auto z = __blib_this_context(this)->verchies[index].z / 51;
-
-            if (x - 1 > .0001 || y - 1 > .0001 || z - 1 > 0.0001)
-                printf("alarm\n");
+            auto x = __blib_this_context(this)->verchies[index].x;
+            auto y = __blib_this_context(this)->verchies[index].y;
+            auto z = __blib_this_context(this)->verchies[index].z;
 
             glColor3f(1., 1., .9);
             glVertex3f(
                 x,
-                y - 1,
+                y,
                 z
             );
         }
@@ -159,7 +166,7 @@ void blib::graphics::ObjModel::testDraw()
     }
 
     glPopMatrix();
-    glFlush();
+    //glFlush();
 
     /*
     glBegin(GL_POLYGON);

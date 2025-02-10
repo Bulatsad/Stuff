@@ -19,6 +19,10 @@ namespace blib
         private:
             Transform3f transform;
         public:
+
+            float movespeed = 10;
+            float rotatespeed = 10;
+
             enum class ProjectionMode
             {
                 Perspective,
@@ -54,6 +58,9 @@ namespace blib
 
             void display(RenderWindow& wnd);
 
+            void LookAt(const Transform3f& transform);
+
+            void controlUpdate(float deltaTime, RenderWindow& wnd);
         };
     }
 }

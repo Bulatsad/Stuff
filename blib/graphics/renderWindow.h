@@ -38,8 +38,9 @@ namespace blib
 
             void update();
             bool isOpen();
-            void clear(const Color& color);
+            void clear(const Color& color = Color::Black);
             void display();
+            void close();
 
             void* __getCtx();
         };

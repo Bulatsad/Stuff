@@ -78,5 +78,7 @@ namespace blib
             lhs.y += rhs.y;
             lhs.z += rhs.z;
         }
+
+        typedef Vector3f Vertex;
     }
 }

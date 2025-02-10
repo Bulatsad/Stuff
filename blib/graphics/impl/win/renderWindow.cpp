@@ -111,7 +111,7 @@ blib::graphics::RenderWindow::RenderWindow(uint16_t _width, uint16_t _height, co
 
     SetWindowPos(__blib_render_window_this_context(this)->hwnd, NULL, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER);
 
-    glViewport(0, 0, this->width, this->width);
+    glViewport(0, 0, this->width, this->height);
     glLoadIdentity();
 }
 
@@ -153,11 +153,25 @@ void blib::graphics::RenderWindow::clear(const Color& color)
         color.blue / static_cast<float>(255),
         color.alpha / static_cast<float>(255)
     );
+
+    glPushMatrix();
+
 }
 
 void blib::graphics::RenderWindow::display()
 {
+    glPopMatrix();
+
     SwapBuffers(__blib_render_window_this_context(this)->hdc);
+}
+
+void blib::graphics::RenderWindow::close()
+{
+    //TODO
+
+
+
+    __blib_render_window_this_context(this)->open = false;
 }
 
 void* blib::graphics::RenderWindow::__getCtx()
