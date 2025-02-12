@@ -24,19 +24,19 @@ bool blib::graphics::Mouse::isButtonPressed(Button button)
     return (GetAsyncKeyState(blibToWinApi(button)) & 0x8000) != 0;
 }
 
-blib::graphics::vector2i blib::graphics::Mouse::getPosition(RenderWindow& wnd)
+blib::graphics::Vector2i blib::graphics::Mouse::getPosition(RenderWindow& wnd)
 {
     POINT p;
     GetCursorPos(&p);
     ScreenToClient(__blib_render_window_context(wnd.__getCtx())->hwnd, &p);
 
-    vector2i res;
+    Vector2i res;
     res.x = p.x;
     res.y = p.y;
     return res;
 }
 
-void blib::graphics::Mouse::setPosition(RenderWindow& wnd, const vector2i& position)
+void blib::graphics::Mouse::setPosition(RenderWindow& wnd, const Vector2i& position)
 {
     POINT point;
     point.x = position.x;

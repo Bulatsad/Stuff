@@ -64,9 +64,12 @@ target_link_libraries(${BIN}
 
 target_include_directories(${BIN} PRIVATE ${blib_dir})
 target_include_directories(${BIN} PRIVATE ${assimp_include})
+target_include_directories(${BIN} PRIVATE ${stb_include})
 target_include_directories(${BIN} PUBLIC  "${CMAKE_CURRENT_SOURCE_DIR}/../")
 
 if(WIN32)
+    target_link_libraries(${BIN} PUBLIC Glu32)
+
 	#set_target_properties(${BIN} PROPERTIES VS_DEBUGGER_ENVIRONMENT)
 	set_target_properties(${BIN} PROPERTIES VS_DEBUGGER_ENVIRONMENT "${MY_PATH}" LINKER_LANGUAGE CXX)
 	set (CMAKE_CXX_FLAGS_RELEASE "/EHsc /Gd /Gy /Oi /Gm- /MP /O2 /W3 /ZI /MD" )

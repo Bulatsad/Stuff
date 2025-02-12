@@ -15,59 +15,6 @@ blib::graphics::Camera::~Camera()
 {
 }
 
-void blib::graphics::Camera::setPosition(const Vector3f& _position)
-{
-    this->transform.position = _position;
-}
-
-blib::graphics::Vector3f blib::graphics::Camera::getPosition() const
-{
-    return this->transform.position;
-}
-
-void blib::graphics::Camera::setRotation(const Vector3f& _rotation)
-{
-    this->transform.rotation = _rotation;
-}
-
-blib::graphics::Vector3f blib::graphics::Camera::getRotation() const
-{
-    return this->transform.rotation;
-}
-
-void blib::graphics::Camera::setScale(const Vector3f& _scale)
-{
-    this->transform.scale.x = _scale.x;
-    this->transform.scale.x = _scale.y;
-    this->transform.scale.x = _scale.z;
-}
-
-blib::graphics::Vector3f blib::graphics::Camera::getScale() const
-{
-    return this->transform.scale;
-}
-
-void blib::graphics::Camera::setOrigin(const Vector3f& _origin)
-{
-    this->transform.origin.x = _origin.x;
-    this->transform.origin.y = _origin.y;
-    this->transform.origin.z = _origin.z;
-}
-
-blib::graphics::Vector3f blib::graphics::Camera::getOrigin() const
-{
-    return this->transform.origin;
-}
-
-void blib::graphics::Camera::move(const Vector3f& _position)
-{
-    this->transform.position += _position;
-}
-
-void blib::graphics::Camera::rotate(const Vector3f& _rotatation)
-{
-    this->transform.rotation += _rotatation;
-}
 
 void blib::graphics::Camera::setProjectionMode(ProjectionMode mode, const RenderWindow& wnd)
 {
@@ -76,22 +23,22 @@ void blib::graphics::Camera::setProjectionMode(ProjectionMode mode, const Render
     height /= 2;
     width /= 2;
     
-    {
-        GLfloat m[16];
-        glGetFloatv(GL_MODELVIEW_MATRIX, m);
-        printf("cameraPROJECTION\n");
-        for (int i = 0; i < 4; ++i)
-        {
-            for (int j = 0; j < 4; ++j)
-            {
-                printf("%f ", m[i * 4 + j]);
-            }
-            printf("\n");
-        }
-        printf("\n");
-        printf("\n");
-        printf("\n");
-    }
+    //{
+    //    GLfloat m[16];
+    //    glGetFloatv(GL_MODELVIEW_MATRIX, m);
+    //    printf("cameraPROJECTION\n");
+    //    for (int i = 0; i < 4; ++i)
+    //    {
+    //        for (int j = 0; j < 4; ++j)
+    //        {
+    //            printf("%f ", m[i * 4 + j]);
+    //        }
+    //        printf("\n");
+    //    }
+    //    printf("\n");
+    //    printf("\n");
+    //    printf("\n");
+    //}
 
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
@@ -141,27 +88,151 @@ void blib::graphics::Camera::setProjectionMode(ProjectionMode mode, const Render
     glEnable(GL_COLOR_MATERIAL);
 }
 
-void blib::graphics::Camera::display(RenderWindow& wnd)
+void blib::graphics::Camera::controlUpdate(float deltaTime,  RenderWindow& wnd)
+{
+    blib::graphics::Vector2i mousepos = blib::graphics::Mouse::getPosition(wnd);
+    blib::graphics::Vector2i zeropos;
+    blib::graphics::Vector2i deltapos;
+    zeropos.y = wnd.getHeight() / 2;
+    zeropos.x = wnd.getWight() / 2;
+    deltapos.x = zeropos.x - mousepos.x;
+    deltapos.y = zeropos.y - mousepos.y;
+    blib::graphics::Mouse::setPosition(wnd, zeropos);
+    auto radian = [](float x) -> float {
+        return x * (3.1415f / 180.0f);
+        };
+
+    this->rotateZ(deltapos.x * this->rotatespeed * deltaTime);
+    this->rotateX(deltapos.y * this->rotatespeed * deltaTime);
+    if (this->getRotation().x > 180)
+        this->setRotation(180, this->getRotation().y, this->getRotation().z);
+    if (this->getRotation().x < 0)
+        this->setRotation(0, this->getRotation().y, this->getRotation().z);
+
+    constexpr float pi = 3.1415;
+    float zangle = radian(-this->getRotation().z);
+    float xangle = radian(-this->getRotation().x);
+
+
+    auto posdelta = movespeed * deltaTime;
+
+    if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::LControl))
+    {
+        posdelta *= 5;
+    }
+
+    if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Space))
+    {
+        this->move(0, 0, posdelta);
+    }
+    if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::LShift))
+    {
+        this->move(0, 0, -posdelta);
+    }
+    if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::W))
+    {
+        this->move(sin(zangle) * posdelta, cos(zangle) * posdelta, 0);
+    }
+    if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::S))
+    {
+        this->move(-sin(zangle) * posdelta, -cos(zangle) * posdelta, 0);
+    }
+    
+    if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::A))
+    {
+        zangle -= pi * 0.5;
+        this->move(sin(zangle) * posdelta, cos(zangle) * posdelta, 0);
+    }
+    if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::D))
+    {
+        zangle += pi * 0.5;
+        this->move(sin(zangle) * posdelta, cos(zangle) * posdelta, 0);
+    }
+    
+    //this->transform.rotation.z += deltapos.x * this->rotatespeed * deltaTime;
+    //this->transform.rotation.x += deltapos.y * this->rotatespeed * deltaTime;
+    //if (this->transform.rotation.x >= 120)
+    //    this->transform.rotation.x = 120;
+    //printf("%f rotate\n", this->transform.rotation.x);
+    //constexpr float pi = 3.1415;
+    //float zangle = radian(-this->transform.rotation.z);
+    //float xangle = radian(-this->transform.rotation.x);
+    //if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::W))
+    //{
+    //    this->transform.position.x += sin(zangle) * movespeed * deltaTime;
+    //    this->transform.position.y += cos(zangle) * movespeed * deltaTime;
+    //}
+    //if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::S))
+    //{
+    //    this->transform.position.x -= sin(zangle) * movespeed * deltaTime;
+    //    this->transform.position.y -= cos(zangle) * movespeed * deltaTime;
+    //}
+    //
+    //if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::A))
+    //{
+    //    zangle -= pi * 0.5;
+    //    this->transform.position.x += sin(zangle) * movespeed * deltaTime;
+    //    this->transform.position.y += cos(zangle) * movespeed * deltaTime;
+    //}
+    //if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::D))
+    //{
+    //    zangle += pi * 0.5;
+    //    this->transform.position.x += sin(zangle) * movespeed * deltaTime;
+    //    this->transform.position.y += cos(zangle) * movespeed * deltaTime;
+    //}
+    //if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Space))
+    //{
+    //    this->transform.position.z += movespeed * deltaTime;
+    //}
+    //if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::LShift))
+    //{
+    //    this->transform.position.z -= movespeed * deltaTime;
+    //}
+}
+
+void blib::graphics::Camera::draw(RenderTarget& target, RenderContext& ctx) const
 {
     //glPushMatrix();
     {
         //glMatrixMode(GL_PROJECTION);
         //glMatrixMode(GL_MODELVIEW);
 
+        target.applyTransform(*this);
+
         //glLoadIdentity();
-    
 
-        glRotatef(-this->transform.rotation.x, 1, 0, 0);
-        glRotatef(-this->transform.rotation.y, 0, 1, 0);
-        glRotatef(-this->transform.rotation.z, 0, 0, 1);
-        glTranslatef(-(this->transform.position.x), -(this->transform.position.y), -(this->transform.position.z));
+        //if(this->isNeedToRecalculate())
+        //glLoadMatrixf(this->getTransform().getMatrix());
 
+        //glRotatef(-this->getRotation().x, 1, 0, 0);
+        //glRotatef(-this->getRotation().y, 0, 1, 0);
+        //glRotatef(-this->getRotation().z, 0, 0, 1);
+        //
+        //glTranslatef(-(this->getPosition().x), -(this->getPosition().y), -(this->getPosition().z));
+        
+        //glRotatef(-this->transform.rotation.x, 1, 0, 0);
+        //glRotatef(-this->transform.rotation.y, 0, 1, 0);
+        //glRotatef(-this->transform.rotation.z, 0, 0, 1);
+        //glTranslatef(-(this->transform.position.x), -(this->transform.position.y), -(this->transform.position.z));
+
+        ////
         float position[] = { 0, 0, 1, 0 };
         glLightfv(GL_LIGHT0, GL_POSITION, position);
-
-        //GLfloat m[16];
-        //glGetFloatv(GL_PROJECTION_MATRIX, m);
-        //printf("cameraPROJECTION\n");
+        //{
+        //    GLfloat m[16];
+        //    glGetFloatv(GL_PROJECTION_MATRIX, m);
+        //    printf("cameraPROJECTION\n");
+        //    for (int i = 0; i < 4; ++i)
+        //    {
+        //        for (int j = 0; j < 4; ++j)
+        //        {
+        //            printf("%f ", m[i * 4 + j]);
+        //        }
+        //        printf("\n");
+        //    }
+        //}
+        //printf("\n");
+        //auto m = this->getTransform().getMatrix();
         //for (int i = 0; i < 4; ++i)
         //{
         //    for (int j = 0; j < 4; ++j)
@@ -173,75 +244,10 @@ void blib::graphics::Camera::display(RenderWindow& wnd)
         //printf("\n");
         //printf("\n");
         //printf("\n");
+
     }
     //glPopMatrix();
 
 
     //wnd.display();
-}
-
-void blib::graphics::Camera::controlUpdate(float deltaTime, RenderWindow& wnd)
-{
-    blib::graphics::vector2i mousepos = blib::graphics::Mouse::getPosition(wnd);
-    blib::graphics::vector2i zeropos;
-    blib::graphics::vector2i deltapos;
-    zeropos.y = wnd.getHeight() / 2;
-    zeropos.x = wnd.getWight() / 2;
-    deltapos.x = zeropos.x - mousepos.x;
-    deltapos.y = zeropos.y - mousepos.y;
-    blib::graphics::Mouse::setPosition(wnd, zeropos);
-    auto radian = [](float x) -> float {
-        return x * (3.1415f / 180.0f);
-        };
-
-    
-    this->transform.rotation.z += deltapos.x * this->rotatespeed * deltaTime;
-    this->transform.rotation.x += deltapos.y * this->rotatespeed * deltaTime;
-
-    if (this->transform.rotation.x >= 120)
-        this->transform.rotation.x = 120;
-    printf("%f rotate\n", this->transform.rotation.x);
-
-    constexpr float pi = 3.1415;
-
-    float zangle = radian(-this->transform.rotation.z);
-    float xangle = radian(-this->transform.rotation.x);
-    if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::W))
-    {
-        this->transform.position.x += sin(zangle) * movespeed * deltaTime;
-        this->transform.position.y += cos(zangle) * movespeed * deltaTime;
-    }
-    if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::S))
-    {
-        this->transform.position.x -= sin(zangle) * movespeed * deltaTime;
-        this->transform.position.y -= cos(zangle) * movespeed * deltaTime;
-    }
-    
-    if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::A))
-    {
-        zangle -= pi * 0.5;
-        this->transform.position.x += sin(zangle) * movespeed * deltaTime;
-        this->transform.position.y += cos(zangle) * movespeed * deltaTime;
-    }
-    if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::D))
-    {
-        zangle += pi * 0.5;
-        this->transform.position.x += sin(zangle) * movespeed * deltaTime;
-        this->transform.position.y += cos(zangle) * movespeed * deltaTime;
-    }
-    
-    if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Space))
-    {
-        this->transform.position.z += movespeed * deltaTime;
-    }
-    if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::LShift))
-    {
-        zangle -= pi * 0.5;
-        this->transform.position.z -= movespeed * deltaTime;
-    }
-
-
-    
-    //this->transform.rotation.x += deltapos.y * this->rotatespeed * deltaTime;
-    
 }

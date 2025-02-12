@@ -6,6 +6,7 @@
 #include <string>
 
 #include <blib/graphics/color.h>
+#include <blib/graphics/rendertarget.h>
 
 namespace blib
 {
@@ -21,7 +22,7 @@ namespace blib
             END_OF_ENUM
         };
 
-        class __blib_api RenderWindow
+        class __blib_api RenderWindow : public RenderTarget
         {
         private:
             void* ctx;
@@ -31,6 +32,9 @@ namespace blib
 
         public:
             RenderWindow(uint16_t _width, uint16_t _height, const std::string& title, WindowStile style = WindowStile::None);
+            
+            virtual ~RenderWindow();
+
             uint16_t getHeight() const { return this->height; }
             uint16_t getWight() const { return this->width; }
 
@@ -38,7 +42,6 @@ namespace blib
 
             void update();
             bool isOpen();
-            void clear(const Color& color = Color::Black);
             void display();
             void close();
 
