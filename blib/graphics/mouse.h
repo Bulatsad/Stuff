@@ -2,7 +2,7 @@
 
 #include <blib/config.h>
 
-#include <blib/graphics/vertex.h>
+#include <blib/graphics/vector.h>
 
 #include <blib/graphics/renderWindow.h>
 
@@ -25,8 +25,8 @@ namespace blib
             };
             
             static bool isButtonPressed(Button button);
-            static vector2i getPosition(RenderWindow& wnd);
-            static void setPosition(RenderWindow& wnd, const vector2i& position);
+            static Vector2i getPosition(RenderWindow& wnd);
+            static void setPosition(RenderWindow& wnd, const Vector2i& position);
 
         };
     }

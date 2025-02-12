@@ -2,30 +2,48 @@
 
 #include <vector>
 
-#include <assimp/mesh.h>
+#include <assimp/scene.h>
 
+#include <blib/blibint.h>
 #include <blib/graphics/vertex.h>
 #include <blib/graphics/renderWindow.h>
+#include <blib/graphics/drawable.h>
+#include <blib/graphics/transformable.h>
 
 #include <beng/config.h>
 #include <beng/graphics/face.h>
+#include <beng/graphics/material.h>
 
 namespace beng
 {
     namespace graphics
     {
-        class __beng_api Mesh
+        enum class PrimitiveType : buint8
+        {
+            Point = 0x1,
+            Line = 0x2,
+            Triangle = 0x4,
+            Polygon = 0x8,
+        };
+
+        class __beng_api Mesh : public blib::graphics::IDrawable, public blib::graphics::Transformable
         {
         private:
             
         public:
+            bool ngonencoding = false;
+
+            PrimitiveType primitiveType;
             std::vector<blib::graphics::Vertex>vertices;
             std::vector<blib::graphics::Vector3f>normals;
+            std::vector<blib::graphics::Vector3f>textureCoords;
             std::vector<Face>faces;
+            Material material;
 
             void loadFromAssimpMesh(const aiMesh* paimesh);
 
-            void draw(blib::graphics::RenderWindow& wnd);
+            // Унаследовано через IDrawable
+            virtual void draw(blib::graphics::RenderTarget& target, blib::graphics::RenderContext& ctx) const override;
         };
     }
 }

@@ -29,6 +29,7 @@ namespace blib
             Texture();
             ~Texture();
             void create(const Image& image, genFlags flags = genFlags::none);
+            int create(const void* pdata, bint16 width, bint16 height, buint8 bytesPerPixel, genFlags flags = genFlags::none);
             void* getContext() const;
 
             void update(

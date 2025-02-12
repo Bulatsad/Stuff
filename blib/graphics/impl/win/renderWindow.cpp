@@ -115,6 +115,10 @@ blib::graphics::RenderWindow::RenderWindow(uint16_t _width, uint16_t _height, co
     glLoadIdentity();
 }
 
+blib::graphics::RenderWindow::~RenderWindow()
+{
+}
+
 void blib::graphics::RenderWindow::enableIsometricTileGreed()
 {
     glPushMatrix();
@@ -144,24 +148,10 @@ bool blib::graphics::RenderWindow::isOpen()
     return __blib_render_window_this_context(this)->open;
 }
 
-void blib::graphics::RenderWindow::clear(const Color& color)
-{
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glClearColor(
-        (color.red) / static_cast<float>(255),
-        color.green / static_cast<float>(255),
-        color.blue / static_cast<float>(255),
-        color.alpha / static_cast<float>(255)
-    );
-
-    glPushMatrix();
-
-}
-
 void blib::graphics::RenderWindow::display()
 {
     glPopMatrix();
-
+    
     SwapBuffers(__blib_render_window_this_context(this)->hdc);
 }
 

@@ -1,8 +1,13 @@
 #pragma once
 
 #include <blib/config.h>
+#include <blib/utilmacro.h>
 
 #include <blib/graphics/vertex.h>
+
+#include <blib/graphics/drawable.h>
+#include <blib/graphics/transformable.h>
+
 #include <blib/graphics/renderWindow.h>
 
 namespace blib
@@ -14,14 +19,17 @@ namespace blib
         * 
         * implement Transormable
         */
-        class __blib_api Camera
+        class __blib_api Camera : public Transformable, public IDrawable
         {
-        private:
-            Transform3f transform;
         public:
-
             float movespeed = 10;
             float rotatespeed = 10;
+
+            struct Transformtest
+            {
+                Vector3f position;
+                Vector3f rotation;
+            } transform;
 
             enum class ProjectionMode
             {
@@ -34,33 +42,12 @@ namespace blib
             Camera();
             ~Camera();
 
-            // Tramsormable
-            void setPosition(const Vector3f& _position);
-            Vector3f getPosition() const;
-
-            void setRotation(const Vector3f& _rotation);
-            Vector3f getRotation() const;
-
-            void setScale(const Vector3f& _scale);
-            Vector3f getScale() const;
-            
-            void setOrigin(const Vector3f& _origin);
-            Vector3f getOrigin() const;
-
-            void move(const Vector3f& _position);
-            void rotate(const Vector3f& _rotatation);
-
-
             void setProjectionMode(ProjectionMode mode, const RenderWindow& wnd);
 
-            template<class Tramsormable>
-            void alignTo(const Tramsormable directToObject);
+            void controlUpdate(float deltaTime,  RenderWindow& wnd);
 
-            void display(RenderWindow& wnd);
-
-            void LookAt(const Transform3f& transform);
-
-            void controlUpdate(float deltaTime, RenderWindow& wnd);
+            // Унаследовано через IDrawable
+            virtual void draw(RenderTarget& target, RenderContext& ctx) const __blib_override;
         };
     }
 }
