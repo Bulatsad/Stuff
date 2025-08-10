@@ -9,10 +9,12 @@
 #include <blib/graphics/renderWindow.h>
 #include <blib/graphics/drawable.h>
 #include <blib/graphics/transformable.h>
+#include <blib/graphics/shader.h>
 
 #include <beng/config.h>
 #include <beng/graphics/face.h>
 #include <beng/graphics/material.h>
+
 
 namespace beng
 {
@@ -29,14 +31,22 @@ namespace beng
         class __beng_api Mesh : public blib::graphics::IDrawable, public blib::graphics::Transformable
         {
         private:
-            
+            void* ctx;
+            mutable bool baked = false;
+
+            mutable blib::graphics::Shader fragmentShader;
+            mutable blib::graphics::Shader vertexShader;
+            mutable blib::graphics::ShaderProgram drawer;
+            void bake(blib::graphics::RenderTarget& target, blib::graphics::RenderContext& ctx) const;
         public:
+            Mesh();
             bool ngonencoding = false;
 
             PrimitiveType primitiveType;
-            std::vector<blib::graphics::Vertex>vertices;
+            std::vector<blib::graphics::Vector3f>vertices;
             std::vector<blib::graphics::Vector3f>normals;
             std::vector<blib::graphics::Vector3f>textureCoords;
+            std::vector<blib::graphics::Color>colors;
             std::vector<Face>faces;
             Material material;
 

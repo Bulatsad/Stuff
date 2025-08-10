@@ -18,7 +18,7 @@ void beng::graphics::Model::parseFromAssimpScene(const aiScene* pscene, const st
 
 void beng::graphics::Model::draw(blib::graphics::RenderTarget& target, blib::graphics::RenderContext& ctx) const
 {
-    target.applyTransform(*this);
+    ctx.applyTransform(*this);
 
     for (auto& mesh : this->meshes)
     {

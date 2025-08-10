@@ -68,7 +68,7 @@ target_include_directories(${BIN} PRIVATE ${stb_include})
 target_include_directories(${BIN} PUBLIC  "${CMAKE_CURRENT_SOURCE_DIR}/../")
 
 if(WIN32)
-    target_link_libraries(${BIN} PUBLIC Glu32)
+    #target_link_libraries(${BIN} PUBLIC Glu32)
 
 	#set_target_properties(${BIN} PROPERTIES VS_DEBUGGER_ENVIRONMENT)
 	set_target_properties(${BIN} PROPERTIES VS_DEBUGGER_ENVIRONMENT "${MY_PATH}" LINKER_LANGUAGE CXX)

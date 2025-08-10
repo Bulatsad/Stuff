@@ -1,5 +1,5 @@
 #include <blib/graphics/transformable.h>
-#include <cmath>
+#include <blib/math/utilfuncs.h>
 
 blib::graphics::Transformable::Transformable() :
     m_origin(0, 0, 0),
@@ -77,7 +77,7 @@ void blib::graphics::Transformable::setRotation(float x, float y, float z)
 
 void blib::graphics::Transformable::rotateX(float angle)
 {
-    this->m_rotation.x = fmod(this->m_rotation.x + angle, 360);
+    this->m_rotation.x = blib::math::fmod(this->m_rotation.x + angle, 360.f);
 
     m_transformNeedUpdate = true;
     m_inverseTransformNeedUpdate = true;
@@ -85,7 +85,7 @@ void blib::graphics::Transformable::rotateX(float angle)
 
 void blib::graphics::Transformable::rotateY(float angle)
 {
-    this->m_rotation.y = fmod(this->m_rotation.y + angle, 360);
+    this->m_rotation.y = blib::math::fmod(this->m_rotation.y + angle, 360.f);
 
     m_transformNeedUpdate = true;
     m_inverseTransformNeedUpdate = true;
@@ -93,7 +93,7 @@ void blib::graphics::Transformable::rotateY(float angle)
 
 void blib::graphics::Transformable::rotateZ(float angle)
 {
-    this->m_rotation.z = fmod(this->m_rotation.z + angle, 360);
+    this->m_rotation.z = blib::math::fmod(this->m_rotation.z + angle, 360.f);
 
     m_transformNeedUpdate = true;
     m_inverseTransformNeedUpdate = true;

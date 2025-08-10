@@ -20,3 +20,17 @@ const blib::graphics::Color blib::graphics::Color::Black = blib::graphics::Color
 const blib::graphics::Color blib::graphics::Color::BlackAlpha = blib::graphics::Color(0, 0, 0, 255);
 const blib::graphics::Color blib::graphics::Color::White = blib::graphics::Color(255, 255, 255, 0);
 const blib::graphics::Color blib::graphics::Color::Red = blib::graphics::Color(255, 0, 0, 0);
+
+std::vector<float> blib::graphics::makeFloatData(const Colors& colors)
+{
+    std::vector<float>res;
+    res.reserve(colors.size() * 4);
+    for (const auto& color : colors)
+    {
+        res.push_back(color.red / 255);
+        res.push_back(color.green / 255);
+        res.push_back(color.blue / 255);
+        res.push_back(color.alpha / 255);
+    }
+    return res;
+}
