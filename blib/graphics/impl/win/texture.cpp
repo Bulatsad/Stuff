@@ -2,7 +2,6 @@
 
 #include <Windows.h>
 #include <gl/GL.h>
-#include <gl/GLU.h>
 
 #define __blib_this_context(_this) (*(static_cast<GLuint*>(this->ctx)))
 #define __blib_get_gl_texture_id(_this) __blib_this_context(_this)
@@ -31,9 +30,6 @@ int blib::graphics::Texture::create(const void* pdata, bint16 width, bint16 heig
     this->height = height;
 
     glGenTextures(1, &__blib_get_gl_texture_id(this));
-
-    auto a = glGetError();
-    auto s = gluErrorString(a);
 
     glBindTexture(GL_TEXTURE_2D, __blib_get_gl_texture_id(this));
 

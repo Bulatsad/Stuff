@@ -17,6 +17,7 @@ set(thirdparty_dir ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty)
 set(assimp_dir ${thirdparty_dir}/assimplib)
 set(assimp_lib ${assimp_dir}/lib)
 set(assimp_include ${assimp_dir}/include)
+set(openglapi ${thirdparty_dir}/opengl)
 
 set(stb_dir ${thirdparty_dir}/stb)
 set(stb_include ${stb_dir})

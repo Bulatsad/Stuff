@@ -26,7 +26,7 @@ void blib::graphics::Sprite::draw(RenderTarget& target, RenderContext& ctx) cons
         //auto const& transform = this->getTransform();
         //glMultMatrixf(transform.getMatrix());
         
-        target.applyTransform(*this);
+        ctx.applyTransform(*this);
 
         //glRotatef(-this->getRotation().x, 1, 0, 0);
         //glRotatef(-this->getRotation().y, 0, 1, 0);

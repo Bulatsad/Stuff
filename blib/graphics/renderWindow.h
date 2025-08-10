@@ -6,6 +6,8 @@
 #include <string>
 
 #include <blib/graphics/color.h>
+#include <blib/graphics/drawable.h>
+#include <blib/graphics/rendercontext.h>
 #include <blib/graphics/rendertarget.h>
 
 namespace blib

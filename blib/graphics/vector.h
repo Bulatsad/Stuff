@@ -69,6 +69,38 @@ namespace blib
         typedef Vector4<float> Vector4f;
     }
 }
+template<class T>
+blib::graphics::Vector3<T> normalize(const blib::graphics::Vector3<T>& v3)
+{
+    blib::graphics::Vector3<T> res;
+    T div = sqrt(
+        (v3.x * v3.x) +
+        (v3.y * v3.y) +
+        (v3.z * v3.z)
+    );
+    res.x = v3.x / div;
+    res.y = v3.y / div;
+    res.z = v3.z / div;
+    return res;
+}
+
+template<class T>
+blib::graphics::Vector3<T> cross(const blib::graphics::Vector3<T>& a, const blib::graphics::Vector3<T>& b)
+{
+    blib::graphics::Vector3<T> res;
+    res.x = (a.y * b.z) - (a.z * b.y);
+    res.y = (a.z * b.x) - (a.x * b.z);
+    res.z = (a.x * b.y) - (a.y * b.z);
+    return res;
+}
+
+template<class T>
+T dot(const blib::graphics::Vector3<T>& a, const blib::graphics::Vector3<T>& b)
+{
+    T res;
+    res = (a.x * b.x) + (a.y + b.y) + (a.z * b.z);
+    return res;
+}
 
 template <typename T>
 blib::graphics::Vector2<T> operator-(const blib::graphics::Vector2<T>& right);

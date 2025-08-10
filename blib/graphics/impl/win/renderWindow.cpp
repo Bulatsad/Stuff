@@ -5,6 +5,18 @@
 
 #include <blib/inline.h>
 #include <blib/graphics/impl/win/winRenderWindowUtil.h>
+#include <blib/graphics/opengl.h>
+#include <opengl/api/wglext.h>
+
+PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
+const int attributes[] =
+{
+  WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+  WGL_CONTEXT_MINOR_VERSION_ARB, 2,
+  WGL_CONTEXT_FLAGS_ARB,         /*WGL_CONTEXT_DEBUG_BIT_ARB*/ WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+  WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+  NULL
+};
 
 __blib_private_func LRESULT wndProc(HWND hwnd, UINT uMsg, WPARAM wparam, LPARAM lparam)
 {
@@ -96,8 +108,22 @@ blib::graphics::RenderWindow::RenderWindow(uint16_t _width, uint16_t _height, co
     };
     int PixelFormat = ChoosePixelFormat(__blib_render_window_this_context(this)->hdc, &pfd);
     SetPixelFormat(__blib_render_window_this_context(this)->hdc, PixelFormat, &pfd);
-    HGLRC glContext = wglCreateContext(__blib_render_window_this_context(this)->hdc);
-    wglMakeCurrent(__blib_render_window_this_context(this)->hdc, glContext);
+    HGLRC tempRC = wglCreateContext(__blib_render_window_this_context(this)->hdc);
+    wglMakeCurrent(__blib_render_window_this_context(this)->hdc, tempRC);
+
+    wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC)wglGetProcAddress("wglCreateContextAttribsARB");
+
+    __blib_render_window_this_context(this)->context = wglCreateContextAttribsARB(__blib_render_window_this_context(this)->hdc, 0, attributes);
+
+    //TODO: WTF THIS SHOULD BE UNCOMMENTED
+    wglDeleteContext(tempRC);
+    wglMakeCurrent(__blib_render_window_this_context(this)->hdc, __blib_render_window_this_context(this)->context);
+    
+
+    this->rc.api.InitGraphicsApi();
+
+    auto a = GetLastError();
+    auto b = glGetError();
 
     ShowWindow(__blib_render_window_this_context(this)->hwnd, nCmdShow);
     UpdateWindow(__blib_render_window_this_context(this)->hwnd);
@@ -110,22 +136,20 @@ blib::graphics::RenderWindow::RenderWindow(uint16_t _width, uint16_t _height, co
     int height = rectangle.bottom - rectangle.top;
 
     SetWindowPos(__blib_render_window_this_context(this)->hwnd, NULL, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER);
-
-    glViewport(0, 0, this->width, this->height);
-    glLoadIdentity();
+   
+    this->rc.api.ogl.__blib_glViewport(0, 0, this->width, this->height);
+    //this->rc.api.ogl.__blib_glLoadIdentity();
 }
 
 blib::graphics::RenderWindow::~RenderWindow()
 {
+    wglDeleteContext(__blib_render_window_this_context(this)->context);
+    CloseWindow(__blib_render_window_this_context(this)->hwnd);
 }
 
 void blib::graphics::RenderWindow::enableIsometricTileGreed()
 {
-    glPushMatrix();
 
-
-
-    glPopMatrix();
 }
 
 void blib::graphics::RenderWindow::update()
@@ -150,7 +174,7 @@ bool blib::graphics::RenderWindow::isOpen()
 
 void blib::graphics::RenderWindow::display()
 {
-    glPopMatrix();
+    //this->rc.api.ogl.__blib_glPopMatrix();
     
     SwapBuffers(__blib_render_window_this_context(this)->hdc);
 }

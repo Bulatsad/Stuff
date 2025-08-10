@@ -55,6 +55,9 @@ file (GLOB network_impl_src "*network/impl/*.cpp")
 
 file (GLOB graphics_header_src "*graphics/*.h")
 
+file (GLOB math_header_src "*math/*.h")
+file (GLOB math_impl_src "*math/impl/*.inl" "*math/impl/*.cpp")
+
 
 if(WIN32)
     file (GLOB sound_platform_impl_src "*sound/impl/win/*.cpp" "*sound/impl/*.cpp" "*sound/impl/win/*.h")
@@ -97,6 +100,9 @@ GroupSoureces("${HeaderGroupPrefix}/graphics" "${graphics_platform_impl_header}"
 GroupSoureces("${SourceGroupPrefix}/graphics" "${graphics_platform_impl_src}")  
 GroupSoureces("${SourceGroupPrefix}/graphics" "${graphics_impl_src}")  
 
+GroupSoureces("${HeaderGroupPrefix}/math" "${math_header_src}")
+GroupSoureces("${SourceGroupPrefix}/math/impl" "${math_impl_src}")  
+
 set(blib_sources 
     ${blibGloabal} 
 
@@ -122,6 +128,9 @@ set(blib_sources
     ${graphics_platform_impl_header}
     ${graphics_platform_impl_src}
     ${graphics_impl_src}
+
+    ${math_header_src} 
+    ${math_impl_src}
 )
 
 if(blib_build_type STREQUAL "blib_build_static")
@@ -157,6 +166,12 @@ target_compile_definitions(${BIN} PRIVATE ____blib_configuration_library_type_st
 target_compile_definitions(${BIN} PRIVATE blib_export)
 
 target_include_directories(${BIN} PUBLIC  "${CMAKE_CURRENT_SOURCE_DIR}/../")
+
+#TODO: delete
+target_include_directories(${BIN} PUBLIC  ${assimp_include})
+target_include_directories(${BIN} PUBLIC  ${openglapi})
+
+
 #target_include_directories(${BIN} PRIVATE  "${CMAKE_CURRENT_SOURCE_DIR}/sound")
 #target_include_directories(${BIN} PRIVATE  "${CMAKE_CURRENT_SOURCE_DIR}/thread")
 #target_include_directories(${BIN} PRIVATE  "${CMAKE_CURRENT_SOURCE_DIR}/core")
