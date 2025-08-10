@@ -187,7 +187,7 @@ void blib::graphics::Camera::draw(RenderTarget& target, RenderContext& ctx) cons
         //glMatrixMode(GL_PROJECTION);
         //glMatrixMode(GL_MODELVIEW);
 
-        auto transform = this->getInverseTransform();
+        //auto transform = this->getInverseTransform();
 
         ctx.applyTransform(*this);
 
