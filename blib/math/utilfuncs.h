@@ -14,5 +14,11 @@ namespace blib
         {
             return std::fmod(x, y);
         }
+
+        template<class Type>
+        Type sqrt(const Type& x)
+        {
+            return std::sqrt(x);
+        }
     }
 }

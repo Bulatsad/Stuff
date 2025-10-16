@@ -18,7 +18,9 @@ namespace blib
             matrixSizeT rowsCount = tmplHeight;
             blib::math::Vector<Type, tmplHeight> data[tmplWidth];
 
-            Matrix() {}
+            Matrix()
+            {
+            }
             Matrix(std::initializer_list<Type> args)
             {
                 //check
@@ -89,9 +91,9 @@ namespace blib
             Matrix<Type, tmplHeight, tmplWidth> Transpose() const
             {
                 Matrix<Type, tmplHeight, tmplWidth> res;
-                for (matrixSizeT i = 0; i < this->rowsCount; ++i)
+                for (matrixSizeT i = 0; i < tmplHeight; ++i)
                 {
-                    for (matrixSizeT j = 0; j < this->columnsCount; ++j)
+                    for (matrixSizeT j = 0; j < tmplWidth; ++j)
                     {
                         res.data[i][j] = this->data[j][i];
                     }
@@ -103,25 +105,35 @@ namespace blib
             Matrix<Type, tmplWidthRhs, tmplHeight> operator*(const Matrix<TypeRhs, tmplWidthRhs, tmplHeightRhs>& rhs) const
             {
                 // check // The number of columns in matrix A must match the number of rows in matrix B
-                if (this->columnsCount != rhs.rowsCount)
+                if (tmplWidth != tmplHeightRhs)
                 {
                     throw new std::exception("The number of columns in matrix A must match the number of rows in matrix B for matrix multiplying");
                 }
 
                 // calculating
                 Matrix<Type, tmplWidthRhs, tmplHeight> res;
-                for (matrixSizeT i = 0; i < rhs.columnsCount; ++i)
+                for (matrixSizeT i = 0; i < tmplWidthRhs; ++i)
                 {
-                    for (matrixSizeT j = 0; j < this->rowsCount; ++j)
+                    for (matrixSizeT j = 0; j < tmplHeight; ++j)
                     {
                         res.data[i][j] = 0;
-                        for (matrixSizeT k = 0; k < this->columnsCount; ++k)
+                        for (matrixSizeT k = 0; k < tmplWidth; ++k)
                         {
                             res.data[i][j] += this->data[k][j] * rhs.data[i][k];
                         }
                     }
                 }
                 return res;
+            }
+
+            Matrix& operator=(const Matrix& rhs)
+            {
+                for (matrixSizeT i = 0 ; i < tmplWidth; ++i)
+                {
+                    this->data[i] = rhs.data[i];
+                }
+
+                return *this;
             }
         };
     }

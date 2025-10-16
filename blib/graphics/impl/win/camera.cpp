@@ -180,66 +180,74 @@ void blib::graphics::Camera::controlUpdate(float deltaTime,  RenderWindow& wnd)
 
 }
 
+void blib::graphics::Camera::lookAt(const blib::graphics::Transformable& target, const blib::graphics::Vector3f worldUp)
+{
+    this->setTransform(blib::graphics::lookAt(this->getPosition(), target.getPosition(), worldUp));
+}
+
 void blib::graphics::Camera::draw(RenderTarget& target, RenderContext& ctx) const
 {
-    //glPushMatrix();
-    {
-        //glMatrixMode(GL_PROJECTION);
-        //glMatrixMode(GL_MODELVIEW);
+    ////glPushMatrix();
+    //{
+    //    //glMatrixMode(GL_PROJECTION);
+    //    //glMatrixMode(GL_MODELVIEW);
+    //
+    //    //auto transform = this->getInverseTransform();
+    //
+    //    ctx.applyTransform(*this);
+    //
+    //    //glLoadIdentity();
+    //
+    //    //if(this->isNeedToRecalculate())
+    //    //glLoadMatrixf(this->getTransform().getMatrix());
+    //
+    //    //glRotatef(-this->getRotation().x, 1, 0, 0);
+    //    //glRotatef(-this->getRotation().y, 0, 1, 0);
+    //    //glRotatef(-this->getRotation().z, 0, 0, 1);
+    //    //
+    //    //glTranslatef(-(this->getPosition().x), -(this->getPosition().y), -(this->getPosition().z));
+    //    
+    //    //glRotatef(-this->transform.rotation.x, 1, 0, 0);
+    //    //glRotatef(-this->transform.rotation.y, 0, 1, 0);
+    //    //glRotatef(-this->transform.rotation.z, 0, 0, 1);
+    //    //glTranslatef(-(this->transform.position.x), -(this->transform.position.y), -(this->transform.position.z));
+    //
+    //    ////
+    //    float position[] = { 0, 0, 1, 0 };
+    //    glLightfv(GL_LIGHT0, GL_POSITION, position);
+    //    //{
+    //    //    GLfloat m[16];
+    //    //    glGetFloatv(GL_PROJECTION_MATRIX, m);
+    //    //    printf("cameraPROJECTION\n");
+    //    //    for (int i = 0; i < 4; ++i)
+    //    //    {
+    //    //        for (int j = 0; j < 4; ++j)
+    //    //        {
+    //    //            printf("%f ", m[i * 4 + j]);
+    //    //        }
+    //    //        printf("\n");
+    //    //    }
+    //    //}
+    //    //printf("\n");
+    //    //auto m = this->getTransform().getMatrix();
+    //    //for (int i = 0; i < 4; ++i)
+    //    //{
+    //    //    for (int j = 0; j < 4; ++j)
+    //    //    {
+    //    //        printf("%f ", m[i * 4 + j]);
+    //    //    }
+    //    //    printf("\n");
+    //    //}
+    //    //printf("\n");
+    //    //printf("\n");
+    //    //printf("\n");
+    //
+    //}
+    ////glPopMatrix();
+    //
+    //
+    ////wnd.display();
 
-        //auto transform = this->getInverseTransform();
+    //ctx.api.ogl.ext.__blib_gl_glGetUniformLocation();
 
-        ctx.applyTransform(*this);
-
-        //glLoadIdentity();
-
-        //if(this->isNeedToRecalculate())
-        //glLoadMatrixf(this->getTransform().getMatrix());
-
-        //glRotatef(-this->getRotation().x, 1, 0, 0);
-        //glRotatef(-this->getRotation().y, 0, 1, 0);
-        //glRotatef(-this->getRotation().z, 0, 0, 1);
-        //
-        //glTranslatef(-(this->getPosition().x), -(this->getPosition().y), -(this->getPosition().z));
-        
-        //glRotatef(-this->transform.rotation.x, 1, 0, 0);
-        //glRotatef(-this->transform.rotation.y, 0, 1, 0);
-        //glRotatef(-this->transform.rotation.z, 0, 0, 1);
-        //glTranslatef(-(this->transform.position.x), -(this->transform.position.y), -(this->transform.position.z));
-
-        ////
-        float position[] = { 0, 0, 1, 0 };
-        glLightfv(GL_LIGHT0, GL_POSITION, position);
-        //{
-        //    GLfloat m[16];
-        //    glGetFloatv(GL_PROJECTION_MATRIX, m);
-        //    printf("cameraPROJECTION\n");
-        //    for (int i = 0; i < 4; ++i)
-        //    {
-        //        for (int j = 0; j < 4; ++j)
-        //        {
-        //            printf("%f ", m[i * 4 + j]);
-        //        }
-        //        printf("\n");
-        //    }
-        //}
-        //printf("\n");
-        //auto m = this->getTransform().getMatrix();
-        //for (int i = 0; i < 4; ++i)
-        //{
-        //    for (int j = 0; j < 4; ++j)
-        //    {
-        //        printf("%f ", m[i * 4 + j]);
-        //    }
-        //    printf("\n");
-        //}
-        //printf("\n");
-        //printf("\n");
-        //printf("\n");
-
-    }
-    //glPopMatrix();
-
-
-    //wnd.display();
 }

@@ -49,6 +49,7 @@ namespace blib
             void scale(const Vector2f& factor);
 
             const Transform& getTransform() const;
+            void setTransform(const Transform& transform);
 
             const Transform& getInverseTransform() const;
 
