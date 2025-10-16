@@ -168,8 +168,8 @@ target_compile_definitions(${BIN} PRIVATE blib_export)
 target_include_directories(${BIN} PUBLIC  "${CMAKE_CURRENT_SOURCE_DIR}/../")
 
 #TODO: delete
-target_include_directories(${BIN} PUBLIC  ${assimp_include})
-target_include_directories(${BIN} PUBLIC  ${openglapi})
+target_include_directories(${BIN} PUBLIC ${assimp_include})
+target_include_directories(${BIN} PUBLIC ${openglapi})
 
 
 #target_include_directories(${BIN} PRIVATE  "${CMAKE_CURRENT_SOURCE_DIR}/sound")

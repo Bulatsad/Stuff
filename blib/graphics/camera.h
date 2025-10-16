@@ -46,6 +46,8 @@ namespace blib
 
             void controlUpdate(float deltaTime,  RenderWindow& wnd);
 
+            void lookAt(const blib::graphics::Transformable& target, const blib::graphics::Vector3f worldUp);
+
             // Унаследовано через IDrawable
             virtual void draw(RenderTarget& target, RenderContext& ctx) const __blib_override;
         };

@@ -2,47 +2,34 @@
 
 #include <blib/config.h>
 
-#include <blib/graphics/vertex.h>
+#include <blib/math/matrix.h>
 #include <blib/graphics/rect.h>
+#include <blib/graphics/vector.h>
 
 namespace blib
 {
     namespace graphics
     {
-        class __blib_api Transform
-        {
-        public:
+        typedef blib::math::Matrix<float, 4, 4> Transform;
+        static const Transform Identity = blib::graphics::Transform({ 1, 0, 0, 0,
+                                                                      0, 1, 0, 0,
+                                                                      0, 0, 1, 0,
+                                                                      0, 0, 0, 1 });
 
-            Transform();
+        //Transform getInverse() const;
+        
+        //Vector2f transformPoint(float x, float y) const;
+        //Vector2f transformPoint(const Vector2f& point) const;
+        
+        //FloatRect transformRect(const FloatRect& rectangle) const;
 
-            Transform(float a00, float a01, float a02, float a03,
-                      float a10, float a11, float a12, float a13,
-                      float a20, float a21, float a22, float a23,
-                      float a30, float a31, float a32, float a33
-            );
-            
-            const float* getMatrix() const;
-            
-            Transform getInverse() const;
-            
-            Vector2f transformPoint(float x, float y) const;
-            Vector2f transformPoint(const Vector2f& point) const;
+        Transform rotateX(const Transform& matrix, float angle);
+        Transform rotateY(const Transform& matrix, float angle);
+        Transform rotateZ(const Transform& matrix, float angle);
 
-            FloatRect transformRect(const FloatRect& rectangle) const;
+        Transform lookAt(const blib::graphics::Vector3f& camera, const blib::graphics::Vector3f& target, const blib::graphics::Vector3f& worldUp);
+        
+        void decomposeMatrix(const Transform& matrix, Vector3f& position, Vector3f& rotation, Vector3f& scale);
 
-            Transform& rotateX(float angle);
-            Transform& rotateY(float angle);
-            Transform& rotateZ(float angle);
-
-            static const Transform Identity;
-
-            float m_matrix[16];
-        };
     }
 }
-
-__blib_api blib::graphics::Transform operator*(const blib::graphics::Transform& left, const blib::graphics::Transform& right);
-__blib_api blib::graphics::Transform& operator *=(blib::graphics::Transform& left, const blib::graphics::Transform& right);
-__blib_api blib::graphics::Vector2f operator *(const blib::graphics::Transform& left, const blib::graphics::Vector2f& right);
-__blib_api bool operator ==(const blib::graphics::Transform& left, const blib::graphics::Transform& right);
-__blib_api bool operator !=(const blib::graphics::Transform& left, const blib::graphics::Transform& right);
