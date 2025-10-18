@@ -7,9 +7,15 @@ blib::graphics::RenderTarget::~RenderTarget()
 {
 }
 
+void blib::graphics::RenderTarget::setCamera(const blib::graphics::Camera* a_pCamera)
+{
+    this->rc.setCamera(a_pCamera);
+}
+
 void blib::graphics::RenderTarget::clear(const Color& color)
 {
-    //this->rc.api.ogl.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    this->rc.api.ogl.__blib_gl_glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     //this->rc.api.ogl.glClearColor(
     //    (color.red) / static_cast<float>(255),
     //    color.green / static_cast<float>(255),

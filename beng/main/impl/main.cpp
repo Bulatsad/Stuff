@@ -92,6 +92,7 @@ int main()
 {
     blib::graphics::RenderWindow wnd(800, 600, "beng");
     blib::graphics::Camera camera;
+    wnd.setCamera(&camera);
     //camera.setProjectionMode(blib::graphics::Camera::ProjectionMode::Perspective, wnd);
     
     float vertices[] = {
@@ -110,6 +111,7 @@ int main()
     mesh.colors.push_back(blib::graphics::Color(255, 0, 255, 0));
     mesh.colors.push_back(blib::graphics::Color(255, 0, 255, 0));
     
+
     float endframe = clock();
     while (wnd.isOpen())
     {

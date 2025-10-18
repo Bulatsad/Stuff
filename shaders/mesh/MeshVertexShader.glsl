@@ -12,7 +12,7 @@ uniform mat4 gProjectionMatrix;
 
 void main()
 {
-    //gl_Position = projection * view * model * vec4(aPos, 1.0);
+    //gl_Position =   view * vec4(aPos, 1.0);
     //TexCoord = aTexCoord;
     gl_Position = gViewMatrix * gProjectionMatrix * vec4(aPos, 1.0);
     Color = aColor;

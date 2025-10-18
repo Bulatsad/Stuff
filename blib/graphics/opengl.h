@@ -38,14 +38,16 @@
 //#define GL_TEXTURE2 0x84C2
 
 
-typedef void (__blib_gl_calling_convension *__blib_gl_signature_glBegin)(GLenum mode);
-typedef void (__blib_gl_calling_convension *__blib_gl_signature_glEnd)();
-typedef void (__blib_gl_calling_convension *__blib_gl_signature_glEnable)(GLenum cap);
-typedef void (__blib_gl_calling_convension *__blib_gl_signature_glDisable)(GLenum cap);
-typedef void (__blib_gl_calling_convension *__blib_gl_signature_glRotatef)(GLfloat angle, GLfloat x, GLfloat y, GLfloat z);
-typedef void (__blib_gl_calling_convension *__blib_gl_signature_glLoadIdentity)(void);
-typedef void (__blib_gl_calling_convension *__blib_gl_signature_glPushMatrix)(void);
-typedef void (__blib_gl_calling_convension *__blib_gl_signature_glPopMatrix)(void);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glBegin)(GLenum mode);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glEnd)();
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glEnable)(GLenum cap);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDisable)(GLenum cap);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glRotatef)(GLfloat angle, GLfloat x, GLfloat y, GLfloat z);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glLoadIdentity)(void);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glPushMatrix)(void);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glPopMatrix)(void);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glClear)(GLbitfield mask);
+
 
 
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glNormal3f)(GLfloat nx, GLfloat ny, GLfloat nz);
@@ -139,6 +141,7 @@ namespace blib
             __blib_gl_signature_glViewport     __blib_glViewport = nullptr;
             __blib_gl_signature_glPushMatrix   __blib_glPushMatrix = nullptr;
             __blib_gl_signature_glPopMatrix    __blib_glPopMatrix = nullptr;
+            __blib_gl_signature_glClear        __blib_gl_glClear = nullptr;
             oglExt_s ext;
         };
 

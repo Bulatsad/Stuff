@@ -1,5 +1,7 @@
 #include <blib/graphics/rendercontext.h>
 
+#include <blib/graphics/camera.h>
+
 blib::graphics::RenderContext::RenderContext()
 {
     this->vievMatrix.loadIdentity();
@@ -28,21 +30,17 @@ void blib::graphics::RenderContext::sendVievMatrixToShaderProgram()
 {
     GLint location = this->api.ogl.ext.__blib_gl_glGetUniformLocation(this->lastShader->getContext(), "gViewMatrix");
 
-    //const void* pViewMatrix = static_cast<const void*>(&(this->pCamera->getTransform().data));
-    //
-    //if (location == -1)
-    //    throw std::exception("no location for view matrix uniform");
-    //this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_FALSE, reinterpret_cast<const GLfloat*>(pViewMatrix));
-
+    const void* pViewMatrix = static_cast<const void*>(&(this->pCamera->getTransform().data));
+    
     if (location == -1)
-        throw std::exception("no location for projection matrix uniform");
-    this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_FALSE, reinterpret_cast<GLfloat*>(&(this->vievMatrix.data)));
+        throw std::exception("no location for view matrix uniform");
+    this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_FALSE, reinterpret_cast<const GLfloat*>(pViewMatrix));
 }
 
-//void blib::graphics::RenderContext::setCamera(const blib::graphics::Camera* a_pCamera)
-//{
-//    //this->pCamera = a_pCamera;
-//}
+void blib::graphics::RenderContext::setCamera(const blib::graphics::Camera* a_pCamera)
+{
+    this->pCamera = a_pCamera;
+}
 
 void blib::graphics::RenderContext::sendProjectionMatrixToShaderProgram()
 {
