@@ -205,6 +205,7 @@ void beng::graphics::Mesh::draw(blib::graphics::RenderTarget& target, blib::grap
     ctx.setShaderProgram(&(this->drawer));
     ctx.sendVievMatrixToShaderProgram();
     ctx.sendProjectionMatrixToShaderProgram();
+    ctx.sendModelMatrixToShaderProgram(this->getTransform());
 
     ctx.api.ogl.ext.__blib_gl_glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, *((GLuint*)this->material.diffuse.getContext()));

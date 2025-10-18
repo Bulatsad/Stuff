@@ -4,11 +4,11 @@
 #include <blib/utilmacro.h>
 
 #include <blib/graphics/vertex.h>
-
 #include <blib/graphics/drawable.h>
 #include <blib/graphics/transformable.h>
-
 #include <blib/graphics/renderWindow.h>
+
+#include <blib/math/angle.h>
 
 namespace blib
 {
@@ -21,28 +21,25 @@ namespace blib
         */
         class __blib_api Camera : public Transformable, public IDrawable
         {
+        private:
+            blib::math::Matrix<float, 4, 4> projectionMatrix;
+
+            blib::math::Matrix<float, 4, 4> perspective(const blib::math::AngleDegreef& fov, float aspect, float nearDist, float farDist);
+
         public:
             float movespeed = 10;
             float rotatespeed = 10;
 
-            struct Transformtest
-            {
-                Vector3f position;
-                Vector3f rotation;
-            } transform;
-
-            enum class ProjectionMode
-            {
-                Perspective,
-                Ortho,
-
-                END_OF_ENUM
-            };
-
             Camera();
             ~Camera();
 
-            void setProjectionMode(ProjectionMode mode, const RenderWindow& wnd);
+            // fov - angle of vision
+            // aspect - width / height
+            // nearDist - near distance of cutting off
+            // farDist - far distance of cutting off
+            void setPerpective(const blib::math::AngleDegreef& fov, float aspect, float nearDist, float farDist);
+
+            const blib::math::Matrix<float, 4, 4>& getProjectionMatrix() const;
 
             void controlUpdate(float deltaTime,  RenderWindow& wnd);
 

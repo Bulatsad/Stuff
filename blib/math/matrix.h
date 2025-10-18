@@ -8,6 +8,7 @@ namespace blib
 {
     namespace math
     {
+        // stores matrix as array of lines(rows)
         typedef unsigned int matrixSizeT;
         template<class Type, matrixSizeT tmplWidth, matrixSizeT tmplHeight >
         class Matrix

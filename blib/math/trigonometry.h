@@ -12,6 +12,9 @@ namespace blib
 
         template<class Type>
         void sincos(const Type& arg, Type& resSin, Type& resCos);
+    
+        template<class Type>
+        Type tan(const Type& arg);
     }
 }
 
