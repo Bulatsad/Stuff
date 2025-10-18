@@ -21,6 +21,7 @@ namespace blib
 
             RenderContext rc;
 
+            void setCamera(const blib::graphics::Camera* a_pCamera);
             void clear(const Color& color = Color::Black);
             void draw(const blib::graphics::IDrawable& drawable);
         };

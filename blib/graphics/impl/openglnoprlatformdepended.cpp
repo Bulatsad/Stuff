@@ -48,20 +48,20 @@ void blib::graphics::RenderApi::InitGraphicsApi()
     //
     //this->__blib_glVertex3f = static_cast<__blib_gl_signature_glVertex3f>       (getprocaddr("glVertex3f"));
 
-    this->ogl.__blib_glBegin        = &__blib_glBegin;      //static_cast<__blib_gl_signature_glBegin>(getprocaddr("glBegin"));
-    this->ogl.__blib_glEnd          = &__blib_glEnd;        //static_cast<__blib_gl_signature_glEnd>(getprocaddr("glEnd"));
-    this->ogl.__blib_glEnable       = &glEnable;     //static_cast<__blib_gl_signature_glEnable>(getprocaddr("glEnable"));
-    this->ogl.__blib_glDisable      = &glDisable;    //static_cast<__blib_gl_signature_glDisable>(getprocaddr("glDisable"));
-    this->ogl.__blib_glNormal3f     = &glNormal3f;   //static_cast<__blib_gl_signature_glNormal3f>(getprocaddr("glNormal3f"));
-    this->ogl.__blib_glTexCoord3f   = &glTexCoord3f; //static_cast<__blib_gl_signature_glTexCoord3f>(getprocaddr("glTexCoord3f"));
-    this->ogl.__blib_glVertex3f     = &glVertex3f;   //static_cast<__blib_gl_signature_glVertex3f>(getprocaddr("glVertex3f"));
-    this->ogl.__blib_glRotatef      = &__blib_glRotatef;    //static_cast<__blib_gl_signature_glRotatef>(getprocaddr("glRotatef"));
-    this->ogl.__blib_glTranslatef   = &glTranslatef; //static_cast<__blib_gl_signature_glTranslatef>(getprocaddr("glTranslatef"));
+    this->ogl.__blib_glBegin        = &__blib_glBegin;        //static_cast<__blib_gl_signature_glBegin>(getprocaddr("glBegin"));
+    this->ogl.__blib_glEnd          = &__blib_glEnd;          //static_cast<__blib_gl_signature_glEnd>(getprocaddr("glEnd"));
+    this->ogl.__blib_glEnable       = &glEnable;              //static_cast<__blib_gl_signature_glEnable>(getprocaddr("glEnable"));
+    this->ogl.__blib_glDisable      = &glDisable;             //static_cast<__blib_gl_signature_glDisable>(getprocaddr("glDisable"));
+    this->ogl.__blib_glNormal3f     = &glNormal3f;            //static_cast<__blib_gl_signature_glNormal3f>(getprocaddr("glNormal3f"));
+    this->ogl.__blib_glTexCoord3f   = &glTexCoord3f;          //static_cast<__blib_gl_signature_glTexCoord3f>(getprocaddr("glTexCoord3f"));
+    this->ogl.__blib_glVertex3f     = &glVertex3f;            //static_cast<__blib_gl_signature_glVertex3f>(getprocaddr("glVertex3f"));
+    this->ogl.__blib_glRotatef      = &__blib_glRotatef;      //static_cast<__blib_gl_signature_glRotatef>(getprocaddr("glRotatef"));
+    this->ogl.__blib_glTranslatef   = &glTranslatef;          //static_cast<__blib_gl_signature_glTranslatef>(getprocaddr("glTranslatef"));
     this->ogl.__blib_glViewport     = &glViewport; 
     this->ogl.__blib_glLoadIdentity = &__blib_glLoadIdentity;
     this->ogl.__blib_glPushMatrix   = &__blib_glPushMatrix;
     this->ogl.__blib_glPopMatrix    = &__blib_glPopMatrix;
-
+    this->ogl.__blib_gl_glClear     = &glClear;               //static_cast<__blib_gl_signature_glClear>(getprocaddr("glClear"));
 
 
     this->ogl.ext.__blib_glGenBuffers              = static_cast<__blib_gl_signature_glGenBuffers>(getprocaddr("glGenBuffers"));
@@ -90,5 +90,6 @@ void blib::graphics::RenderApi::InitGraphicsApi()
     this->ogl.ext.__blib_gl_glGetProgramInfoLog = static_cast<__blib_gl_signature_glGetProgramInfoLog>(getprocaddr("glGetProgramInfoLog"));
     this->ogl.ext.__blib_gl_glDrawArrays = static_cast<__blib_gl_signature_glDrawArrays>(getprocaddr("glDrawArrays"));
     this->ogl.ext.__blib_gl_glUniformMatrix4fv = static_cast<__blib_gl_signature_glUniformMatrix4fv>(getprocaddr("glUniformMatrix4fv"));
+    
 
 }

@@ -3,24 +3,21 @@
 #include <blib/config.h>
 #include <blib/graphics/opengl.h>
 
-#include <blib/graphics/transform.h>
-#include <blib/graphics/texture.h>
-#include <blib/graphics/shader.h>
-#include <blib/graphics/transformable.h>
-
-
 #include <blib/math/matrix.h>
+#include <blib/graphics/transformable.h>
+#include <blib/graphics/shader.h>
 
 namespace blib
 {
     namespace graphics
     {
+        class __blib_api Camera;
         class __blib_api RenderContext
         {
         public:
             Transform transform;
 
-            //const blib::graphics::Camera* pCamera; // TODO : Make it array to split wnd 
+            const blib::graphics::Camera* pCamera = nullptr; // TODO : Make it array to split wnd 
 
             blib::math::Matrix<float, 4, 4>vievMatrix;
             blib::math::Matrix<float, 4, 4>projectionMatrix;
@@ -34,7 +31,7 @@ namespace blib
             void setShaderProgram(blib::graphics::ShaderProgram* pShaderProgram);
             void sendVievMatrixToShaderProgram();
             void sendProjectionMatrixToShaderProgram();
-            //void setCamera(const blib::graphics::Camera* a_pCamera);
+            void setCamera(const blib::graphics::Camera* a_pCamera);
 
             void applyTransform(const Transformable& transform);
 
