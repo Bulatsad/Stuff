@@ -202,7 +202,10 @@ void beng::graphics::Mesh::draw(blib::graphics::RenderTarget& target, blib::grap
     if (!(this->baked))
         this->bake(target, ctx);
 
-    this->drawer.use();
+    ctx.setShaderProgram(&(this->drawer));
+    ctx.sendVievMatrixToShaderProgram();
+    ctx.sendProjectionMatrixToShaderProgram();
+
     ctx.api.ogl.ext.__blib_gl_glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, *((GLuint*)this->material.diffuse.getContext()));
     GLint samplerPos = ctx.api.ogl.ext.__blib_gl_glGetUniformLocation(this->drawer.getContext(), "textureSampler");
