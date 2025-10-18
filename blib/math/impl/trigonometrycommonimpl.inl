@@ -1,4 +1,5 @@
 #include <cmath>
+#include "..\trigonometry.h"
 
 template<class Type>
 Type blib::math::sin(const Type& arg)
@@ -17,4 +18,10 @@ void blib::math::sincos(const Type& arg, Type& resSin, Type& resCos)
 {
     resSin = blib::math::sin(arg);
     resCos = blib::math::cos(arg);
+}
+
+template<class Type>
+Type blib::math::tan(const Type& arg)
+{
+    return std::tan(arg);
 }

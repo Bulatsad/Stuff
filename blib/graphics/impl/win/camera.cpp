@@ -2,6 +2,9 @@
 #include <blib/graphics/keyboard.h>
 #include <blib/graphics/mouse.h>
 
+#include <blib/math/trigonometry.h> 
+#include <blib/math/consts.h>
+
 #include <Windows.h>
 #include <gl/GL.h>
 #include <gl/GLU.h>
@@ -9,83 +12,21 @@
 
 blib::graphics::Camera::Camera()
 {
+    this->projectionMatrix.loadIdentity();
 }
 
 blib::graphics::Camera::~Camera()
 {
 }
 
-
-void blib::graphics::Camera::setProjectionMode(ProjectionMode mode, const blib::graphics::RenderWindow& wnd)
+void blib::graphics::Camera::setPerpective(const blib::math::AngleDegree<float>& fov, float aspect, float nearDist, float farDist)
 {
-    float height = wnd.getWight();
-    float width = wnd.getHeight();
-    height /= 2;
-    width /= 2;
-    
-    //{
-    //    GLfloat m[16];
-    //    glGetFloatv(GL_MODELVIEW_MATRIX, m);
-    //    printf("cameraPROJECTION\n");
-    //    for (int i = 0; i < 4; ++i)
-    //    {
-    //        for (int j = 0; j < 4; ++j)
-    //        {
-    //            printf("%f ", m[i * 4 + j]);
-    //        }
-    //        printf("\n");
-    //    }
-    //    printf("\n");
-    //    printf("\n");
-    //    printf("\n");
-    //}
+    this->projectionMatrix = this->perspective(fov, aspect, nearDist, farDist);
+}
 
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-
-    glViewport(0, 0, wnd.getWight(), wnd.getHeight());
-    
-    GLenum a;
-
-    switch (mode)
-    {
-    case blib::graphics::Camera::ProjectionMode::Perspective:
-        height /= 1000;
-        width /= 1000;
-        glFrustum(-height, height, -width, width, 1, 2000);
-        a = glGetError();
-        break;
-    case blib::graphics::Camera::ProjectionMode::Ortho:
-        glOrtho(-height, height, -width, width, 1, 2000);
-        break;
-    case blib::graphics::Camera::ProjectionMode::END_OF_ENUM:
-        break;
-    default:
-        break;
-    }
-    {
-        //GLfloat m[16];
-        //glGetFloatv(GL_PROJECTION_MATRIX, m);
-        //printf("cameraPROJECTION\n");
-        //for (int i = 0; i < 4; ++i)
-        //{
-        //    for (int j = 0; j < 4; ++j)
-        //    {
-        //        printf("%f ", m[i * 4 + j]);
-        //    }
-        //    printf("\n");
-        //}
-        //printf("\n");
-        //printf("\n");
-        //printf("\n");
-    }
-
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_LIGHT0);
-    glEnable(GL_LIGHTING);
-    glEnable(GL_COLOR_MATERIAL);
+const blib::math::Matrix<float, 4, 4>& blib::graphics::Camera::getProjectionMatrix() const
+{
+    return this->projectionMatrix;
 }
 
 void blib::graphics::Camera::controlUpdate(float deltaTime, blib::graphics::RenderWindow& wnd)
@@ -183,6 +124,23 @@ void blib::graphics::Camera::controlUpdate(float deltaTime, blib::graphics::Rend
 void blib::graphics::Camera::lookAt(const blib::graphics::Transformable& target, const blib::graphics::Vector3f worldUp)
 {
     this->setTransform(blib::graphics::lookAt(this->getPosition(), target.getPosition(), worldUp));
+}
+
+blib::math::Matrix<float, 4, 4> blib::graphics::Camera::perspective(const blib::math::AngleDegreef& fov, float aspect, float nearDist, float farDist)
+{
+     blib::math::Matrix<float, 4, 4> projMat;
+
+    float f = 1.0f / blib::math::tan(fov.data * 3.14159f / 360.f);
+
+    projMat.data[0][0] = f / aspect;    // x scale
+    projMat.data[1][1] = f;             // y scale
+    projMat.data[2][2] = (farDist + nearDist) / (nearDist - farDist);   // z scale
+    projMat.data[2][3] = -1;            // perspective div
+    projMat.data[3][2] = (2 * farDist * nearDist) / (nearDist - farDist); // z shift
+
+    projMat.data[3][3] = 0;
+
+    return projMat;
 }
 
 void blib::graphics::Camera::draw(RenderTarget& target, RenderContext& ctx) const

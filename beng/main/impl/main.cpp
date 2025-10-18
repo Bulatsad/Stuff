@@ -93,7 +93,8 @@ int main()
     blib::graphics::RenderWindow wnd(800, 600, "beng");
     blib::graphics::Camera camera;
     wnd.setCamera(&camera);
-    //camera.setProjectionMode(blib::graphics::Camera::ProjectionMode::Perspective, wnd);
+    camera.setPerpective(75, static_cast<float>(wnd.getWight()) / static_cast<float>(wnd.getHeight()), 0.1, 1000);
+    camera.setPosition(0, 0, -1);
     
     float vertices[] = {
         // Позиции         // Цвета

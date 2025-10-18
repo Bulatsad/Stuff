@@ -37,13 +37,13 @@ blib::graphics::RenderWindow::RenderWindow(uint16_t _width, uint16_t _height, co
     this->width = _width;
     this->height = _height;
 
-    //if (!m_fullscreen)
-    {
-        RECT rectangle = { 0, 0, width, height };
-        AdjustWindowRect(&rectangle, WS_VISIBLE, false);
-        width = rectangle.right - rectangle.left;
-        height = rectangle.bottom - rectangle.top;
-    }
+    ////if (!m_fullscreen)
+    //{
+    //    RECT rectangle = { 0, 0, width, height };
+    //    AdjustWindowRect(&rectangle, WS_VISIBLE, false);
+    //    width = rectangle.right - rectangle.left;
+    //    height = rectangle.bottom - rectangle.top;
+    //}
 
     this->ctx = new RenderWindowContext;
     HINSTANCE hInstance = GetModuleHandle(NULL);

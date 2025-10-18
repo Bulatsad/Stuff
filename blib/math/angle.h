@@ -22,7 +22,7 @@ namespace blib
             {
                 this->data = blib::math::fmod(angle, static_cast<Type>(360));
             }
-            AngleRadian<Type> toRadian()
+            AngleRadian<Type> toRadian() const
             {
                 return AngleRadian<Type>(this->data * blib::math::piDiv180);
             }
@@ -38,11 +38,14 @@ namespace blib
             {
                 this->data = blib::math::fmod(angle, static_cast<Type>(2 * blib::math::pi));
             }
-            AngleDegree<Type> toDergee()
+            AngleDegree<Type> toDergee() const
             {
                 return AngleDegree<Type>(this->data * blib::math::c180DivPi);
             }
         };
+
+        typedef AngleDegree<float> AngleDegreef;
+        typedef AngleRadian<float> AngleRadianf;
     }
 
 }

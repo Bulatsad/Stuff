@@ -31,6 +31,7 @@ namespace blib
             void setShaderProgram(blib::graphics::ShaderProgram* pShaderProgram);
             void sendVievMatrixToShaderProgram();
             void sendProjectionMatrixToShaderProgram();
+            void sendModelMatrixToShaderProgram(const blib::graphics::Transform& modelMatix);
             void setCamera(const blib::graphics::Camera* a_pCamera);
 
             void applyTransform(const Transformable& transform);
