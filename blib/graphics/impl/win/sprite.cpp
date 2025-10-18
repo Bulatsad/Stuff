@@ -12,12 +12,12 @@ blib::graphics::Sprite::~Sprite()
 {
 }
 
-void blib::graphics::Sprite::setTexture(const Texture& texture)
+void blib::graphics::Sprite::setTexture(const blib::graphics::Texture& texture)
 {
     this->pTexture = &texture;
 }
 
-void blib::graphics::Sprite::draw(RenderTarget& target, RenderContext& ctx) const
+void blib::graphics::Sprite::draw(RenderTarget& target, blib::graphics::RenderContext& ctx) const
 {
     glEnable(GL_TEXTURE_2D);
 

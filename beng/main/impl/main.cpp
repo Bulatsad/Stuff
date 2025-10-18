@@ -106,9 +106,9 @@ int main()
     mesh.vertices.push_back({ -0.5f, -0.5f, 0.0f });
     mesh.vertices.push_back({ 0.5f, -0.5f, 0.0f });
     mesh.vertices.push_back({ 0.0f,  0.5f, 0.0f });
-    mesh.colors.push_back(blib::graphics::Color(255, 0, 0, 0));
-    mesh.colors.push_back(blib::graphics::Color(255, 0, 0, 0));
-    mesh.colors.push_back(blib::graphics::Color(255, 0, 0, 0));
+    mesh.colors.push_back(blib::graphics::Color(255, 0, 255, 0));
+    mesh.colors.push_back(blib::graphics::Color(255, 0, 255, 0));
+    mesh.colors.push_back(blib::graphics::Color(255, 0, 255, 0));
     
     float endframe = clock();
     while (wnd.isOpen())

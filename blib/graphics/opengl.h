@@ -82,7 +82,9 @@ typedef void (__blib_gl_calling_convension* __blib_gl_signature_glUniform1i)(GLi
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glGetProgramiv)(GLuint program, GLenum pname, GLint* params);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glGetProgramInfoLog)(GLuint program, GLsizei maxLength, GLsizei* length, GLchar* infoLog);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDrawArrays)(GLenum mode, GLint first, GLsizei count);
-typedef void (__blib_gl_calling_convension* __blib_gl_signature_glViewport)(GLint x,GLint y,GLsizei width,GLsizei height);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glViewport)(GLint x, GLint y, GLsizei width, GLsizei height);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glUniformMatrix4fv)(GLint location, GLsizei count, GLboolean transpose, const GLfloat* value);
+
 
 
 
@@ -119,6 +121,7 @@ namespace blib
             __blib_gl_signature_glGetProgramiv __blib_gl_glGetProgramiv = nullptr;
             __blib_gl_signature_glGetProgramInfoLog __blib_gl_glGetProgramInfoLog = nullptr;
             __blib_gl_signature_glDrawArrays __blib_gl_glDrawArrays = nullptr;
+            __blib_gl_signature_glUniformMatrix4fv __blib_gl_glUniformMatrix4fv = nullptr;
         };
 
         struct __blib_api ogl_s

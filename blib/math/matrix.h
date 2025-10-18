@@ -20,6 +20,7 @@ namespace blib
 
             Matrix()
             {
+                this->loadIdentity();
             }
             Matrix(std::initializer_list<Type> args)
             {
@@ -134,6 +135,22 @@ namespace blib
                 }
 
                 return *this;
+            }
+
+            void loadIdentity()
+            {
+                matrixSizeT pos = 0;
+                memset(this, 0, sizeof(Matrix<Type, tmplWidth, tmplHeight>));
+                while (true)
+                {
+                    if (tmplWidth > pos && tmplHeight > pos)
+                    {
+                        this->data[pos][pos] = Type(1.0);
+                        ++pos;
+                    }
+                    else
+                        break;
+                }
             }
         };
     }

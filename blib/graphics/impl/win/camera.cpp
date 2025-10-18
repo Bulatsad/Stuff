@@ -16,7 +16,7 @@ blib::graphics::Camera::~Camera()
 }
 
 
-void blib::graphics::Camera::setProjectionMode(ProjectionMode mode, const RenderWindow& wnd)
+void blib::graphics::Camera::setProjectionMode(ProjectionMode mode, const blib::graphics::RenderWindow& wnd)
 {
     float height = wnd.getWight();
     float width = wnd.getHeight();
@@ -88,7 +88,7 @@ void blib::graphics::Camera::setProjectionMode(ProjectionMode mode, const Render
     glEnable(GL_COLOR_MATERIAL);
 }
 
-void blib::graphics::Camera::controlUpdate(float deltaTime,  RenderWindow& wnd)
+void blib::graphics::Camera::controlUpdate(float deltaTime, blib::graphics::RenderWindow& wnd)
 {
     blib::graphics::Vector2i mousepos = blib::graphics::Mouse::getPosition(wnd);
     blib::graphics::Vector2i zeropos;
