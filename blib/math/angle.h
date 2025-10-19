@@ -18,6 +18,10 @@ namespace blib
         public:
             Type data;
 
+            AngleDegree()
+            {
+                this->data = Type();
+            }
             AngleDegree(const Type& angle)
             {
                 this->data = blib::math::fmod(angle, static_cast<Type>(360));
@@ -33,7 +37,11 @@ namespace blib
         {
         public:
             Type data;
-           
+
+            AngleRadian()
+            {
+                this->data = Type();
+            }
             AngleRadian(const Type& angle)
             {
                 this->data = blib::math::fmod(angle, static_cast<Type>(2 * blib::math::pi));

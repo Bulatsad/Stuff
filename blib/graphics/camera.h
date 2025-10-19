@@ -19,15 +19,23 @@ namespace blib
         * 
         * implement Transormable
         */
-        class __blib_api Camera : public Transformable, public IDrawable
+        class __blib_api Camera : public Transformable
         {
         private:
-            blib::math::Matrix<float, 4, 4> projectionMatrix;
-
+            blib::graphics::Transform projectionMatrix;
+            blib::graphics::Transform viewMatrix;
+            blib::math::Vector<float, 3> right;
+            blib::math::Vector<float, 3> up = { 0,1,0 };
+            blib::math::Vector<float, 3> front;
+            blib::math::Vector<float, 3> worldUp = { 0,1,0 };
+            blib::math::AngleDegreef yaw = blib::math::AngleDegreef(0.f);
+            blib::math::AngleDegreef pitch = blib::math::AngleDegreef(0.f);
             blib::math::Matrix<float, 4, 4> perspective(const blib::math::AngleDegreef& fov, float aspect, float nearDist, float farDist);
 
+            void updateVectors();
+
         public:
-            float movespeed = 10;
+            float movespeed = 1;
             float rotatespeed = 10;
 
             Camera();
@@ -39,14 +47,11 @@ namespace blib
             // farDist - far distance of cutting off
             void setPerpective(const blib::math::AngleDegreef& fov, float aspect, float nearDist, float farDist);
 
-            const blib::math::Matrix<float, 4, 4>& getProjectionMatrix() const;
+            const blib::graphics::Transform& getProjectionMatrix() const;
+            const blib::graphics::Transform& getViewMatrix() const;
 
             void controlUpdate(float deltaTime,  RenderWindow& wnd);
 
-            void lookAt(const blib::graphics::Transformable& target, const blib::graphics::Vector3f worldUp);
-
-            // Унаследовано через IDrawable
-            virtual void draw(RenderTarget& target, RenderContext& ctx) const __blib_override;
         };
     }
 }

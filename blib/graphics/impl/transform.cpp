@@ -102,17 +102,17 @@ __blib_private_func blib::graphics::Transform lookAtRightHand(const blib::graphi
 
     blib::graphics::Transform res = blib::graphics::Identity;
     res.data[0][0] = s.x;
-    res.data[1][0] = s.y;
-    res.data[2][0] = s.z;
-    res.data[0][1] = u.x;
+    res.data[0][1] = s.y;
+    res.data[0][2] = s.z;
+    res.data[1][0] = u.x;
     res.data[1][1] = u.y;
-    res.data[2][1] = u.z;
-    res.data[0][2] = -f.x;
-    res.data[1][2] = -f.y;
+    res.data[1][2] = u.z;
+    res.data[2][0] = -f.x;
+    res.data[2][1] = -f.y;
     res.data[2][2] = -f.z;
-    res.data[3][0] = -blib::math::dot(s, camera);
-    res.data[3][1] = -blib::math::dot(u, camera);
-    res.data[3][2] =  blib::math::dot(f, camera);
+    res.data[0][3] = -blib::math::dot(s, camera);
+    res.data[1][3] = -blib::math::dot(u, camera);
+    res.data[2][3] =  blib::math::dot(f, camera);
     return res;
 }
 

@@ -22,6 +22,7 @@ namespace blib
             void setPosition(const Vector2f& position);
 
             void setScale(float factorX, float factorY);
+            void setScale(float factorX, float factorY, float factorZ);
             void setScale(const Vector2f& factors);
 
             void setOrigin(float x, float y);

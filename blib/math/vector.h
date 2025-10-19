@@ -286,7 +286,7 @@ namespace blib
         {
             Vector<Type, size> res = lhs;
             for (size_t i = 0; i < size; ++i)
-                res.data[i] *= rhs.data[i];
+                res.data[i] *= rhs;
             return res;
         }
         template<class Type, VectorSizeT size>
