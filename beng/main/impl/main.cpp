@@ -34,7 +34,9 @@
 //        return EXIT_FAILURE;
 //    }
 //    blib::graphics::RenderWindow window(1800, 600, "beng");
-//    //blib::graphics::Camera camera;
+//    blib::graphics::Camera camera;
+//    window.setCamera(&camera);
+//    camera.setPerpective(75, static_cast<float>(window.getWight()) / static_cast<float>(window.getHeight()), 0.1, 1000000);
 //    //camera.setProjectionMode(blib::graphics::Camera::ProjectionMode::Perspective, window);
 //
 //    beng::graphics::Model model;
@@ -93,8 +95,8 @@ int main()
     blib::graphics::RenderWindow wnd(800, 600, "beng");
     blib::graphics::Camera camera;
     wnd.setCamera(&camera);
-    camera.setPerpective(75, static_cast<float>(wnd.getWight()) / static_cast<float>(wnd.getHeight()), 0.1, 1000);
-    camera.setPosition(0, 0, -1);
+    camera.setPerpective(60, static_cast<float>(wnd.getWight()) / static_cast<float>(wnd.getHeight()), 0.1, 1000);
+    camera.setPosition(0, 0, 0);
     
     float vertices[] = {
         // Позиции         // Цвета
@@ -111,7 +113,8 @@ int main()
     mesh.colors.push_back(blib::graphics::Color(255, 0, 255, 0));
     mesh.colors.push_back(blib::graphics::Color(255, 0, 255, 0));
     mesh.colors.push_back(blib::graphics::Color(255, 0, 255, 0));
-    
+    mesh.setPosition(0, 0, -1);
+    //mesh.setScale( 0.5, 0.5, 0.5 );
 
     float endframe = clock();
     while (wnd.isOpen())
@@ -128,8 +131,8 @@ int main()
     
         camera.controlUpdate(deltatime, wnd);
 
-        wnd.draw(camera);
-    
+        std::cout << camera.getPosition().x << " " << camera.getPosition().y << " " << camera.getPosition().z << std::endl;
+
         wnd.draw(mesh);
     
         wnd.display();

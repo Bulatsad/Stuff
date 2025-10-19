@@ -30,7 +30,7 @@ void blib::graphics::RenderContext::sendVievMatrixToShaderProgram()
 {
     GLint location = this->api.ogl.ext.__blib_gl_glGetUniformLocation(this->lastShader->getContext(), "gViewMatrix");
 
-    const void* pViewMatrix = static_cast<const void*>(&(this->pCamera->getTransform().data));
+    const void* pViewMatrix = static_cast<const void*>(&(this->pCamera->getViewMatrix().data));
     
     if (location == -1)
         throw std::exception("no location for view matrix uniform");

@@ -150,7 +150,7 @@ void beng::graphics::Mesh::bake(blib::graphics::RenderTarget& target, blib::grap
         ctx.api.ogl.ext.__blib_glVertexAttribPointer((GLuint)MeshAttributeNames::color, 4, GL_FLOAT, GL_FALSE, 0, 0);
     }
 
-    // populate texturecoords vbo and enable attribute
+    //// populate texturecoords vbo and enable attribute
     //ctx.api.ogl.ext.__blib_glBindBuffer(GL_ARRAY_BUFFER, __blib_this_context(this)->vbos[(GLuint)MeshAttributeNames::textureCoords]);
     //ctx.api.ogl.ext.__blib_glBufferData(GL_ARRAY_BUFFER, sizeof(this->textureCoords[0]) * this->textureCoords.size(), this->textureCoords.data(), GL_STATIC_DRAW);
     //ctx.api.ogl.ext.__blib_glEnableVertexAttribArray((GLuint)MeshAttributeNames::textureCoords);

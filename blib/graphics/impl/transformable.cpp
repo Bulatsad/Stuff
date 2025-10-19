@@ -42,8 +42,14 @@ void blib::graphics::Transformable::setPosition(const blib::graphics::Vector2f& 
 
 void blib::graphics::Transformable::setScale(float factorX, float factorY)
 {
+    setScale(factorX, factorY, 1.f);
+}
+
+void blib::graphics::Transformable::setScale(float factorX, float factorY, float factorZ)
+{
     m_scale.x = factorX;
     m_scale.y = factorY;
+    m_scale.z = factorZ;
     m_transformNeedUpdate = true;
     m_inverseTransformNeedUpdate = true;
 }
