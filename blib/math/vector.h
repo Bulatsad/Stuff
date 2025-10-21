@@ -257,7 +257,7 @@ namespace blib
         template<class Type, VectorSizeT size>
         Vector<Type, size> operator+(const Vector<Type, size>& lhs, const Vector<Type, size>& rhs)
         {
-            Vector res = lhs;
+            Vector<Type, size> res = lhs;
             for (size_t i = 0; i < size; ++i)
                 res.data[i] += rhs.data[i];
             return res;

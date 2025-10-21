@@ -10,22 +10,24 @@
 #include <blib/graphics/drawable.h>
 #include <blib/graphics/transformable.h>
 #include <blib/graphics/shader.h>
+#include <blib/graphics/material.h>
 
 #include <beng/config.h>
 #include <beng/graphics/face.h>
-#include <beng/graphics/material.h>
 
 
-namespace beng
+namespace blib
 {
     namespace graphics
     {
         enum class PrimitiveType : buint8
         {
+            Unknown = 0x00,
             Point = 0x1,
             Line = 0x2,
             Triangle = 0x4,
             Polygon = 0x8,
+            TriangleStrip = 0x10
         };
 
         class __beng_api Mesh : public blib::graphics::IDrawable, public blib::graphics::Transformable
@@ -47,8 +49,8 @@ namespace beng
             std::vector<blib::graphics::Vector3f>normals;
             std::vector<blib::graphics::Vector3f>textureCoords;
             std::vector<blib::graphics::Color>colors;
-            std::vector<Face>faces;
-            Material material;
+            std::vector<beng::graphics::Face>faces;
+            blib::graphics::Material material;
 
             void loadFromAssimpMesh(const aiMesh* paimesh);
 

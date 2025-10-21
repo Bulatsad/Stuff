@@ -3,7 +3,7 @@
 #include <string>
 
 #include <blib/config.h>
-#include <beng/graphics/material.h>
+#include <blib/graphics/material.h>
 #include <blib/graphics/opengl.h>
 
 namespace blib

@@ -10,7 +10,7 @@
 #include <blib/graphics/vector.h>
 #include <blib/graphics/texture.h>
 
-namespace beng
+namespace blib
 {
     namespace graphics
     {

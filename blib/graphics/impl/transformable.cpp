@@ -206,5 +206,7 @@ void blib::graphics::Transformable::setTransform(const Transform& transform)
 {
     this->m_transform = transform;
     blib::graphics::decomposeMatrix(this->m_transform, this->m_position, this->m_rotation, this->m_scale);
+    this->m_transformNeedUpdate = false;
+    this->m_inverseTransformNeedUpdate = false;
 }
 

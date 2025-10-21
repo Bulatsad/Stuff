@@ -64,12 +64,12 @@ void blib::graphics::Camera::controlUpdate(float deltaTime, blib::graphics::Rend
     if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Space))
     {
         //this->move(0, 0, posdelta);
-        this->move(this->up * movespeed * deltaTime);
+        this->move(this->worldUp * movespeed * deltaTime);
     }
     if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::LShift))
     {
         //this->move(0, 0, -posdelta);
-        this->move(this->up * -movespeed * deltaTime);
+        this->move(this->worldUp * -movespeed * deltaTime);
     }
     if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::W))
     {

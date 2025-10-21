@@ -3,7 +3,7 @@
 #include <blib/config.h>
 #include <blib/utilmacro.h>
 
-#include <blib/graphics/texture.h>
+#include <blib/graphics/mesh.h>
 
 #include <blib/graphics/rendertarget.h>
 #include <blib/graphics/rendercontext.h>
@@ -16,8 +16,7 @@ namespace blib
         class __blib_api Sprite : public Transformable, public IDrawable
         {
         private:
-            const Texture* pTexture;
-
+            blib::graphics::Mesh mesh;
         public:
             Sprite();
             virtual ~Sprite();
