@@ -21,21 +21,7 @@ struct oglMeshContext
 
 #define __blib_this_context(_this) (static_cast<oglMeshContext*>(_this->ctx))
 
-__blib_private_func inline GLenum primitiveTypeToOGL(const blib::graphics::PrimitiveType& pt)
-{
-    switch (pt)
-    {
-    case blib::graphics::PrimitiveType::Triangle:
-        return GL_TRIANGLES;
-    case blib::graphics::PrimitiveType::TriangleStrip:
-        return GL_TRIANGLE_STRIP;
-    default:
-        throw std::exception("Unknown primitive type");
-        break;
-    }
-}
-
-__blib_private_func inline void loadVertexFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
+static inline void loadVertexFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
 {
     bengmesh.vertices.resize(paimesh->mNumVertices);
     for (size_t i = 0; i < bengmesh.vertices.size(); ++i)
@@ -48,12 +34,12 @@ __blib_private_func inline void loadVertexFromAssimp(blib::graphics::Mesh& bengm
     }
 }
 
-__blib_private_func inline void loadNormalsFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
+static inline void loadNormalsFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
 {
 
 }
 
-__blib_private_func inline void loadTextureCoordinatesFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
+static inline void loadTextureCoordinatesFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
 {
     if (paimesh->HasTextureCoords(0))
     {
@@ -70,7 +56,7 @@ __blib_private_func inline void loadTextureCoordinatesFromAssimp(blib::graphics:
     }
 }
 
-__blib_private_func inline void loadFacesFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
+static inline void loadFacesFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
 {
     bengmesh.faces.resize(paimesh->mNumFaces);
     for (size_t i = 0; i < paimesh->mNumFaces; ++i)
@@ -207,6 +193,8 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderTarget& target, blib::grap
 
 blib::graphics::Mesh::Mesh()
 {
+    this->primitiveType = blib::graphics::PrimitiveType::Unknown;
+
     this->ctx = new oglMeshContext();
     memset(this->ctx, 0, sizeof(oglMeshContext));
 }
@@ -228,7 +216,7 @@ void blib::graphics::Mesh::draw(blib::graphics::RenderTarget& target, blib::grap
 
     ctx.api.ogl.ext.__blib_glBindVertexArray(__blib_this_context(this)->vao);
 
-    ctx.api.ogl.ext.__blib_gl_glDrawArrays(primitiveTypeToOGL(this->primitiveType), 0, this->vertices.size());
+    ctx.api.ogl.ext.__blib_gl_glDrawArrays(GL_TRIANGLES, 0, this->vertices.size());
 
     ctx.api.ogl.ext.__blib_glBindVertexArray(0);
 }

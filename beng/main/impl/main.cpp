@@ -11,7 +11,7 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
-#include <beng/graphics/mesh.h>
+#include <blib/graphics/mesh.h>
 #include <beng/graphics/model.h>
 
 #include <blib/math/matrix.h>
@@ -105,16 +105,24 @@ int main()
          0.0f,  0.5f, 0.0f, 0.0f, 0.0f, 1.0f  // верхн€€
     };
     
-    beng::graphics::Mesh mesh;
+    blib::graphics::Mesh mesh;
     
-    mesh.vertices.push_back({ -0.5f, -0.5f, 0.0f });
-    mesh.vertices.push_back({ 0.5f, -0.5f, 0.0f });
-    mesh.vertices.push_back({ 0.0f,  0.5f, 0.0f });
-    mesh.colors.push_back(blib::graphics::Color(255, 0, 255, 0));
-    mesh.colors.push_back(blib::graphics::Color(255, 0, 255, 0));
-    mesh.colors.push_back(blib::graphics::Color(255, 0, 255, 0));
-    mesh.setPosition(0, 0, -1);
-    //mesh.setScale( 0.5, 0.5, 0.5 );
+    //mesh.vertices.push_back({ -0.5f, -0.5f, 0.0f });
+    //mesh.vertices.push_back({ 0.5f, -0.5f, 0.0f });
+    //mesh.vertices.push_back({ 0.0f,  0.5f, 0.0f });
+    //mesh.colors.push_back(blib::graphics::Color(255, 0, 255, 0));
+    //mesh.colors.push_back(blib::graphics::Color(255, 0, 255, 0));
+    //mesh.colors.push_back(blib::graphics::Color(255, 0, 255, 0));
+    //mesh.setPosition(0, 0, -1);
+    ////mesh.setScale( 0.5, 0.5, 0.5 );
+
+    blib::graphics::Image img;
+    blib::graphics::Texture txr;
+    blib::graphics::Sprite spr;
+    spr.setPosition(0, 0, -1);
+    img.loadFromTgx("C:/Program Files (x86)/Steam/steamapps/common/Stronghold Crusader Extreme/gfx/frontend_loading_ex.tgx");
+    txr.create(img);
+    spr.setTexture(txr);
 
     float endframe = clock();
     while (wnd.isOpen())
@@ -133,7 +141,8 @@ int main()
 
         std::cout << camera.getPosition().x << " " << camera.getPosition().y << " " << camera.getPosition().z << std::endl;
 
-        wnd.draw(mesh);
+        //wnd.draw(mesh);
+        wnd.draw(spr);
     
         wnd.display();
     }

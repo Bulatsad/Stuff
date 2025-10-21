@@ -1,9 +1,9 @@
-#include <beng/graphics/material.h>
+#include <blib/graphics/material.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
-int beng::graphics::Material::loadDiffuseTextureFromAssimp(const aiMaterial* pmaterial, const blib::core::Folder& folder)
+int blib::graphics::Material::loadDiffuseTextureFromAssimp(const aiMaterial* pmaterial, const blib::core::Folder& folder)
 {
     aiString path(folder.getCurrentPath());
 
@@ -50,7 +50,7 @@ int beng::graphics::Material::loadDiffuseTextureFromAssimp(const aiMaterial* pma
 
 }
 
-void beng::graphics::Material::loadFromAssimpMaterial(const aiMaterial* pmaterial, const blib::core::Folder& folder)
+void blib::graphics::Material::loadFromAssimpMaterial(const aiMaterial* pmaterial, const blib::core::Folder& folder)
 {
     this->loadDiffuseTextureFromAssimp(pmaterial, folder);
 }

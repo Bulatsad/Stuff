@@ -8,7 +8,7 @@
 #include <blib/graphics/transformable.h>
 
 #include <beng/config.h>
-#include <beng/graphics/mesh.h>
+#include <blib/graphics/mesh.h>
 
 namespace beng
 {
@@ -18,7 +18,7 @@ namespace beng
         {
         public:
 
-            std::vector<beng::graphics::Mesh> meshes;
+            std::vector<blib::graphics::Mesh> meshes;
 
             void loadFromFile(const char* path);
             void parseFromAssimpScene(const aiScene* pscene, const std::string& filename);
