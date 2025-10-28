@@ -90,6 +90,8 @@ void blib::graphics::RenderApi::InitGraphicsApi()
     this->ogl.ext.__blib_gl_glGetProgramInfoLog = static_cast<__blib_gl_signature_glGetProgramInfoLog>(getprocaddr("glGetProgramInfoLog"));
     this->ogl.ext.__blib_gl_glDrawArrays = static_cast<__blib_gl_signature_glDrawArrays>(getprocaddr("glDrawArrays"));
     this->ogl.ext.__blib_gl_glUniformMatrix4fv = static_cast<__blib_gl_signature_glUniformMatrix4fv>(getprocaddr("glUniformMatrix4fv"));
-    
+    this->ogl.ext.__blib_gl_glDrawElements = static_cast<__blib_gl_signature_glDrawElements>(getprocaddr("glDrawElements"));
+
+
 
 }

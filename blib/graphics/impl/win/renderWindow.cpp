@@ -139,6 +139,8 @@ blib::graphics::RenderWindow::RenderWindow(uint16_t _width, uint16_t _height, co
    
     this->rc.api.ogl.__blib_glViewport(0, 0, this->width, this->height);
     //this->rc.api.ogl.__blib_glLoadIdentity();
+    this->rc.api.ogl.__blib_glEnable(GL_DEPTH_TEST);
+
 }
 
 blib::graphics::RenderWindow::~RenderWindow()

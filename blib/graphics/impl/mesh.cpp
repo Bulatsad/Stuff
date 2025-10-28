@@ -17,11 +17,26 @@ struct oglMeshContext
 {
     GLuint vao;
     GLuint vbos[(GLuint)MeshAttributeNames::vbCount];
+    GLuint faces; //ebo
 };
 
 #define __blib_this_context(_this) (static_cast<oglMeshContext*>(_this->ctx))
 
-static inline void loadVertexFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
+__blib_private_func inline GLenum primitiveTypeToOGL(const blib::graphics::PrimitiveType& pt)
+{
+    switch (pt)
+    {
+    case blib::graphics::PrimitiveType::Triangle:
+        return GL_TRIANGLES;
+    case blib::graphics::PrimitiveType::TriangleStrip:
+        return GL_TRIANGLE_STRIP;
+    default:
+        throw std::exception("Unknown primitive type");
+        break;
+    }
+}
+
+__blib_private_func inline void loadVertexFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
 {
     bengmesh.vertices.resize(paimesh->mNumVertices);
     for (size_t i = 0; i < bengmesh.vertices.size(); ++i)
@@ -34,12 +49,12 @@ static inline void loadVertexFromAssimp(blib::graphics::Mesh& bengmesh, const ai
     }
 }
 
-static inline void loadNormalsFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
+__blib_private_func inline void loadNormalsFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
 {
 
 }
 
-static inline void loadTextureCoordinatesFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
+__blib_private_func inline void loadTextureCoordinatesFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
 {
     if (paimesh->HasTextureCoords(0))
     {
@@ -56,7 +71,7 @@ static inline void loadTextureCoordinatesFromAssimp(blib::graphics::Mesh& bengme
     }
 }
 
-static inline void loadFacesFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
+__blib_private_func inline void loadFacesFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
 {
     bengmesh.faces.resize(paimesh->mNumFaces);
     for (size_t i = 0; i < paimesh->mNumFaces; ++i)
@@ -130,6 +145,9 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderTarget& target, blib::grap
 
     // create vbo's
     ctx.api.ogl.ext.__blib_glGenBuffers((GLuint)MeshAttributeNames::vbCount, (__blib_this_context(this)->vbos));
+    // create ebo (faces)
+    ctx.api.ogl.ext.__blib_glGenBuffers(1, &(__blib_this_context(this)->faces));
+
 
     // populate position vbo and enable attribute
     ctx.api.ogl.ext.__blib_glBindBuffer(GL_ARRAY_BUFFER, __blib_this_context(this)->vbos[(GLuint)MeshAttributeNames::position]);
@@ -163,13 +181,9 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderTarget& target, blib::grap
     //ctx.api.ogl.ext.__blib_glVertexAttribPointer(normalAttributeName, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
     // TODO : Triangulate and rewrite renderer
-    //// populate indices vbo
-    //ctx.api.ogl.ext.__blib_glBindBuffer(GL_ARRAY_BUFFER, __blib_this_context(this)->vbos[(GLuint)MeshAttributeNames::indices]);
-    //ctx.api.ogl.ext.__blib_glBufferData(GL_ARRAY_BUFFER, sizeof(this->faces[0]) * this->faces.size(), this->faces.data(), GL_STATIC_DRAW);
-
-
-    ctx.api.ogl.ext.__blib_glBindVertexArray(GL_NULL_VERTEX_BUFFER);
-    ctx.api.ogl.ext.__blib_glBindBuffer(GL_ARRAY_BUFFER, GL_NULL_VERTEX_BUFFER);
+    ctx.api.ogl.ext.__blib_glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, __blib_this_context(this)->faces);
+    auto tmp = beng::graphics::compileFaces(this->faces);
+    ctx.api.ogl.ext.__blib_glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(this->faces[0].indices[0]) * this->faces[0].indices.size() * this->faces.size(), &(tmp[0]), GL_STATIC_DRAW);
 
 
     this->vertexShader.setPath("M:\\Stuff\\shaders\\mesh\\MeshVertexShader.glsl");
@@ -193,8 +207,6 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderTarget& target, blib::grap
 
 blib::graphics::Mesh::Mesh()
 {
-    this->primitiveType = blib::graphics::PrimitiveType::Unknown;
-
     this->ctx = new oglMeshContext();
     memset(this->ctx, 0, sizeof(oglMeshContext));
 }
@@ -216,7 +228,8 @@ void blib::graphics::Mesh::draw(blib::graphics::RenderTarget& target, blib::grap
 
     ctx.api.ogl.ext.__blib_glBindVertexArray(__blib_this_context(this)->vao);
 
-    ctx.api.ogl.ext.__blib_gl_glDrawArrays(GL_TRIANGLES, 0, this->vertices.size());
+    //ctx.api.ogl.ext.__blib_gl_glDrawArrays(primitiveTypeToOGL(this->primitiveType), 0, this->vertices.size());
+    ctx.api.ogl.ext.__blib_gl_glDrawElements(primitiveTypeToOGL(this->primitiveType), sizeof(this->faces[0].indices[0]) * this->faces[0].indices.size() * this->faces.size(), GL_UNSIGNED_INT, 0);
 
     ctx.api.ogl.ext.__blib_glBindVertexArray(0);
 }

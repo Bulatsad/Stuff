@@ -98,13 +98,6 @@ int main()
     camera.setPerpective(60, static_cast<float>(wnd.getWight()) / static_cast<float>(wnd.getHeight()), 0.1, 1000);
     camera.setPosition(0, 0, 0);
     
-    float vertices[] = {
-        // ѕозиции         // ÷вета
-        -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, // нижн€€ лева€
-         0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, // нижн€€ права€
-         0.0f,  0.5f, 0.0f, 0.0f, 0.0f, 1.0f  // верхн€€
-    };
-    
     blib::graphics::Mesh mesh;
     
     //mesh.vertices.push_back({ -0.5f, -0.5f, 0.0f });
@@ -124,6 +117,27 @@ int main()
     txr.create(img);
     spr.setTexture(txr);
 
+        Assimp::Importer importer;
+
+    std::string objectfilename = "M:\\Stuff\\obj_spider\\boblampclean.md5mesh";
+
+    const aiScene* pscene = importer.ReadFile(objectfilename,
+        aiPostProcessSteps::aiProcess_CalcTangentSpace      |
+        aiPostProcessSteps::aiProcess_Triangulate           |
+        aiPostProcessSteps::aiProcess_JoinIdenticalVertices |
+        aiPostProcessSteps::aiProcess_SortByPType
+    );
+    if (!pscene)
+    {
+        std::cerr << "error on loading object file" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    beng::graphics::Model model;
+    model.parseFromAssimpScene(pscene, objectfilename);
+    model.setPosition(0, -30, -50);
+    model.setRotation(90, 0, 0);
+
     float endframe = clock();
     while (wnd.isOpen())
     {
@@ -142,7 +156,8 @@ int main()
         std::cout << camera.getPosition().x << " " << camera.getPosition().y << " " << camera.getPosition().z << std::endl;
 
         //wnd.draw(mesh);
-        wnd.draw(spr);
+        wnd.draw(model);
+        //wnd.draw(spr);
     
         wnd.display();
     }

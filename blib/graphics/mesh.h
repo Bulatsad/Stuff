@@ -30,7 +30,7 @@ namespace blib
             TriangleStrip = 0x10
         };
 
-        class __beng_api Mesh : public blib::graphics::IDrawable, public blib::graphics::Transformable
+        class __blib_api Mesh : public blib::graphics::IDrawable, public blib::graphics::Transformable
         {
         private:
             void* ctx;
