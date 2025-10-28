@@ -6,9 +6,11 @@
 
 #include <blib/graphics/drawable.h>
 #include <blib/graphics/transformable.h>
+#include <blib/graphics/mesh.h>
 
 #include <beng/config.h>
-#include <blib/graphics/mesh.h>
+
+#include <functional>
 
 namespace beng
 {
@@ -18,7 +20,7 @@ namespace beng
         {
         public:
 
-            std::vector<blib::graphics::Mesh> meshes;
+            mutable std::vector<blib::graphics::Mesh> meshes;
 
             void loadFromFile(const char* path);
             void parseFromAssimpScene(const aiScene* pscene, const std::string& filename);

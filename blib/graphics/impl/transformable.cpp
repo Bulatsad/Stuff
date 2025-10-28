@@ -7,9 +7,7 @@ blib::graphics::Transformable::Transformable() :
     m_rotation(0, 0, 0),
     m_scale(1, 1, 1),
     m_transform(),
-    m_transformNeedUpdate(true),
-    m_inverseTransform(),
-    m_inverseTransformNeedUpdate(true)
+    m_transformNeedUpdate(true)
 {
     this->m_transform = blib::graphics::Identity;
 }
@@ -23,7 +21,6 @@ void blib::graphics::Transformable::setPosition(float x, float y)
     m_position.x = x;
     m_position.y = y;
     m_transformNeedUpdate = true;
-    m_inverseTransformNeedUpdate = true;
 }
 
 void blib::graphics::Transformable::setPosition(float x, float y, float z)
@@ -32,7 +29,6 @@ void blib::graphics::Transformable::setPosition(float x, float y, float z)
     m_position.y = y;
     m_position.z = z;
     m_transformNeedUpdate = true;
-    m_inverseTransformNeedUpdate = true;
 }
 
 void blib::graphics::Transformable::setPosition(const blib::graphics::Vector2f& position)
@@ -51,7 +47,6 @@ void blib::graphics::Transformable::setScale(float factorX, float factorY, float
     m_scale.y = factorY;
     m_scale.z = factorZ;
     m_transformNeedUpdate = true;
-    m_inverseTransformNeedUpdate = true;
 }
 
 void blib::graphics::Transformable::setScale(const blib::graphics::Vector2f& factors)
@@ -64,7 +59,6 @@ void blib::graphics::Transformable::setOrigin(float x, float y)
     m_origin.x = x;
     m_origin.y = y;
     m_transformNeedUpdate = true;
-    m_inverseTransformNeedUpdate = true;
 }
 
 void blib::graphics::Transformable::setOrigin(const blib::graphics::Vector2f& origin)
@@ -79,7 +73,6 @@ void blib::graphics::Transformable::setRotation(float x, float y, float z)
     m_rotation.z = z;
 
     m_transformNeedUpdate = true;
-    m_inverseTransformNeedUpdate = true;
 }
 
 void blib::graphics::Transformable::rotateX(float angle)
@@ -87,7 +80,6 @@ void blib::graphics::Transformable::rotateX(float angle)
     this->m_rotation.x = blib::math::fmod(this->m_rotation.x + angle, 360.f);
 
     m_transformNeedUpdate = true;
-    m_inverseTransformNeedUpdate = true;
 }
 
 void blib::graphics::Transformable::rotateY(float angle)
@@ -95,7 +87,6 @@ void blib::graphics::Transformable::rotateY(float angle)
     this->m_rotation.y = blib::math::fmod(this->m_rotation.y + angle, 360.f);
 
     m_transformNeedUpdate = true;
-    m_inverseTransformNeedUpdate = true;
 }
 
 void blib::graphics::Transformable::rotateZ(float angle)
@@ -103,7 +94,6 @@ void blib::graphics::Transformable::rotateZ(float angle)
     this->m_rotation.z = blib::math::fmod(this->m_rotation.z + angle, 360.f);
 
     m_transformNeedUpdate = true;
-    m_inverseTransformNeedUpdate = true;
 }
 
 const blib::graphics::Vector3f& blib::graphics::Transformable::getPosition() const
@@ -207,6 +197,5 @@ void blib::graphics::Transformable::setTransform(const Transform& transform)
     this->m_transform = transform;
     blib::graphics::decomposeMatrix(this->m_transform, this->m_position, this->m_rotation, this->m_scale);
     this->m_transformNeedUpdate = false;
-    this->m_inverseTransformNeedUpdate = false;
 }
 

@@ -1,4 +1,4 @@
-#pragma once
+ #pragma once
 
 #include <blib/config.h>
 
@@ -9,7 +9,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api Transformable
+        class __blib_api Transformable 
         {
         public:
 
@@ -34,7 +34,6 @@ namespace blib
             void rotateY(float angle);
             void rotateZ(float angle);
 
-
             const Vector3f& getPosition() const;
 
             const Vector3f& getRotation() const;
@@ -49,10 +48,8 @@ namespace blib
             void scale(float factorX, float factorY);
             void scale(const Vector2f& factor);
 
-            const Transform& getTransform() const;
+            virtual const Transform& getTransform() const;
             void setTransform(const Transform& transform);
-
-            const Transform& getInverseTransform() const;
 
             bool isNeedToRecalculate() const
             {
@@ -67,8 +64,6 @@ namespace blib
             Vector3f          m_scale;                     
             mutable Transform m_transform;                 
             mutable bool      m_transformNeedUpdate;       
-            mutable Transform m_inverseTransform;          
-            mutable bool      m_inverseTransformNeedUpdate;
         };
     }
 }

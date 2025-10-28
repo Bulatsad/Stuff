@@ -11,3 +11,31 @@ void beng::graphics::Face::loadFromAssimpFace(const aiFace* paiface)
         bengindex = aiindex;
     }
 }
+
+std::vector<buint32> beng::graphics::compileFaces(const beng::graphics::Faces& faces)
+{
+    std::vector<buint32> res;
+    
+    if (faces.size() == 0)
+        throw std::exception("Incorrect faces size");
+
+    size_t fsz = faces[0].indices.size();
+
+    if(fsz == 0)
+        throw std::exception("Incorrect faces size");
+
+    // Check that all faces have same sizes
+    for (const beng::graphics::Face& f : faces)
+    {
+        if(f.indices.size() != fsz)
+            throw std::exception("Incorrect faces size");
+    }
+
+    res.resize(faces.size() * fsz);
+    for (size_t i = 0; i < res.size(); ++i)
+    {
+        res[i] = faces[i / fsz].indices[i % fsz];
+    }
+
+    return res;
+}

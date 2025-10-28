@@ -18,10 +18,14 @@ void beng::graphics::Model::parseFromAssimpScene(const aiScene* pscene, const st
 
 void beng::graphics::Model::draw(blib::graphics::RenderTarget& target, blib::graphics::RenderContext& ctx) const
 {
-    ctx.applyTransform(*this);
-
+    const blib::graphics::Transform transform = this->getTransform();
     for (auto& mesh : this->meshes)
     {
+        blib::graphics::Transform meshTransformCopy = mesh.getTransform();
+        blib::graphics::Transform meshTransform = transform * meshTransformCopy;
+        mesh.setTransform(meshTransform);
         mesh.draw(target, ctx);
+        mesh.setTransform(meshTransformCopy);
     }
+    //this->meshes[0].draw(target, ctx);
 }

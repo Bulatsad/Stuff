@@ -54,11 +54,10 @@ void blib::graphics::Camera::controlUpdate(float deltaTime, blib::graphics::Rend
         this->pitch.data = -89.0f;
     this->yaw.data = blib::math::fmod(yaw.data, 360.0f);
 
-    auto posdelta = movespeed * deltaTime;
 
     if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::LControl))
     {
-        posdelta *= 5;
+        deltaTime *= 10;
     }
 
     if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Space))
