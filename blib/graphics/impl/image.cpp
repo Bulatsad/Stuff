@@ -42,14 +42,14 @@ __blib_private_func __blib_force_inline void parseTGXColors(
     *pB = (*((buint16*)ptgxPixel) & 0x1F) << 3;
 }
 
-__blib_private_func bool loadTGXPixelData(
-    _In const buint8* pdata,
-    _In const size_t pdatasize,
-    _In buint8* pallete,
-    _In buint8 color,
-    _In buint16 nWidth,
-    _In buint16 nHeight,
-    std::vector<blib::graphics::Color>& pPixelData
+bool blib::graphics::Image::loadTGXPixelData(
+    /*_In*/ const buint8* pdata,
+    /*_In*/ const size_t pdatasize,
+    /*_In*/ buint8* pallete,
+    /*_In*/ buint8 color,
+    /*_In*/ buint16 nWidth,
+    /*_In*/ buint16 nHeight //,
+    //std::vector<blib::graphics::Color>& pPixelData
 )
 {
     buint8 len;
@@ -85,8 +85,8 @@ __blib_private_func bool loadTGXPixelData(
                     parseTGXColors((const buint16*)pdata, &r, &g, &b);
                     pdata += 2;
                 }
-
-                pPixelData[y * nWidth + x] = blib::graphics::Color(r, g, b, a);
+                
+                this->bitmap[y * nWidth + x] = blib::graphics::Color(r, g, b, a);
             }
         }
         break;
@@ -116,7 +116,7 @@ __blib_private_func bool loadTGXPixelData(
             }
 
             for (buint8 i = 0; i < len; i++, x++)
-                pPixelData[y * nWidth + x] = blib::graphics::Color(r, g, b, a);
+                this->bitmap[y * nWidth + x] = blib::graphics::Color(r, g, b, a);
         }
         break;
 
@@ -143,22 +143,46 @@ __blib_private_func bool loadTGXPixelData(
     return true;
 }
 
-    blib::graphics::Image::Image()
-    {
-        this->width = 0;
-        this->height = 0;
-    }
+blib::graphics::Image::Image()
+{
+    this->width = 0;
+    this->height = 0;
+}
 
-    blib::graphics::Image::~Image()
+blib::graphics::Image::Image(decltype(blib::graphics::Image::width) aWidth, decltype(blib::graphics::Image::height) aHeight, const Color* pdata)
+{
+    this->width = aWidth;
+    this->height = aHeight;
+    this->bitmap.resize(this->width * this->height);
+    if (pdata)
     {
+        for (decltype(blib::graphics::Image::width) i = 0; i < this->width; ++i)
+        {
+            for (decltype(blib::graphics::Image::height) j = 0; j < this->height; ++j)
+            {
+                (*this)[i][j] = pdata[i * this->width + j];
+            }
+        }
     }
+}
 
-    __blib_api std::vector<blib::graphics::Color>& blib::graphics::Image::data()
-    {
-        return this->bitmap;
-    }
+blib::graphics::Image::~Image()
+{
+}
 
-    bool blib::graphics::Image::loadFromTgx(const char* path)
+__blib_api std::vector<blib::graphics::Color>& blib::graphics::Image::data()
+{
+    return this->bitmap;
+}
+
+void blib::graphics::Image::create(buint16 a_width, buint16 a_height, blib::graphics::Color color)
+{
+    this->height = a_height;
+    this->width = a_width;
+    this->bitmap.resize(a_width * a_height, color);
+}
+
+bool blib::graphics::Image::loadFromTgx(const char* path)
 {
     std::ifstream tempfin;
     tempfin.open(path, std::ifstream::in | std::ifstream::binary);
@@ -187,15 +211,31 @@ __blib_private_func bool loadTGXPixelData(
         nullptr,
         0,
         header.width,
-        header.height,
-        this->bitmap)
+        header.height)
         )
         return false;
-    
+
     return true;
 }
 
-    const void* blib::graphics::Image::getData() const
+const void* blib::graphics::Image::getData() const
+{
+    return &(this->bitmap[0]);
+}
+
+void blib::graphics::Image::update(decltype(blib::graphics::Image::width) posX, decltype(blib::graphics::Image::height) posY, const blib::graphics::Image& img)
+{
+    for (decltype(blib::graphics::Image::width) i = 0; img.width; ++i)
     {
-        return &(this->bitmap[0]);
+        for (decltype(blib::graphics::Image::height) j = 0; img.height; ++j)
+        {
+            this->bitmap[(i + posX) * this->height + j + posY] = img.bitmap[i * img.height + j];
+        }
     }
+}
+
+blib::core::UnsafeSlicer<blib::graphics::Color> blib::graphics::Image::operator[](buint16 index) 
+{
+    blib::core::UnsafeSlicer<blib::graphics::Color> slicer(this->bitmap.data(), height);
+    return blib::core::UnsafeSlicer<blib::graphics::Color>(&(slicer[index]));
+}

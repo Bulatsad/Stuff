@@ -2,7 +2,7 @@
 
 #include <blib/math/vector.h>
 
-#include <exception>
+#include<stdexcept>
 
 namespace blib
 {
@@ -15,8 +15,6 @@ namespace blib
         {
         private:
         public:
-            matrixSizeT columnsCount = tmplWidth;
-            matrixSizeT rowsCount = tmplHeight;
             blib::math::Vector<Type, tmplHeight> data[tmplWidth];
 
             Matrix()
@@ -26,9 +24,9 @@ namespace blib
             Matrix(std::initializer_list<Type> args)
             {
                 //check
-                if (args.size() != this->columnsCount * this->rowsCount)
+                if (args.size() != tmplWidth * tmplHeight)
                 {
-                    throw std::exception("Invalid matrix argument count");
+                    throw std::runtime_error("Invalid matrix argument count");
                 }
 
                 //construct
@@ -36,12 +34,12 @@ namespace blib
                 matrixSizeT j = 0;
                 for (const auto& arg : args)
                 {
-                    if (i >= this->columnsCount)
+                    if (i >= tmplWidth)
                     {
                         i = 0;
                         j++;
                     }
-                    if (j >= this->rowsCount)
+                    if (j >= tmplHeight)
                     {
                         j = 0;
                     }
@@ -54,16 +52,16 @@ namespace blib
             Matrix operator+(const Matrix& rhs) const
             {
                 // check
-                if (this->columnsCount != rhs.columnsCount || this->rowsCount != rhs.rowsCount)
+                if (tmplWidth != rhs.columnsCount || tmplHeight != rhs.rowsCount)
                 {
-                    throw new std::exception("Additin matrix with differnt sizes");
+                    throw new std::runtime_error("Additin matrix with differnt sizes");
                 }
 
                 //calculate
                 Matrix res;
-                for (matrixSizeT i = 0; i < this->columnsCount; ++i)
+                for (matrixSizeT i = 0; i < tmplWidth; ++i)
                 {
-                    for (matrixSizeT j = 0; j < this->rowsCount; ++j)
+                    for (matrixSizeT j = 0; j < tmplHeight; ++j)
                     {
                         res.data[i][j] = this->data[i][j] + rhs.data[i][j];
                     }
@@ -73,16 +71,16 @@ namespace blib
             Matrix operator-(const Matrix& rhs) const
             {
                 // check
-                if (this->columnsCount != rhs.columnsCount || this->rowsCount != rhs.rowsCount)
+                if (tmplWidth != rhs.columnsCount || tmplHeight != rhs.rowsCount)
                 {
-                    throw new std::exception("Subtraction matrix with differnt sizes");
+                    throw new std::runtime_error("Subtraction matrix with differnt sizes");
                 }
 
                 //calculate
                 Matrix res;
-                for (matrixSizeT i = 0; i < this->rowsCount; ++i)
+                for (matrixSizeT i = 0; i < tmplHeight; ++i)
                 {
-                    for (matrixSizeT j = 0; j < this->columnsCount; ++j)
+                    for (matrixSizeT j = 0; j < tmplWidth; ++j)
                     {
                         res.data[i][j] = this->data[i][j] - rhs.data[i][j];
                     }
@@ -109,7 +107,7 @@ namespace blib
                 // check // The number of columns in matrix A must match the number of rows in matrix B
                 if (tmplWidth != tmplHeightRhs)
                 {
-                    throw new std::exception("The number of columns in matrix A must match the number of rows in matrix B for matrix multiplying");
+                    throw new std::runtime_error("The number of columns in matrix A must match the number of rows in matrix B for matrix multiplying");
                 }
 
                 // calculating

@@ -1,5 +1,7 @@
 #include <beng/graphics/face.h>
 
+#include <stdexcept>
+
 void beng::graphics::Face::loadFromAssimpFace(const aiFace* paiface)
 {
     this->indices.resize(paiface->mNumIndices);
@@ -17,18 +19,18 @@ std::vector<buint32> beng::graphics::compileFaces(const beng::graphics::Faces& f
     std::vector<buint32> res;
     
     if (faces.size() == 0)
-        throw std::exception("Incorrect faces size");
+        throw std::runtime_error("Incorrect faces size");
 
     size_t fsz = faces[0].indices.size();
 
     if(fsz == 0)
-        throw std::exception("Incorrect faces size");
+        throw std::runtime_error("Incorrect faces size");
 
     // Check that all faces have same sizes
     for (const beng::graphics::Face& f : faces)
     {
         if(f.indices.size() != fsz)
-            throw std::exception("Incorrect faces size");
+            throw std::runtime_error("Incorrect faces size");
     }
 
     res.resize(faces.size() * fsz);

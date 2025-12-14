@@ -55,7 +55,7 @@
     Vector(const Vector<rhsType, rhsSize>& rhs)                            \
     {                                                                      \
         if (size > rhsSize)                                                \
-            throw std::exception("Rhs vector size must be more or equal"); \
+            throw std::runtime_error("Rhs vector size must be more or equal"); \
                                                                            \
         for (VectorSizeT i = 0; i < size; ++i)                             \
         {                                                                  \

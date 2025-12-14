@@ -1,5 +1,7 @@
 #include <blib/graphics/mesh.h>
 
+#include<stdexcept>
+
 #include <Windows.h>
 #include <gl/GL.h>
 
@@ -31,7 +33,7 @@ __blib_private_func inline GLenum primitiveTypeToOGL(const blib::graphics::Primi
     case blib::graphics::PrimitiveType::TriangleStrip:
         return GL_TRIANGLE_STRIP;
     default:
-        throw std::exception("Unknown primitive type");
+        throw std::runtime_error("Unknown primitive type");
         break;
     }
 }
@@ -71,15 +73,6 @@ __blib_private_func inline void loadTextureCoordinatesFromAssimp(blib::graphics:
     }
 }
 
-__blib_private_func inline void loadFacesFromAssimp(blib::graphics::Mesh& bengmesh, const aiMesh* paimesh)
-{
-    bengmesh.faces.resize(paimesh->mNumFaces);
-    for (size_t i = 0; i < paimesh->mNumFaces; ++i)
-    {
-
-    }
-}
-
 void blib::graphics::Mesh::loadFromAssimpMesh(const aiMesh* paimesh)
 {
     auto tmptype = paimesh->mPrimitiveTypes;
@@ -105,13 +98,14 @@ void blib::graphics::Mesh::loadFromAssimpMesh(const aiMesh* paimesh)
         break;
 
     default:
-        throw std::exception("unknown primitive type");
+        throw std::runtime_error("unknown primitive type");
         break;
     }
 
     loadVertexFromAssimp(*this, paimesh);
     loadTextureCoordinatesFromAssimp(*this, paimesh);
 
+    // load faces
     this->faces.resize(paimesh->mNumFaces);
     for (size_t i = 0; i < this->faces.size(); ++i)
     {
@@ -159,7 +153,7 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderTarget& target, blib::grap
     //{
     //    if (this->colors.size() != this->vertices.size())
     //    {
-    //        throw std::exception("Colors size must be equal to vertices size");
+    //        throw std::runtime_error("Colors size must be equal to vertices size");
     //    }
     //    auto tmpFloatColors = blib::graphics::makeFloatData(this->colors);
     //    ctx.api.ogl.ext.__blib_glBindBuffer(GL_ARRAY_BUFFER, __blib_this_context(this)->vbos[(GLuint)MeshAttributeNames::color]);
@@ -201,6 +195,8 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderTarget& target, blib::grap
     this->drawer.AttachShader(this->vertexShader);
     this->drawer.AttachShader(this->fragmentShader);
     this->drawer.compile();
+
+    this->material.bake(ctx);
 
     this->baked = true;
 }

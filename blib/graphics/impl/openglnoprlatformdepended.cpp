@@ -91,7 +91,9 @@ void blib::graphics::RenderApi::InitGraphicsApi()
     this->ogl.ext.__blib_gl_glDrawArrays = static_cast<__blib_gl_signature_glDrawArrays>(getprocaddr("glDrawArrays"));
     this->ogl.ext.__blib_gl_glUniformMatrix4fv = static_cast<__blib_gl_signature_glUniformMatrix4fv>(getprocaddr("glUniformMatrix4fv"));
     this->ogl.ext.__blib_gl_glDrawElements = static_cast<__blib_gl_signature_glDrawElements>(getprocaddr("glDrawElements"));
-
-
-
+    this->ogl.ext.__blib_gl_glDeleteTextures = static_cast<__blib_gl_signature_glDeleteTextures>(getprocaddr("glDeleteTextures"));
+    this->ogl.ext.__blib_gl_glGenTextures = static_cast<__blib_gl_signature_glGenTextures>(getprocaddr("glGenTextures"));
+    this->ogl.ext.__blib_gl_glTexParameteri = &glTexParameteri;//static_cast<__blib_gl_signature_glTexParameteri>(getprocaddr("glTexParameteri"));
+    this->ogl.ext.__blib_gl_glTexImage2D = &glTexImage2D;//static_cast<__blib_gl_signature_glTexImage2D>(getprocaddr("glTexImage2D"));
+    this->ogl.ext.__blib_gl_glFlush = &glFlush;//static_cast<__blib_gl_signature_glFlush>(getprocaddr("glFlush"));
 }

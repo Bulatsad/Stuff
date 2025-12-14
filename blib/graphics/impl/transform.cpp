@@ -1,161 +1,133 @@
 #include <blib/graphics/transform.h>
 
-#include <blib/inline.h>
-
-#include <blib/math/trigonometry.h>
-
-
-//blib::graphics::Vector2f blib::graphics::Transform::transformPoint(float x, float y) const
-//{
-//    return Vector2f(m_matrix[0] * x + m_matrix[4] * y + m_matrix[12],
-//                    m_matrix[1] * x + m_matrix[5] * y + m_matrix[13]);
-//}
-//
-//
-//blib::graphics::Vector2f blib::graphics::Transform::transformPoint(const blib::graphics::Vector2f& point) const
-//{
-//    return transformPoint(point.x, point.y);
-//}
-//
-//
-//blib::graphics::FloatRect blib::graphics::Transform::transformRect(const blib::graphics::FloatRect& rectangle) const
-//{
-//    // Transform the 4 corners of the rectangle
-//    const blib::graphics::Vector2f points[] =
-//    {
-//        transformPoint(rectangle.left, rectangle.top),
-//        transformPoint(rectangle.left, rectangle.top + rectangle.height),
-//        transformPoint(rectangle.left + rectangle.width, rectangle.top),
-//        transformPoint(rectangle.left + rectangle.width, rectangle.top + rectangle.height)
-//    };
-//
-//    // Compute the bounding rectangle of the transformed points
-//    float left = points[0].x;
-//    float top = points[0].y;
-//    float right = points[0].x;
-//    float bottom = points[0].y;
-//    for (int i = 1; i < 4; ++i)
-//    {
-//        if      (points[i].x < left)   left = points[i].x;
-//        else if (points[i].x > right)  right = points[i].x;
-//        if      (points[i].y < top)    top = points[i].y;
-//        else if (points[i].y > bottom) bottom = points[i].y;
-//    }
-//
-//    return blib::graphics::FloatRect(left, top, right - left, bottom - top);
-//}
-
-blib::graphics::Transform blib::graphics::rotateX(const blib::graphics::Transform& martix, float angle)
+blib::graphics::Transform::Transform()
 {
-    float rad = angle * 3.141592654f / 180.f;
-    float cos;
-    float sin;
-    blib::math::sincos(rad, sin, cos);
-
-
-    blib::graphics::Transform rotation({ 1.f, 0.f,   0.f, 0.f,
-                                         0.f, cos, -sin,  0.f,
-                                         0.f, sin,  cos,  0.f,
-                                         0.f, 0.f,   0.f, 1.f }
-    );
-
-    return martix * rotation;
+    this->origin = blib::graphics::Vector3f(0, 0, 0);
+    this->position = blib::graphics::Vector3f(0, 0, 0);
+    this->rotation = blib::graphics::Vector3f(0, 0, 0);
+    this->scale = blib::graphics::Vector3f(1, 1, 1);
 }
 
-blib::graphics::Transform blib::graphics::rotateY(const blib::graphics::Transform& martix, float angle)
+void blib::graphics::Transform::setPosition(float x, float y, float z)
 {
-    float rad = angle * 3.141592654f / 180.f;
-    float cos;
-    float sin;
-    blib::math::sincos(rad, sin, cos);
-
-    blib::graphics::Transform rotation({ cos,  0.f, sin, 0.f,
-                                         0.f,  1.f, 0.f, 0.f,
-                                        -sin,  0.f, cos, 0.f,
-                                         0.f,  0.f, 0.f, 1.f }
-    );                           
-
-    return martix * rotation;
+    position.x = x;
+    position.y = y;
+    position.z = z;
 }
 
-blib::graphics::Transform blib::graphics::rotateZ(const blib::graphics::Transform& martix, float angle)
+void blib::graphics::Transform::setPosition(const blib::graphics::Vector3f& position)
 {
-    float rad = angle * 3.141592654f / 180.f;
-    float cos;
-    float sin;
-    blib::math::sincos(rad, sin, cos);
-
-    blib::graphics::Transform rotation({ cos, -sin, 0.f, 0.f,
-                                         sin,  cos, 0.f, 0.f,
-                                         0.f,  0.f, 1.f, 0.f,
-                                         0.f,  0.f, 0.f, 1.f }
-    );
-
-    return martix * rotation;
+    setPosition(position.x, position.y, position.z);
 }
 
-__blib_private_func blib::graphics::Transform lookAtRightHand(const blib::graphics::Vector3f& camera, const blib::graphics::Vector3f& target, const blib::graphics::Vector3f& worldUp)
+void blib::graphics::Transform::scaleX(float factorX)
 {
-    blib::graphics::Vector3f const f(blib::math::normalize(target - camera));
-    blib::graphics::Vector3f const s(blib::math::normalize(cross(f, worldUp)));
-    blib::graphics::Vector3f const u(blib::math::cross(s, f));
-
-    blib::graphics::Transform res = blib::graphics::Identity;
-    res.data[0][0] = s.x;
-    res.data[0][1] = s.y;
-    res.data[0][2] = s.z;
-    res.data[1][0] = u.x;
-    res.data[1][1] = u.y;
-    res.data[1][2] = u.z;
-    res.data[2][0] = -f.x;
-    res.data[2][1] = -f.y;
-    res.data[2][2] = -f.z;
-    res.data[0][3] = -blib::math::dot(s, camera);
-    res.data[1][3] = -blib::math::dot(u, camera);
-    res.data[2][3] =  blib::math::dot(f, camera);
-    return res;
+    this->scale.x = this->scale.x * factorX;
 }
 
-blib::graphics::Transform blib::graphics::lookAt(const blib::graphics::Vector3f& camera, const blib::graphics::Vector3f& target, const blib::graphics::Vector3f& worldUp)
+void blib::graphics::Transform::scaleY(float factorY)
 {
-    return lookAtRightHand(camera, target, worldUp);
+    this->scale.y = this->scale.y * factorY;
 }
 
-void blib::graphics::decomposeMatrix(const Transform& matrix, Vector3f& position, Vector3f& rotation, Vector3f& scale)
+void blib::graphics::Transform::scaleZ(float factorZ)
 {
-
-    // Позиция
-    position = Vector3f(matrix.data[3]);
-
-    // Масштаб
-    scale.x = blib::math::length(Vector3f(matrix.data[0]));
-    scale.y = blib::math::length(Vector3f(matrix.data[1]));
-    scale.z = blib::math::length(Vector3f(matrix.data[2]));
-
-    //// Поворот
-    //glm::mat3 rotMat;
-    //rotMat[0] = glm::vec3(matrix[0]) / scale.x;
-    //rotMat[1] = glm::vec3(matrix[1]) / scale.y;
-    //rotMat[2] = glm::vec3(matrix[2]) / scale.z;
-    //
-    //rotation = glm::quat_cast(rotMat);
-
-    float sy = blib::math::sqrt(matrix.data[0][0] * matrix.data[0][0] + matrix.data[1][0] * matrix.data[1][0]);
-
-    bool singular = sy < 1e-6;
-
-    float x, y, z;
-
-    if (!singular) {
-        x = atan2(matrix.data[2][1], matrix.data[2][2]);
-        y = atan2(-matrix.data[2][0], sy);
-        z = atan2(matrix.data[1][0], matrix.data[0][0]);
-    }
-    else {
-        x = atan2(-matrix.data[1][2], matrix.data[1][1]);
-        y = atan2(-matrix.data[2][0], sy);
-        z = 0;
-    }
-
-    rotation = Vector3f(x, y, z);
+    this->scale.z = this->scale.z * factorZ;
 }
+
+void blib::graphics::Transform::setScale(float factorX, float factorY, float factorZ)
+{
+    this->scale.x = factorX;
+    this->scale.y = factorY;
+    this->scale.z = factorZ;
+}
+
+void blib::graphics::Transform::setScale(const blib::graphics::Vector3f& factors)
+{
+    this->setScale(factors.x, factors.y, factors.z);
+}
+
+void blib::graphics::Transform::setOrigin(float x, float y, float z)
+{
+    this->origin.x = x;
+    this->origin.y = y;
+    this->origin.z = z;
+}
+
+void blib::graphics::Transform::setOrigin(const blib::graphics::Vector3f& origin)
+{
+    this->setOrigin(origin.x, origin.y, origin.z);
+}
+
+void blib::graphics::Transform::setRotation(float x, float y, float z)
+{
+    this->rotation.x = x;
+    this->rotation.y = y;
+    this->rotation.z = z;
+}
+
+void blib::graphics::Transform::rotateX(float angle)
+{
+    this->rotation.x = blib::math::fmod(this->rotation.x + angle, 360.f);
+}
+
+void blib::graphics::Transform::rotateY(float angle)
+{
+    this->rotation.y = blib::math::fmod(this->rotation.y + angle, 360.f);
+}
+
+void blib::graphics::Transform::rotateZ(float angle)
+{
+    this->rotation.z = blib::math::fmod(this->rotation.z + angle, 360.f);
+}
+
+const blib::graphics::Vector3f& blib::graphics::Transform::getPosition() const
+{
+    return position;
+}
+
+blib::graphics::Vector3f& blib::graphics::Transform::getPosition()
+{
+    return position;
+}
+
+const blib::graphics::Vector3f& blib::graphics::Transform::getRotation() const
+{
+    return rotation;
+}
+
+blib::graphics::Vector3f& blib::graphics::Transform::getRotation()
+{
+    return rotation;
+}
+
+const blib::graphics::Vector3f& blib::graphics::Transform::getScale() const
+{
+    return scale;
+}
+
+blib::graphics::Vector3f& blib::graphics::Transform::getScale()
+{
+    return scale;
+}
+
+const blib::graphics::Vector3f& blib::graphics::Transform::getOrigin() const
+{
+    return origin;
+}
+
+blib::graphics::Vector3f& blib::graphics::Transform::getOrigin()
+{
+    return origin;
+}
+
+void blib::graphics::Transform::move(float offsetX, float offsetY, float offsetZ)
+{
+    setPosition(position.x + offsetX, position.y + offsetY, position.z + offsetZ);
+}
+
+void blib::graphics::Transform::move(const blib::graphics::Vector3f& offset)
+{
+    setPosition(position.x + offset.x, position.y + offset.y, position.z + offset.z);
+}
+

@@ -16,7 +16,7 @@ namespace beng
 {
     namespace graphics
     {
-        class __beng_api Model : public blib::graphics::IDrawable, public blib::graphics::Transformable
+        class __beng_api Model : public blib::graphics::IDrawable, public blib::graphics::ITransformable
         {
         public:
 
@@ -24,6 +24,8 @@ namespace beng
 
             void loadFromFile(const char* path);
             void parseFromAssimpScene(const aiScene* pscene, const std::string& filename);
+
+            static blib::graphics::Mesh bakeMeshes(const std::vector<blib::graphics::Mesh>& meshes);
 
             // Унаследовано через IDrawable
             virtual void draw(blib::graphics::RenderTarget& target, blib::graphics::RenderContext& ctx) const override;

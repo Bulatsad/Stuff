@@ -1,6 +1,10 @@
 #include <blib/graphics/rendercontext.h>
 
+#include<stdexcept>
+
 #include <blib/graphics/camera.h>
+#include <blib/graphics/shader.h>
+
 
 blib::graphics::RenderContext::RenderContext()
 {
@@ -9,7 +13,7 @@ blib::graphics::RenderContext::RenderContext()
 }
 
 
-void blib::graphics::RenderContext::applyTransform(const Transformable& transformable)
+void blib::graphics::RenderContext::applyTransform(const Transform& transformable)
 {
     //this->api.ogl.__blib_glRotatef(-transformable.getRotation().x, 1, 0, 0);
     //this->api.ogl.__blib_glRotatef(-transformable.getRotation().y, 0, 1, 0);
@@ -33,7 +37,7 @@ void blib::graphics::RenderContext::sendVievMatrixToShaderProgram()
     const void* pViewMatrix = static_cast<const void*>(&(this->pCamera->getViewMatrix().data));
     
     if (location == -1)
-        throw std::exception("no location for view matrix uniform");
+        throw std::runtime_error("no location for view matrix uniform");
     this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_TRUE, reinterpret_cast<const GLfloat*>(pViewMatrix));
 }
 
@@ -49,17 +53,17 @@ void blib::graphics::RenderContext::sendProjectionMatrixToShaderProgram()
     const void* pProjectionMatrix = static_cast<const void*>(&(this->pCamera->getProjectionMatrix().data));
 
     if (location == -1)
-        throw std::exception("no location for projection matrix uniform");
+        throw std::runtime_error("no location for projection matrix uniform");
     this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_TRUE, reinterpret_cast<const GLfloat*>(pProjectionMatrix));
 }
 
-void blib::graphics::RenderContext::sendModelMatrixToShaderProgram(const blib::graphics::Transform& modelMatix)
+void blib::graphics::RenderContext::sendModelMatrixToShaderProgram(const blib::graphics::TransformMatrix& modelMatix)
 {
     GLint location = this->api.ogl.ext.__blib_gl_glGetUniformLocation(this->lastShader->getContext(), "gModelMatrix");
 
     const void* pModelMatrix = static_cast<const void*>(&(modelMatix.data));
 
     if (location == -1)
-        throw std::exception("no location for projection matrix uniform");
+        throw std::runtime_error("no location for projection matrix uniform");
     this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_TRUE, reinterpret_cast<const GLfloat*>(pModelMatrix));
 }

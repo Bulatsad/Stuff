@@ -1,145 +1,11 @@
 #include <blib/graphics/transformable.h>
 #include <blib/math/utilfuncs.h>
 
-blib::graphics::Transformable::Transformable() :
-    m_origin(0, 0, 0),
-    m_position(0, 0 , 0),
-    m_rotation(0, 0, 0),
-    m_scale(1, 1, 1),
-    m_transform(),
-    m_transformNeedUpdate(true)
+
+
+const blib::graphics::TransformMatrix& blib::graphics::ITransformable::getTransform() const
 {
-    this->m_transform = blib::graphics::Identity;
-}
-
-blib::graphics::Transformable::~Transformable()
-{
-}
-
-void blib::graphics::Transformable::setPosition(float x, float y)
-{
-    m_position.x = x;
-    m_position.y = y;
-    m_transformNeedUpdate = true;
-}
-
-void blib::graphics::Transformable::setPosition(float x, float y, float z)
-{
-    m_position.x = x;
-    m_position.y = y;
-    m_position.z = z;
-    m_transformNeedUpdate = true;
-}
-
-void blib::graphics::Transformable::setPosition(const blib::graphics::Vector2f& position)
-{
-    setPosition(position.x, position.y);
-}
-
-void blib::graphics::Transformable::setScale(float factorX, float factorY)
-{
-    setScale(factorX, factorY, 1.f);
-}
-
-void blib::graphics::Transformable::setScale(float factorX, float factorY, float factorZ)
-{
-    m_scale.x = factorX;
-    m_scale.y = factorY;
-    m_scale.z = factorZ;
-    m_transformNeedUpdate = true;
-}
-
-void blib::graphics::Transformable::setScale(const blib::graphics::Vector2f& factors)
-{
-    setScale(factors.x, factors.y);
-}
-
-void blib::graphics::Transformable::setOrigin(float x, float y)
-{
-    m_origin.x = x;
-    m_origin.y = y;
-    m_transformNeedUpdate = true;
-}
-
-void blib::graphics::Transformable::setOrigin(const blib::graphics::Vector2f& origin)
-{
-    setOrigin(origin.x, origin.y);
-}
-
-void blib::graphics::Transformable::setRotation(float x, float y, float z)
-{
-    m_rotation.x = x;
-    m_rotation.y = y;
-    m_rotation.z = z;
-
-    m_transformNeedUpdate = true;
-}
-
-void blib::graphics::Transformable::rotateX(float angle)
-{
-    this->m_rotation.x = blib::math::fmod(this->m_rotation.x + angle, 360.f);
-
-    m_transformNeedUpdate = true;
-}
-
-void blib::graphics::Transformable::rotateY(float angle)
-{
-    this->m_rotation.y = blib::math::fmod(this->m_rotation.y + angle, 360.f);
-
-    m_transformNeedUpdate = true;
-}
-
-void blib::graphics::Transformable::rotateZ(float angle)
-{
-    this->m_rotation.z = blib::math::fmod(this->m_rotation.z + angle, 360.f);
-
-    m_transformNeedUpdate = true;
-}
-
-const blib::graphics::Vector3f& blib::graphics::Transformable::getPosition() const
-{
-    return m_position;
-}
-
-const blib::graphics::Vector3f& blib::graphics::Transformable::getRotation() const
-{
-    return m_rotation;
-}
-
-const blib::graphics::Vector3f& blib::graphics::Transformable::getScale() const
-{
-    return m_scale;
-}
-
-const blib::graphics::Vector3f& blib::graphics::Transformable::getOrigin() const
-{
-    return m_origin;
-}
-
-void blib::graphics::Transformable::move(float offsetX, float offsetY, float offsetZ)
-{
-    setPosition(m_position.x + offsetX, m_position.y + offsetY, m_position.z + offsetZ);
-}
-
-void blib::graphics::Transformable::move(const blib::graphics::Vector3f& offset)
-{
-    setPosition(m_position.x + offset.x, m_position.y + offset.y, m_position.z + offset.z);
-}
-
-void blib::graphics::Transformable::scale(float factorX, float factorY)
-{
-    setScale(m_scale.x * factorX, m_scale.y * factorY);
-}
-
-void blib::graphics::Transformable::scale(const blib::graphics::Vector2f& factor)
-{
-    setScale(m_scale.x * factor.x, m_scale.y * factor.y);
-}
-
-
-const blib::graphics::Transform& blib::graphics::Transformable::getTransform() const
-{
-    if (m_transformNeedUpdate)
+    if (this->matrixNeedUpdate)
     {
         //float angle = -m_rotation.z * 3.141592654f / 180.f;
         //float cosine = std::cos(angle);
@@ -156,46 +22,62 @@ const blib::graphics::Transform& blib::graphics::Transformable::getTransform() c
         //                        0.f,  0.f, 1.f);
         //m_transformNeedUpdate = false;
 
-        Transform xrotate = blib::graphics::Identity;
-        Transform yrotate = blib::graphics::Identity;
-        Transform zrotate = blib::graphics::Identity;
+        TransformMatrix xrotate = blib::graphics::Identity;
+        TransformMatrix yrotate = blib::graphics::Identity;
+        TransformMatrix zrotate = blib::graphics::Identity;
 
-        Transform translate;
+        TransformMatrix translate;
         //translate.m_matrix[12] = this->m_position.x;
         //translate.m_matrix[13] = this->m_position.y;
         //translate.m_matrix[14] = this->m_position.z;
 
-        translate.data[0][3] = this->m_position.x;
-        translate.data[1][3] = this->m_position.y;
-        translate.data[2][3] = this->m_position.z;
+        translate.data[0][3] = this->transformData.getPosition().x;
+        translate.data[1][3] = this->transformData.getPosition().y;
+        translate.data[2][3] = this->transformData.getPosition().z;
 
-        if (this->m_rotation.x != 0)
+        if (this->transformData.getRotation().x != 0)
         {
-            Transform dfwerotate;
+            TransformMatrix dfwerotate;
         }
         //xrotate.rotateX(this->m_rotation.x);
         //yrotate.rotateY(this->m_rotation.y);
         //zrotate.rotateZ(this->m_rotation.z);
 
-        xrotate = blib::graphics::rotateX(xrotate, this->m_rotation.x);
-        yrotate = blib::graphics::rotateY(yrotate, this->m_rotation.y);
-        zrotate = blib::graphics::rotateZ(zrotate, this->m_rotation.z);
+        xrotate = blib::graphics::rotateX(xrotate, this->transformData.getRotation().x);
+        yrotate = blib::graphics::rotateY(yrotate, this->transformData.getRotation().y);
+        zrotate = blib::graphics::rotateZ(zrotate, this->transformData.getRotation().z);
 
-        this->m_transform = xrotate * yrotate * zrotate * translate;
+        this->transformMatrix = xrotate * yrotate * zrotate * translate;
         //this->m_transform.m_matrix[12] = this->m_position.x;
         //this->m_transform.m_matrix[13] = this->m_position.y;
         //this->m_transform.m_matrix[14] = this->m_position.z;
 
-        m_transformNeedUpdate = false;
+        this->matrixNeedUpdate = false;
     }
 
-    return m_transform;
+    return transformMatrix;
 }
 
-void blib::graphics::Transformable::setTransform(const Transform& transform)
+void blib::graphics::ITransformable::setTransform(const TransformMatrix& transform)
 {
-    this->m_transform = transform;
-    blib::graphics::decomposeMatrix(this->m_transform, this->m_position, this->m_rotation, this->m_scale);
-    this->m_transformNeedUpdate = false;
+    this->transformMatrix = transform;
+    blib::graphics::decomposeMatrix(this->transformMatrix, this->transformData);
+    this->matrixNeedUpdate = false;
 }
 
+blib::graphics::Vector3f blib::graphics::ITransformable::transform(const Vector3f& point) const
+{
+    blib::math::Matrix<float, 1, 4>temp;
+    temp.data[0][0] = point.x;
+    temp.data[0][1] = point.x;
+    temp.data[0][2] = point.x;
+    temp.data[0][3] = 1;
+
+    blib::math::Matrix<float, 1, 4> resMat3 = this->getTransform() * temp;
+    
+    Vector3f res;
+    res.x = resMat3.data[0][0];
+    res.y = resMat3.data[0][1];
+    res.z = resMat3.data[0][2];
+    return res;
+}

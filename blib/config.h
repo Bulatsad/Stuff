@@ -45,3 +45,8 @@
 #define __blib_include_implementation(_include) _include
 
 #endif // blib_export
+
+#ifndef __blib_unsafe
+#define __blib_unsafe
+#endif // !__blib_unsafe
+

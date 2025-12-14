@@ -19,11 +19,11 @@ namespace blib
         * 
         * implement Transormable
         */
-        class __blib_api Camera : public Transformable
+        class __blib_api Camera : public Transform
         {
         private:
-            blib::graphics::Transform projectionMatrix;
-            blib::graphics::Transform viewMatrix;
+            blib::graphics::TransformMatrix projectionMatrix;
+            blib::graphics::TransformMatrix viewMatrix;
             blib::math::Vector<float, 3> right;
             blib::math::Vector<float, 3> up = { 0,1,0 };
             blib::math::Vector<float, 3> front;
@@ -47,8 +47,8 @@ namespace blib
             // farDist - far distance of cutting off
             void setPerpective(const blib::math::AngleDegreef& fov, float aspect, float nearDist, float farDist);
 
-            const blib::graphics::Transform& getProjectionMatrix() const;
-            const blib::graphics::Transform& getViewMatrix() const;
+            const blib::graphics::TransformMatrix& getProjectionMatrix() const;
+            const blib::graphics::TransformMatrix& getViewMatrix() const;
 
             void controlUpdate(float deltaTime,  RenderWindow& wnd);
 

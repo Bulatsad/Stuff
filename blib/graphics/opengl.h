@@ -87,8 +87,12 @@ typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDrawArrays)(GL
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glViewport)(GLint x, GLint y, GLsizei width, GLsizei height);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glUniformMatrix4fv)(GLint location, GLsizei count, GLboolean transpose, const GLfloat* value);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDrawElements)(GLenum mode, GLsizei count, GLenum type, const void* indices);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDeleteTextures)(GLsizei n, const GLuint* textures);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glGenTextures)(GLsizei n, GLuint* textures);
 
-
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glTexParameteri)(GLenum target, GLenum pname, GLint param);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glTexImage2D)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void* data);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glFlush)(void);
 
 
 namespace blib
@@ -126,6 +130,11 @@ namespace blib
             __blib_gl_signature_glDrawArrays __blib_gl_glDrawArrays = nullptr;
             __blib_gl_signature_glUniformMatrix4fv __blib_gl_glUniformMatrix4fv = nullptr;
             __blib_gl_signature_glDrawElements __blib_gl_glDrawElements = nullptr;
+            __blib_gl_signature_glDeleteTextures __blib_gl_glDeleteTextures = nullptr;
+            __blib_gl_signature_glGenTextures __blib_gl_glGenTextures = nullptr;
+            __blib_gl_signature_glTexParameteri __blib_gl_glTexParameteri = nullptr;
+            __blib_gl_signature_glTexImage2D __blib_gl_glTexImage2D = nullptr;
+            __blib_gl_signature_glFlush __blib_gl_glFlush = nullptr;
         };
 
         struct __blib_api ogl_s
