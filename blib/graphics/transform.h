@@ -2,34 +2,57 @@
 
 #include <blib/config.h>
 
-#include <blib/math/matrix.h>
-#include <blib/graphics/rect.h>
 #include <blib/graphics/vector.h>
 
 namespace blib
 {
     namespace graphics
     {
-        typedef blib::math::Matrix<float, 4, 4> Transform;
-        static const Transform Identity = blib::graphics::Transform({ 1, 0, 0, 0,
-                                                                      0, 1, 0, 0,
-                                                                      0, 0, 1, 0,
-                                                                      0, 0, 0, 1 });
-
-        //Transform getInverse() const;
+        class __blib_api Transform
+        {
+        private:
+            Vector3f          origin;
+            Vector3f          position;
+            Vector3f          rotation;
+            Vector3f          scale;
         
-        //Vector2f transformPoint(float x, float y) const;
-        //Vector2f transformPoint(const Vector2f& point) const;
-        
-        //FloatRect transformRect(const FloatRect& rectangle) const;
+        public:
+            Transform();
 
-        Transform rotateX(const Transform& matrix, float angle);
-        Transform rotateY(const Transform& matrix, float angle);
-        Transform rotateZ(const Transform& matrix, float angle);
+            void setPosition(float x, float y, float z);
+            void setPosition(const Vector3f& position);
 
-        Transform lookAt(const blib::graphics::Vector3f& camera, const blib::graphics::Vector3f& target, const blib::graphics::Vector3f& worldUp);
-        
-        void decomposeMatrix(const Transform& matrix, Vector3f& position, Vector3f& rotation, Vector3f& scale);
+            void scaleX(float factorX);
+            void scaleY(float factorY);
+            void scaleZ(float factorZ);
+            void setScale(float factorX, float factorY, float factorZ);
+            void setScale(const Vector3f& factors);
 
+            void setOrigin(float x, float y, float z);
+            void setOrigin(const Vector3f& origin);
+
+            void setRotation(float x, float y, float z);
+
+            void rotateX(float angle);
+            void rotateY(float angle);
+            void rotateZ(float angle);
+
+            const Vector3f& getPosition() const;
+            Vector3f& getPosition();
+
+            const Vector3f& getRotation() const;
+            Vector3f& getRotation();
+
+            const Vector3f& getScale() const;
+            Vector3f& getScale();
+
+            const Vector3f& getOrigin() const;
+            Vector3f& getOrigin();
+
+            void move(float offsetX, float offsetY, float offsetZ);
+            void move(const Vector3f& offset);
+
+            Vector3f transform(const Vector3f& point) const;
+        };
     }
 }

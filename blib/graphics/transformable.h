@@ -1,69 +1,79 @@
  #pragma once
 
 #include <blib/config.h>
+#include <blib/inline.h>
 
 #include <blib/graphics/vector.h>
 #include <blib/graphics/transform.h>
+#include <blib/graphics/transformMatrix.h>
 
 namespace blib
 {
     namespace graphics
     {
-        class __blib_api Transformable 
+        class __blib_api ITransformable
         {
+        private:
+            blib::graphics::Transform transformData;
+            mutable blib::graphics::TransformMatrix transformMatrix;
+            mutable bool matrixNeedUpdate = false;
         public:
 
-            Transformable();
+            ITransformable() {}
+            virtual ~ITransformable() {}
 
-            virtual ~Transformable();
+            __blib_force_inline void setPosition(float x, float y, float z)
+            {
+                this->matrixNeedUpdate = true;
+                this->transformData.setPosition(x, y, z);
+            }
+            __blib_force_inline void setPosition(const Vector3f& position);
 
-            void setPosition(float x, float y);
-            void setPosition(float x, float y, float z);
-            void setPosition(const Vector2f& position);
+            __blib_force_inline void setScale(float factorX, float factorY, float factorZ);
+            __blib_force_inline void setScale(const Vector3f& factors);
 
-            void setScale(float factorX, float factorY);
-            void setScale(float factorX, float factorY, float factorZ);
-            void setScale(const Vector2f& factors);
+            __blib_force_inline void setOrigin(float x, float y, float z);
+            __blib_force_inline void setOrigin(const Vector3f& origin);
 
-            void setOrigin(float x, float y);
-            void setOrigin(const Vector2f& origin);
+            __blib_force_inline void setRotation(float x, float y, float z)
+            {
+                this->matrixNeedUpdate = true;
+                this->transformData.setRotation(x, y, z);
+            }
+            __blib_force_inline void setRotation(const Vector3f& origin);
 
-            void setRotation(float x, float y, float z);
+            __blib_force_inline void rotateX(float angle);
+            __blib_force_inline void rotateY(float angle);
+            __blib_force_inline void rotateZ(float angle);
 
-            void rotateX(float angle);
-            void rotateY(float angle);
-            void rotateZ(float angle);
+            __blib_force_inline const Vector3f& getPosition() const;
+            __blib_force_inline Vector3f& getPosition();
 
-            const Vector3f& getPosition() const;
+            __blib_force_inline const Vector3f& getRotation() const;
+            __blib_force_inline Vector3f& getRotation();
 
-            const Vector3f& getRotation() const;
+            __blib_force_inline const Vector3f& getScale() const;
+            __blib_force_inline Vector3f& getScale();
 
-            const Vector3f& getScale() const;
+            __blib_force_inline const Vector3f& getOrigin() const;
+            __blib_force_inline Vector3f& getOrigin();
 
-            const Vector3f& getOrigin() const;
+            __blib_force_inline void move(float offsetX, float offsetY, float offsetZ)
+            {
+                this->matrixNeedUpdate = true;
+                this->transformData.move(offsetX, offsetY, offsetZ);
+            }
+            __blib_force_inline void move(const Vector3f& offset);
 
-            void move(float offsetX, float offsetY, float offsetZ);
-            void move(const Vector3f& offset);
-
-            void scale(float factorX, float factorY);
-            void scale(const Vector2f& factor);
-
-            virtual const Transform& getTransform() const;
-            void setTransform(const Transform& transform);
+            virtual const TransformMatrix& getTransform() const;
+            void setTransform(const TransformMatrix& transform);
 
             bool isNeedToRecalculate() const
             {
-                return this->m_transformNeedUpdate;
+                return this->matrixNeedUpdate;
             }
 
-        private:
-
-            Vector3f          m_origin;                    
-            Vector3f          m_position;                  
-            Vector3f          m_rotation;
-            Vector3f          m_scale;                     
-            mutable Transform m_transform;                 
-            mutable bool      m_transformNeedUpdate;       
+            Vector3f transform(const Vector3f& point) const;
         };
     }
 }

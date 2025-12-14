@@ -30,7 +30,7 @@ namespace blib
             TriangleStrip = 0x10
         };
 
-        class __blib_api Mesh : public blib::graphics::IDrawable, public blib::graphics::Transformable
+        class __blib_api Mesh : public blib::graphics::IDrawable, public blib::graphics::ITransformable
         {
         private:
             void* ctx;
@@ -50,7 +50,7 @@ namespace blib
             std::vector<blib::graphics::Vector3f>textureCoords;
             std::vector<blib::graphics::Color>colors;
             std::vector<beng::graphics::Face>faces;
-            blib::graphics::Material material;
+            mutable blib::graphics::Material material;
 
             void loadFromAssimpMesh(const aiMesh* paimesh);
 

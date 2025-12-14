@@ -2,26 +2,22 @@
 
 #include <vector>
 
-#include <blib/config.h>
 #include <blib/graphics/transformable.h>
+
+#include <beng/config.h>
 #include <beng/graphics/scene.h>
+#include <beng/graphics/hierarchal.h>
 
 namespace beng
 {
     namespace graphics
     {
-        class __blib_api GameObject
+        class __beng_api GameObject : public blib::graphics::ITransformable, public beng::graphics::IHierarchal
         {
         public:
             virtual ~GameObject();
 
-            void setParent(beng::graphics::GameObject* pGO);
-            const beng::graphics::GameObject* getParent() const;
-            beng::graphics::GameObject* getParent();
 
-            bool addChild(beng::graphics::GameObject* pGO);
-            const std::vector<const beng::graphics::GameObject*>getChilds() const;
-            const std::vector<beng::graphics::GameObject*>getChilds();
 
             //const std::vector<beng::graphics::IComponent*> getComponents();
             //const std::vector<const beng::graphics::IComponent *const>& getComponents() const;
@@ -31,8 +27,7 @@ namespace beng
             //IComponent* addComponent();
 
         protected:
-            beng::graphics::GameObject* parent = nullptr;
-            std::vector<beng::graphics::GameObject*>childs;
+
             //std::vector<beng::graphics::IComponent*>components;
 
         };

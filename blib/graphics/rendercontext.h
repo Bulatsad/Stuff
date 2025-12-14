@@ -5,17 +5,17 @@
 
 #include <blib/math/matrix.h>
 #include <blib/graphics/transformable.h>
-#include <blib/graphics/shader.h>
 
 namespace blib
 {
     namespace graphics
     {
         class __blib_api Camera;
+        class __blib_api ShaderProgram;
         class __blib_api RenderContext
         {
         public:
-            Transform transform;
+            TransformMatrix transform;
 
             const blib::graphics::Camera* pCamera = nullptr; // TODO : Make it array to split wnd 
 
@@ -31,10 +31,10 @@ namespace blib
             void setShaderProgram(blib::graphics::ShaderProgram* pShaderProgram);
             void sendVievMatrixToShaderProgram();
             void sendProjectionMatrixToShaderProgram();
-            void sendModelMatrixToShaderProgram(const blib::graphics::Transform& modelMatix);
+            void sendModelMatrixToShaderProgram(const blib::graphics::TransformMatrix& modelMatix);
             void setCamera(const blib::graphics::Camera* a_pCamera);
 
-            void applyTransform(const Transformable& transform);
+            void applyTransform(const Transform& transform);
 
         };
     }

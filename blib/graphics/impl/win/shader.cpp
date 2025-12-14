@@ -15,7 +15,7 @@ static GLenum blibShaderTypeToOpenGLShaderType(const blib::graphics::Shader::Typ
         case blib::graphics::Shader::Type::vertex:
             return GL_VERTEX_SHADER;
     default:
-        throw new std::exception();
+        throw new std::runtime_error("");
     }
 }
 
@@ -80,7 +80,7 @@ int blib::graphics::Shader::compile()
     if (__blib_this_context(this)->shaderType == GL_NONE_SHADER)
     {
         std::cerr << "Invalid shader type";
-        throw new std::exception("Invalid shader type");
+        throw new std::runtime_error("Invalid shader type");
         return EXIT_FAILURE;
     }
 
@@ -90,7 +90,7 @@ int blib::graphics::Shader::compile()
     if (!fin.is_open())
     {
         std::cerr << "Can not open shader file";
-        throw new std::exception("Can not open shader file");
+        throw new std::runtime_error("Can not open shader file");
     }
 
     fin.seekg(0, std::ios::end);

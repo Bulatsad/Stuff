@@ -28,7 +28,7 @@ void* blib::graphics::RenderApi::getprocaddr(const char* fname)
 
         std::cerr << "Error on loading opengl function. Function name: " << fname << std::endl;
         std::cerr << "Cause : " << message << std::endl;
-        throw new std::exception("Error on loading opengl function");
+        throw new std::runtime_error("Error on loading opengl function");
 
 
     }

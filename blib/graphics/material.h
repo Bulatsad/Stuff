@@ -9,13 +9,15 @@
 #include <blib/core/folder.h>
 #include <blib/graphics/vector.h>
 #include <blib/graphics/texture.h>
+#include <blib/graphics/image.h>
+#include <blib/graphics/rendercontext.h>
 
 namespace blib
 {
     namespace graphics
     {
-        class __beng_api Material {
-
+        class __beng_api Material 
+        {
         public:
 
             std::string m_name;
@@ -29,11 +31,14 @@ namespace blib
             blib::graphics::Texture diffuse; // base color of the material
             blib::graphics::Texture pSpecularExponent;
 
+            blib::graphics::Image diffuseImage; // base color of the material
+
             float m_transparencyFactor = 1.0f;
             float m_alphaTest = 0.0f;
 
             void loadFromAssimpMaterial(const aiMaterial* pmaterial, const blib::core::Folder& folder);
             int loadDiffuseTextureFromAssimp(const aiMaterial* pmaterial, const blib::core::Folder& folder);
+            bool bake(blib::graphics::RenderContext& ctx);
 
             ~Material()
             {

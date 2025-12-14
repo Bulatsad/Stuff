@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <climits>
 
 static_assert(sizeof(uint8_t)  == 1, "incorrect base datatype size");
 static_assert(sizeof(uint16_t) == 2, "incorrect base datatype size");
@@ -21,3 +22,13 @@ typedef int8_t   bint8;
 typedef int16_t  bint16;
 typedef int32_t  bint32;
 typedef int64_t  bint64;
+
+constexpr bint8  bint8Max  = UINT8_MAX;
+constexpr bint16 bint16Max = UINT8_MAX;
+constexpr bint32 bint32Max = UINT8_MAX;
+constexpr bint64 bint64Max = UINT8_MAX;
+
+constexpr buint8  buint8Max  = UINT8_MAX;
+constexpr buint16 buint16Max = UINT16_MAX;
+constexpr buint32 buint32Max = UINT32_MAX;
+constexpr buint64 buint64Max = UINT64_MAX;
