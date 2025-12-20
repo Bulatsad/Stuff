@@ -96,9 +96,9 @@ int main()
     wnd.setCamera(&camera);
     camera.setPerpective(60, static_cast<float>(wnd.getWight()) / static_cast<float>(wnd.getHeight()), 0.1, 1000);
     camera.setPosition(0, 0, 0);
-
+    
     blib::graphics::Mesh mesh;
-
+    
     //mesh.vertices.push_back({ -0.5f, -0.5f, 0.0f });
     //mesh.vertices.push_back({ 0.5f, -0.5f, 0.0f });
     //mesh.vertices.push_back({ 0.0f,  0.5f, 0.0f });
@@ -116,15 +116,15 @@ int main()
     txr.create(img, wnd.rc);
     spr.setTexture(txr);
 
-    Assimp::Importer importer;
+        Assimp::Importer importer;
 
     std::string objectfilename = "M:\\Stuff\\obj_spider\\boblampclean.md5mesh";
 
     const aiScene* pscene = importer.ReadFile(objectfilename,
-        aiPostProcessSteps::aiProcess_CalcTangentSpace |
-        aiPostProcessSteps::aiProcess_Triangulate |
+        aiPostProcessSteps::aiProcess_CalcTangentSpace      |
+        aiPostProcessSteps::aiProcess_Triangulate           |
         aiPostProcessSteps::aiProcess_JoinIdenticalVertices |
-        aiPostProcessSteps::aiProcess_SortByPType |
+        aiPostProcessSteps::aiProcess_SortByPType           |
         aiPostProcessSteps::aiProcess_PopulateArmatureData
     );
     if (!pscene)
@@ -157,20 +157,20 @@ int main()
         {
             wnd.close();
         }
-
+    
         wnd.clear();
         wnd.update();
-
+    
         camera.controlUpdate(deltatime, wnd);
 
-        model.meshes[0].rotateZ(deltatime * 10);
+        model.rotateZ(deltatime * 10);
 
         std::cout << camera.getPosition().x << " " << camera.getPosition().y << " " << camera.getPosition().z << std::endl;
 
         //wnd.draw(mesh);
         wnd.draw(model);
         //wnd.draw(spr);
-
+    
         wnd.display();
     }
 
