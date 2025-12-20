@@ -42,9 +42,21 @@ namespace blib
             }
             __blib_force_inline void setRotation(const Vector3f& origin);
 
-            __blib_force_inline void rotateX(float angle);
-            __blib_force_inline void rotateY(float angle);
-            __blib_force_inline void rotateZ(float angle);
+            __blib_force_inline void rotateX(float angle)
+            {
+                this->matrixNeedUpdate = true;
+                this->transformData.rotateX(angle);
+            }
+            __blib_force_inline void rotateY(float angle)
+            {
+                this->matrixNeedUpdate = true;
+                this->transformData.rotateY(angle);
+            }
+            __blib_force_inline void rotateZ(float angle)
+            {
+                this->matrixNeedUpdate = true;
+                this->transformData.rotateZ(angle);
+            }
 
             __blib_force_inline const Vector3f& getPosition() const;
             __blib_force_inline Vector3f& getPosition();
