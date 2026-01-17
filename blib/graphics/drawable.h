@@ -9,7 +9,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api RenderTarget;
+        class __blib_api IRenderTarget;
 
         class __blib_api IDrawable
         {
@@ -19,7 +19,7 @@ namespace blib
         //protected:
             //friend class RenderTarget;
 
-            virtual void draw(RenderTarget& target, RenderContext& ctx) const = 0;
+            virtual void draw(RenderContext& ctx) const = 0;
         };
     }
 }

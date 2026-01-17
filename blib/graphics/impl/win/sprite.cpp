@@ -44,9 +44,9 @@ void blib::graphics::Sprite::setTexture(const blib::graphics::Texture& texture)
     this->mesh.material.diffuse = texture;
 }
 
-void blib::graphics::Sprite::draw(RenderTarget& target, blib::graphics::RenderContext& ctx) const
+void blib::graphics::Sprite::draw(blib::graphics::RenderContext& ctx) const
 {
-    this->mesh.draw(target, ctx);
+    this->mesh.draw(ctx);
 
     //glEnable(GL_TEXTURE_2D);
 

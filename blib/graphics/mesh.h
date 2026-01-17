@@ -39,7 +39,7 @@ namespace blib
             mutable blib::graphics::Shader fragmentShader;
             mutable blib::graphics::Shader vertexShader;
             mutable blib::graphics::ShaderProgram drawer;
-            void bake(blib::graphics::RenderTarget& target, blib::graphics::RenderContext& ctx) const;
+            void bake(blib::graphics::RenderContext& ctx) const;
         public:
             Mesh();
             bool ngonencoding = false;
@@ -55,7 +55,7 @@ namespace blib
             void loadFromAssimpMesh(const aiMesh* paimesh);
 
             // Унаследовано через IDrawable
-            virtual void draw(blib::graphics::RenderTarget& target, blib::graphics::RenderContext& ctx) const override;
+            virtual void draw(blib::graphics::RenderContext& ctx) const override;
         };
     }
 }

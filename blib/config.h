@@ -50,3 +50,7 @@
 #define __blib_unsafe
 #endif // !__blib_unsafe
 
+
+//Current render api
+#define __blib_render_api_opengl
+

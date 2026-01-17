@@ -35,6 +35,11 @@ void __blib_glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
     glRotatef(angle, x, y, z);
 }
 
+void __blib_glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
+{
+    glViewport(x, y, width, height);
+}
+
 void blib::graphics::RenderApi::InitGraphicsApi()
 {
     //this->__blib_glBegin         = static_cast<__blib_gl_signature_glBegin>     (getprocaddr("glBegin"));
@@ -57,7 +62,7 @@ void blib::graphics::RenderApi::InitGraphicsApi()
     this->ogl.__blib_glVertex3f     = &glVertex3f;            //static_cast<__blib_gl_signature_glVertex3f>(getprocaddr("glVertex3f"));
     this->ogl.__blib_glRotatef      = &__blib_glRotatef;      //static_cast<__blib_gl_signature_glRotatef>(getprocaddr("glRotatef"));
     this->ogl.__blib_glTranslatef   = &glTranslatef;          //static_cast<__blib_gl_signature_glTranslatef>(getprocaddr("glTranslatef"));
-    this->ogl.__blib_glViewport     = &glViewport; 
+    this->ogl.__blib_glViewport     = &__blib_glViewport;
     this->ogl.__blib_glLoadIdentity = &__blib_glLoadIdentity;
     this->ogl.__blib_glPushMatrix   = &__blib_glPushMatrix;
     this->ogl.__blib_glPopMatrix    = &__blib_glPopMatrix;
@@ -96,4 +101,14 @@ void blib::graphics::RenderApi::InitGraphicsApi()
     this->ogl.ext.__blib_gl_glTexParameteri = &glTexParameteri;//static_cast<__blib_gl_signature_glTexParameteri>(getprocaddr("glTexParameteri"));
     this->ogl.ext.__blib_gl_glTexImage2D = &glTexImage2D;//static_cast<__blib_gl_signature_glTexImage2D>(getprocaddr("glTexImage2D"));
     this->ogl.ext.__blib_gl_glFlush = &glFlush;//static_cast<__blib_gl_signature_glFlush>(getprocaddr("glFlush"));
+    this->ogl.ext.__blib_gl_glGenFramebuffers = static_cast<__blib_gl_signature_glGenFramebuffers>(getprocaddr("glGenFramebuffers"));
+    this->ogl.ext.__blib_gl_glBindFramebuffer = static_cast<__blib_gl_signature_glBindFramebuffer>(getprocaddr("glBindFramebuffer"));
+
+    this->ogl.ext.__blib_gl_glGenRenderbuffers = static_cast<__blib_gl_signature_glGenRenderbuffers>(getprocaddr("glGenRenderbuffers"));
+    this->ogl.ext.__blib_gl_glBindRenderbuffer = static_cast<__blib_gl_signature_glBindRenderbuffer>(getprocaddr("glBindRenderbuffer"));
+    this->ogl.ext.__blib_gl_glRenderbufferStorage = static_cast<__blib_gl_signature_glRenderbufferStorage>(getprocaddr("glRenderbufferStorage"));
+    this->ogl.ext.__blib_gl_glFramebufferRenderbuffer = static_cast<__blib_gl_signature_glFramebufferRenderbuffer>(getprocaddr("glFramebufferRenderbuffer"));
+    this->ogl.ext.__blib_gl_glFramebufferTexture2D = static_cast<__blib_gl_signature_glFramebufferTexture2D>(getprocaddr("glFramebufferTexture2D"));
+    this->ogl.ext.__blib_gl_glBlitFramebuffer = static_cast<__blib_gl_signature_glBlitFramebuffer>(getprocaddr("glBlitFramebuffer"));
+
 }

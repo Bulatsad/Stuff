@@ -50,7 +50,7 @@ blib::graphics::Mesh beng::graphics::Model::bakeMeshes(const std::vector<blib::g
     return res;
 }
 
-void beng::graphics::Model::draw(blib::graphics::RenderTarget& target, blib::graphics::RenderContext& ctx) const
+void beng::graphics::Model::draw(blib::graphics::RenderContext& ctx) const
 {
     const blib::graphics::TransformMatrix transform = this->getTransform();
     for (auto& mesh : this->meshes)
@@ -58,7 +58,7 @@ void beng::graphics::Model::draw(blib::graphics::RenderTarget& target, blib::gra
         blib::graphics::TransformMatrix meshTransformCopy = mesh.getTransform();
         blib::graphics::TransformMatrix meshTransform = transform * meshTransformCopy;
         mesh.setTransform(meshTransform);
-        mesh.draw(target, ctx);
+        mesh.draw(ctx);
         mesh.setTransform(meshTransformCopy);
     }
     //this->meshes[0].draw(target, ctx);

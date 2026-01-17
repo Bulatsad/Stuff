@@ -131,7 +131,7 @@ void blib::graphics::Mesh::loadFromAssimpMesh(const aiMesh* paimesh)
 
 }
 
-void blib::graphics::Mesh::bake(blib::graphics::RenderTarget& target, blib::graphics::RenderContext& ctx) const
+void blib::graphics::Mesh::bake(blib::graphics::RenderContext& ctx) const
 {
     // create VAO
     ctx.api.ogl.ext.__blib_glGenVertexArrays(1, &(__blib_this_context(this)->vao));
@@ -207,10 +207,10 @@ blib::graphics::Mesh::Mesh()
     memset(this->ctx, 0, sizeof(oglMeshContext));
 }
 
-void blib::graphics::Mesh::draw(blib::graphics::RenderTarget& target, blib::graphics::RenderContext& ctx) const
+void blib::graphics::Mesh::draw(blib::graphics::RenderContext& ctx) const
 {
     if (!(this->baked))
-        this->bake(target, ctx);
+        this->bake(ctx);
 
     ctx.setShaderProgram(&(this->drawer));
     ctx.sendVievMatrixToShaderProgram();
@@ -218,7 +218,7 @@ void blib::graphics::Mesh::draw(blib::graphics::RenderTarget& target, blib::grap
     ctx.sendModelMatrixToShaderProgram(this->getTransform());
 
     ctx.api.ogl.ext.__blib_gl_glActiveTexture(GL_TEXTURE0);
-    ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, *((GLuint*)this->material.diffuse.getContext()));
+    ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, this->material.diffuse.getContext().textureID);
     GLint samplerPos = ctx.api.ogl.ext.__blib_gl_glGetUniformLocation(this->drawer.getContext(), "textureSampler");
     ctx.api.ogl.ext.__blib_gl_glUniform1i(samplerPos, 0);
 

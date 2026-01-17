@@ -17,7 +17,7 @@ namespace blib
         public:
             TransformMatrix transform;
 
-            const blib::graphics::Camera* pCamera = nullptr; // TODO : Make it array to split wnd 
+            blib::graphics::Camera* pCamera = nullptr; // TODO : Make it array to split wnd // REDO : Spliting by viewports
 
             blib::math::Matrix<float, 4, 4>vievMatrix;
             blib::math::Matrix<float, 4, 4>projectionMatrix;
@@ -32,7 +32,7 @@ namespace blib
             void sendVievMatrixToShaderProgram();
             void sendProjectionMatrixToShaderProgram();
             void sendModelMatrixToShaderProgram(const blib::graphics::TransformMatrix& modelMatix);
-            void setCamera(const blib::graphics::Camera* a_pCamera);
+            void setCamera(blib::graphics::Camera* a_pCamera);
 
             void applyTransform(const Transform& transform);
 

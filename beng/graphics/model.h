@@ -28,7 +28,7 @@ namespace beng
             static blib::graphics::Mesh bakeMeshes(const std::vector<blib::graphics::Mesh>& meshes);
 
             // Унаследовано через IDrawable
-            virtual void draw(blib::graphics::RenderTarget& target, blib::graphics::RenderContext& ctx) const override;
+            virtual void draw(blib::graphics::RenderContext& ctx) const override;
         };
     }
 }

@@ -7,6 +7,18 @@
 #include <blib/graphics/image.h>
 #include <blib/graphics/rendercontext.h>
 
+#ifdef __blib_render_api_opengl
+// texture platform depended (PD) context 
+static struct win_gl_TexturePDCtx
+{
+    GLuint textureID = 0;
+};
+typedef win_gl_TexturePDCtx TexturePDCtx;
+#endif // __blib_render_api_opengl
+
+// blib abstracted texture context type
+typedef TexturePDCtx TextureCtx;
+
 namespace blib
 {
     namespace graphics
@@ -15,7 +27,7 @@ namespace blib
         class __blib_api Texture
         {
         private:
-            void* ctx;
+            TexturePDCtx ctx;
 
         public:
 
@@ -34,7 +46,7 @@ namespace blib
             int create(const void* pdata, bint16 width, bint16 height, buint8 bytesPerPixel, blib::graphics::RenderContext& ctx, genFlags flags = genFlags::none);
             void free(blib::graphics::RenderContext& ctx);
 
-            void* getContext() const;
+            TextureCtx getContext() const;
 
             void update(
                 const std::vector<blib::graphics::Color>&,

@@ -24,7 +24,7 @@ namespace blib
             void setTexture(const Texture& texture);
 
             // Унаследовано через IDrawable
-            virtual void draw(RenderTarget& target, RenderContext& ctx) const __blib_override;
+            virtual void draw(RenderContext& ctx) const __blib_override;
 
         };
     }
