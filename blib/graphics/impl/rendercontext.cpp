@@ -41,7 +41,7 @@ void blib::graphics::RenderContext::sendVievMatrixToShaderProgram()
     this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_TRUE, reinterpret_cast<const GLfloat*>(pViewMatrix));
 }
 
-void blib::graphics::RenderContext::setCamera(const blib::graphics::Camera* a_pCamera)
+void blib::graphics::RenderContext::setCamera(blib::graphics::Camera* a_pCamera)
 {
     this->pCamera = a_pCamera;
 }

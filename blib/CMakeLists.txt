@@ -58,6 +58,8 @@ file (GLOB graphics_header_src "*graphics/*.h")
 file (GLOB math_header_src "*math/*.h")
 file (GLOB math_impl_src "*math/impl/*.inl" "*math/impl/*.cpp")
 
+#dear imgui
+file (GLOB imgui_sources_src "${imgui_dir}/imgui/*.h" "${imgui_dir}/imgui/*.cpp")
 
 if(WIN32)
     file (GLOB sound_platform_impl_src "*sound/impl/win/*.cpp" "*sound/impl/*.cpp" "*sound/impl/win/*.h")
@@ -103,6 +105,10 @@ GroupSoureces("${SourceGroupPrefix}/graphics" "${graphics_impl_src}")
 GroupSoureces("${HeaderGroupPrefix}/math" "${math_header_src}")
 GroupSoureces("${SourceGroupPrefix}/math/impl" "${math_impl_src}")  
 
+#dear imgui
+GroupSoureces("imgui" "${imgui_sources_src}")  
+
+
 set(blib_sources 
     ${blibGloabal} 
 
@@ -131,6 +137,9 @@ set(blib_sources
 
     ${math_header_src} 
     ${math_impl_src}
+    
+#dear imgui
+    ${imgui_sources_src}
 )
 
 if(blib_build_type STREQUAL "blib_build_static")
@@ -176,6 +185,9 @@ target_include_directories(${BIN} PRIVATE ${stb_include})
 #target_include_directories(${BIN} PRIVATE  "${CMAKE_CURRENT_SOURCE_DIR}/sound")
 #target_include_directories(${BIN} PRIVATE  "${CMAKE_CURRENT_SOURCE_DIR}/thread")
 #target_include_directories(${BIN} PRIVATE  "${CMAKE_CURRENT_SOURCE_DIR}/core")
+
+#dear imgui
+target_include_directories(${BIN} PUBLIC ${imgui_dir})
 
 set_target_properties(${BIN} PROPERTIES LINKER_LANGUAGE CXX)
 

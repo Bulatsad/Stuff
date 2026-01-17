@@ -8,7 +8,7 @@ blib::graphics::Color::Color()
     this->alpha = 0;
 }
 
-blib::graphics::Color::Color(uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha)
+blib::graphics::Color::Color(buint8 red, buint8 green, buint8 blue, buint8 alpha)
 {
     this->red = red;
     this->green = green;

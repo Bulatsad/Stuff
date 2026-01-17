@@ -24,7 +24,7 @@ namespace blib
             END_OF_ENUM
         };
 
-        class __blib_api RenderWindow : public RenderTarget
+        class __blib_api RenderWindow 
         {
         private:
             void* ctx;
@@ -44,7 +44,7 @@ namespace blib
 
             void update();
             bool isOpen();
-            void display();
+            void display(IRenderTarget& rt);
             void close();
 
             void* __getCtx();

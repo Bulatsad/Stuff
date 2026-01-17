@@ -6,15 +6,13 @@
 #include <Windows.h>
 #include <gl/GL.h>
 
-#define __blib_this_context(_this) (*(static_cast<GLuint*>(this->ctx)))
+#define __blib_this_context(_this) (this->ctx.textureID)
 #define __blib_get_gl_texture_id(_this) __blib_this_context(_this)
 
 #define GL_CLAMP_TO_EDGE 0x812F
 
 blib::graphics::Texture::Texture()
 {
-    this->ctx = new GLuint;
-    memset(this->ctx, 0, sizeof(GLuint));
 }
 
 blib::graphics::Texture::~Texture()
@@ -35,10 +33,13 @@ int blib::graphics::Texture::create(const void* pdata, bint16 width, bint16 heig
     this->width = width;
     this->height = height;
 
+    // create texure id
     ctx.api.ogl.ext.__blib_gl_glGenTextures(1, &__blib_get_gl_texture_id(this));
 
+    // bind texture
     ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, __blib_get_gl_texture_id(this));
 
+    // populate texture
     switch (bytesPerPixel)
     {
     case 3:
@@ -52,7 +53,6 @@ int blib::graphics::Texture::create(const void* pdata, bint16 width, bint16 heig
         break;
     }
 
-
     // TODO : rewrite normaly
     if (static_cast<buint8>(flags) & static_cast<buint8>(genFlags::clamp_to_edge))
     {
@@ -63,6 +63,10 @@ int blib::graphics::Texture::create(const void* pdata, bint16 width, bint16 heig
     ctx.api.ogl.ext.__blib_gl_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     ctx.api.ogl.ext.__blib_gl_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+
+    // Unbind texture
+    ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, 0);
+
     return 0;
 }
 
@@ -72,7 +76,7 @@ void blib::graphics::Texture::free(blib::graphics::RenderContext& ctx)
     __blib_get_gl_texture_id(this) = 0;
 }
 
-void* blib::graphics::Texture::getContext() const
+TextureCtx blib::graphics::Texture::getContext() const
 {
     return this->ctx;
 }

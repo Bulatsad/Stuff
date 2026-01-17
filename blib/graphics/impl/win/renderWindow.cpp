@@ -120,8 +120,6 @@ blib::graphics::RenderWindow::RenderWindow(uint16_t _width, uint16_t _height, co
     wglMakeCurrent(__blib_render_window_this_context(this)->hdc, __blib_render_window_this_context(this)->context);
     
 
-    this->rc.api.InitGraphicsApi();
-
     auto a = GetLastError();
     auto b = glGetError();
 
@@ -137,10 +135,7 @@ blib::graphics::RenderWindow::RenderWindow(uint16_t _width, uint16_t _height, co
 
     SetWindowPos(__blib_render_window_this_context(this)->hwnd, NULL, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER);
    
-    this->rc.api.ogl.__blib_glViewport(0, 0, this->width, this->height);
-    //this->rc.api.ogl.__blib_glLoadIdentity();
-    this->rc.api.ogl.__blib_glEnable(GL_DEPTH_TEST);
-
+    //this->rc.api.ogl.__blib_glLoadIdentity();   
 }
 
 blib::graphics::RenderWindow::~RenderWindow()
@@ -174,10 +169,26 @@ bool blib::graphics::RenderWindow::isOpen()
     return __blib_render_window_this_context(this)->open;
 }
 
-void blib::graphics::RenderWindow::display()
+void blib::graphics::RenderWindow::display(IRenderTarget& rt)
 {
     //this->rc.api.ogl.__blib_glPopMatrix();
+
+    auto& rtCtx = rt.getContext();
+    rt.rc.api.ogl.ext.__blib_gl_glBindFramebuffer(GL_READ_FRAMEBUFFER, rtCtx.pdctx.frameBufferIds[rtCtx.currentFrameBufferIndex]);
+    rt.rc.api.ogl.ext.__blib_gl_glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
+    //rt.rc.api.ogl.__blib_gl_glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    rt.rc.api.ogl.ext.__blib_gl_glBlitFramebuffer(
+        0, 0, this->width, this->height,        // исходный прямоугольник
+        0, 0, rtCtx.viewportWidth, rtCtx.viewportHeight, // целевой прямоугольник
+        GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT,        // что копировать (цвет)
+        GL_NEAREST                  // фильтр
+    );
     
+    // Вернуть обычный режим
+    rt.rc.api.ogl.ext.__blib_gl_glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
     SwapBuffers(__blib_render_window_this_context(this)->hdc);
 }
 

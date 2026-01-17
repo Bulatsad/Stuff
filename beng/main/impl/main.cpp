@@ -88,12 +88,17 @@
 //
 //    return 0;
 //}
-
+#include <imgui/imgui.h>
+#include <imgui/imgui_impl_win32.h>
+#include <imgui/imgui_impl_opengl3.h>
+#include <blib/graphics/impl/win/winRenderWindowUtil.h>
 int main()
 {
     blib::graphics::RenderWindow wnd(800, 600, "beng");
     blib::graphics::Camera camera;
-    wnd.setCamera(&camera);
+
+    blib::graphics::IRenderTarget rt(800,600);
+    rt.rc.setCamera(&camera);
     camera.setPerpective(60, static_cast<float>(wnd.getWight()) / static_cast<float>(wnd.getHeight()), 0.1, 1000);
     camera.setPosition(0, 0, 0);
 
@@ -113,7 +118,7 @@ int main()
     blib::graphics::Sprite spr;
     spr.setPosition(0, 0, -1);
     img.loadFromTgx("C:/Program Files (x86)/Steam/steamapps/common/Stronghold Crusader Extreme/gfx/frontend_loading_ex.tgx");
-    txr.create(img, wnd.rc);
+    txr.create(img, rt.rc);
     spr.setTexture(txr);
 
     Assimp::Importer importer;
@@ -147,7 +152,19 @@ int main()
     model.meshes[0].move(0, -10, 0);
 
     //model.meshes = { beng::graphics::Model::bakeMeshes(model.meshes) };
+    
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplWin32_Init(__blib_render_window_context(wnd.__getCtx())->hwnd);
+    ImGui_ImplOpenGL3_Init();
+        
     float endframe = clock();
     while (wnd.isOpen())
     {
@@ -158,7 +175,7 @@ int main()
             wnd.close();
         }
 
-        wnd.clear();
+        rt.clear();
         wnd.update();
 
         camera.controlUpdate(deltatime, wnd);
@@ -168,10 +185,26 @@ int main()
         std::cout << camera.getPosition().x << " " << camera.getPosition().y << " " << camera.getPosition().z << std::endl;
 
         //wnd.draw(mesh);
-        wnd.draw(model);
+        rt.draw(model);
         //wnd.draw(spr);
 
-        wnd.display();
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame();             // Начало построения UI
+
+        // 3. Ваш UI код
+        ImGui::Begin("Window");
+        ImGui::Button("Click me");
+        ImGui::End();
+
+        // 4. Завершаем кадр
+        ImGui::Render();
+
+
+        // 6. Рендерим ImGui поверх всего
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        wnd.display(rt);
     }
 
     //{

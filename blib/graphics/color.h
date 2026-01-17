@@ -1,7 +1,7 @@
 #pragma once
 
 #include <blib/config.h>
-#include <stdint.h>
+#include <blib/blibint.h>
 
 #include <vector>
 
@@ -12,13 +12,13 @@ namespace blib
         class __blib_api Color
         {
         public:
-            uint8_t red;
-            uint8_t green;
-            uint8_t blue;
-            uint8_t alpha;
+            buint8 red;
+            buint8 green;
+            buint8 blue;
+            buint8 alpha;
 
             Color();
-            Color(uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha);
+            Color(buint8 red, buint8 green, buint8 blue, buint8 alpha);
             
             static const Color Black; 
             static const Color BlackAlpha;
@@ -26,6 +26,7 @@ namespace blib
             static const Color Red;
             static const Color Transparent;
 
+            static buint8 bytesPerPixel() { return 4; }
         };
 
         typedef std::vector<Color> Colors;
