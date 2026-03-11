@@ -44,7 +44,7 @@ namespace blib
 
             void update();
             bool isOpen();
-            void display(IRenderTarget& rt);
+            void display(IRenderTarget& rt, bint16 xStart = 0, bint16 yStart = 0);
             void close();
 
             void* __getCtx();

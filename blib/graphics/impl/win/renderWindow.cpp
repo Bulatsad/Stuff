@@ -169,7 +169,7 @@ bool blib::graphics::RenderWindow::isOpen()
     return __blib_render_window_this_context(this)->open;
 }
 
-void blib::graphics::RenderWindow::display(IRenderTarget& rt)
+void blib::graphics::RenderWindow::display(IRenderTarget& rt, bint16 xStart, bint16 yStart)
 {
     //this->rc.api.ogl.__blib_glPopMatrix();
 
@@ -180,10 +180,10 @@ void blib::graphics::RenderWindow::display(IRenderTarget& rt)
     //rt.rc.api.ogl.__blib_gl_glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     rt.rc.api.ogl.ext.__blib_gl_glBlitFramebuffer(
-        0, 0, this->width, this->height,        // исходный прямоугольник
-        0, 0, rtCtx.viewportWidth, rtCtx.viewportHeight, // целевой прямоугольник
-        GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT,        // что копировать (цвет)
-        GL_NEAREST                  // фильтр
+        0, 0, this->width, this->height,                    // исходный прямоугольник
+        xStart, xStart, xStart + rtCtx.viewportWidth, xStart + rtCtx.viewportHeight,    // целевой прямоугольник
+        GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT,          // что копировать (цвет)
+        GL_NEAREST                                          // фильтр
     );
     
     // Вернуть обычный режим

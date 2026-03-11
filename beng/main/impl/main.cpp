@@ -204,7 +204,7 @@ int main()
         // 6. Рендерим ImGui поверх всего
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-        wnd.display(rt);
+        wnd.display(rt/*,100,100*/);
     }
 
     //{
