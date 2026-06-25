@@ -34,9 +34,11 @@
 
 #ifdef __blib_compile_platform_windows
 #if ____blib_configuration_library_type_value == ____blib_configuration_library_type_shared 
-#define __blib_api __declspec(dllexport)                                                      // dynamic
+// dynamic
+#define __blib_api __declspec(dllexport)
 #elif ____blib_configuration_library_type_value == ____blib_configuration_library_type_static 
-#define __blib_api                                                                            // static
+// static
+#define __blib_api
 #else
 #error "Unknow build type"
 #endif                           

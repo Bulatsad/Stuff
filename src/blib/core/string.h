@@ -18,7 +18,7 @@ namespace blib
         
         template<class T>
         bool contains(const std::vector<T>& arr, const T& elem)
-    c
+        {
             for (const auto& a : arr)
             {
                 if (a == elem)

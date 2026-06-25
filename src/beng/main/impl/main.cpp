@@ -113,13 +113,13 @@ int main()
     //mesh.setPosition(0, 0, -1);
     ////mesh.setScale( 0.5, 0.5, 0.5 );
 
-    blib::graphics::Image img;
-    blib::graphics::Texture txr;
-    blib::graphics::Sprite spr;
-    spr.setPosition(0, 0, -1);
-    img.loadFromTgx("C:/Program Files (x86)/Steam/steamapps/common/Stronghold Crusader Extreme/gfx/frontend_loading_ex.tgx");
-    txr.create(img, rt.rc);
-    spr.setTexture(txr);
+    //blib::graphics::Image img;
+    //blib::graphics::Texture txr;
+    //blib::graphics::Sprite spr;
+    //spr.setPosition(0, 0, -1);
+    //img.loadFromTgx("C:/Program Files (x86)/Steam/steamapps/common/Stronghold Crusader Extreme/gfx/frontend_loading_ex.tgx");
+    //txr.create(img, rt.rc);
+    //spr.setTexture(txr);
 
     Assimp::Importer importer;
 
