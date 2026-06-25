@@ -69,6 +69,9 @@ namespace blib
 {
     namespace math
     {
+        template<class Type>
+        class Quaternion;
+
         typedef size_t VectorSizeT;
         template<class Type, VectorSizeT size>
         class Vector
@@ -272,14 +275,18 @@ namespace blib
             return res;
         }
         template<class Type, VectorSizeT size>
-        Vector<Type, size> operator+=(const Vector<Type, size>& lhs, const Vector<Type, size>& rhs)
+        Vector<Type, size>& operator+=(Vector<Type, size>& lhs, const Vector<Type, size>& rhs)
         {
-            lhs = lhs + rhs;
+            for (size_t i = 0; i < size; ++i)
+                lhs.data[i] += rhs.data[i];
+            return lhs;
         }
         template<class Type, VectorSizeT size>
-        Vector<Type, size> operator-=(const Vector<Type, size>& lhs, const Vector<Type, size>& rhs)
+        Vector<Type, size>& operator-=(Vector<Type, size>& lhs, const Vector<Type, size>& rhs)
         {
-            lhs = lhs - rhs;
+            for (size_t i = 0; i < size; ++i)
+                lhs.data[i] -= rhs.data[i];
+            return lhs;
         }
         template<class Type, VectorSizeT size>
         Vector<Type, size> operator*(const Vector<Type, size>& lhs, const Type rhs)
@@ -298,39 +305,43 @@ namespace blib
             return res;
         }
         template<class Type, VectorSizeT size>
-        Vector<Type, size> operator*=(const Vector<Type, size>& lhs, Type rhs)
+        Vector<Type, size>& operator*=(Vector<Type, size>& lhs, Type rhs)
         {
-            lhs = lhs * rhs;
+            for (size_t i = 0; i < size; ++i)
+                lhs.data[i] *= rhs;
+            return lhs;
         }
         template<class Type, VectorSizeT size>
         Vector<Type, size> operator/(const Vector<Type, size>& lhs, Type rhs)
         {
             Vector<Type, size> res = lhs;
             for (size_t i = 0; i < size; ++i)
-                res.data[i] /= rhs.data[i];
+                res.data[i] /= rhs;
             return res;
         }
         template<class Type, VectorSizeT size>
-        Vector<Type, size> operator/=(const Vector<Type, size>& lhs, Type rhs)
+        Vector<Type, size>& operator/=(Vector<Type, size>& lhs, Type rhs)
         {
-            lhs = lhs / rhs;
+            for (size_t i = 0; i < size; ++i)
+                lhs.data[i] /= rhs;
+            return lhs;
         }
         template<class Type, VectorSizeT size>
-        Vector<Type, size> operator ==(const Vector<Type, size>& lhs, const Vector<Type, size>& rhs) 
+        bool operator==(const Vector<Type, size>& lhs, const Vector<Type, size>& rhs) 
         {
             for (size_t i = 0; i < size; ++i)
             {
-                if (this->data[i] != rhs.data[i])
+                if (lhs.data[i] != rhs.data[i])
                     return false;
             }
             return true;
         }
         template<class Type, VectorSizeT size>
-        Vector<Type, size> operator !=(const Vector<Type, size>& lhs, const Vector<Type, size>& rhs)
+        bool operator!=(const Vector<Type, size>& lhs, const Vector<Type, size>& rhs)
         {
             for (size_t i = 0; i < size; ++i)
             {
-                if (this->data[i] != rhs.data[i])
+                if (lhs.data[i] != rhs.data[i])
                     return true;
             }
             return false;
@@ -405,3 +416,5 @@ namespace blib
         }
     }
 }
+
+

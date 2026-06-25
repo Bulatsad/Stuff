@@ -19,7 +19,7 @@ set(blib_dir ${root_dir}/blib)
 set(beng_dir ${root_dir}/beng)
 set(vochat_dir ${root_dir}/vochat)
 
-set(thirdparty_dir ${root_dir}/../thirdparty)
+set(thirdparty_dir ${root_dir}/thirdparty)
 
 set(assimp_dir ${thirdparty_dir}/assimplib)
 set(assimp_lib ${assimp_dir}/lib)
@@ -32,6 +32,13 @@ set(imgui_dir ${thirdparty_dir}/imgui)
 set(stb_dir ${thirdparty_dir}/stb)
 set(stb_include ${stb_dir})
 
+option(BUILD_TESTS "Build tests" OFF)
+
 add_subdirectory(${blib_dir})
 add_subdirectory(${beng_dir})
 add_subdirectory(${vochat_dir})
+
+if(BUILD_TESTS)
+	enable_testing()
+	add_subdirectory(${root_dir}/test)
+endif()

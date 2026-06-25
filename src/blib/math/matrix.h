@@ -52,10 +52,10 @@ namespace blib
             Matrix operator+(const Matrix& rhs) const
             {
                 // check
-                if (tmplWidth != rhs.columnsCount || tmplHeight != rhs.rowsCount)
-                {
-                    throw new std::runtime_error("Additin matrix with differnt sizes");
-                }
+                //if (tmplWidth != rhs.columnsCount || tmplHeight != rhs.rowsCount)
+                //{
+                //    throw new std::runtime_error("Additin matrix with differnt sizes");
+                //}
 
                 //calculate
                 Matrix res;
@@ -70,17 +70,11 @@ namespace blib
             }
             Matrix operator-(const Matrix& rhs) const
             {
-                // check
-                if (tmplWidth != rhs.columnsCount || tmplHeight != rhs.rowsCount)
-                {
-                    throw new std::runtime_error("Subtraction matrix with differnt sizes");
-                }
-
                 //calculate
                 Matrix res;
-                for (matrixSizeT i = 0; i < tmplHeight; ++i)
+                for (matrixSizeT i = 0; i < tmplWidth; ++i)
                 {
-                    for (matrixSizeT j = 0; j < tmplWidth; ++j)
+                    for (matrixSizeT j = 0; j < tmplHeight; ++j)
                     {
                         res.data[i][j] = this->data[i][j] - rhs.data[i][j];
                     }
@@ -104,19 +98,17 @@ namespace blib
             template<class TypeRhs, matrixSizeT tmplWidthRhs, matrixSizeT tmplHeightRhs>
             Matrix<Type, tmplWidthRhs, tmplHeight> operator*(const Matrix<TypeRhs, tmplWidthRhs, tmplHeightRhs>& rhs) const
             {
-                // check // The number of columns in matrix A must match the number of rows in matrix B
                 if (tmplWidth != tmplHeightRhs)
                 {
-                    throw new std::runtime_error("The number of columns in matrix A must match the number of rows in matrix B for matrix multiplying");
+                    throw std::runtime_error("The number of columns in matrix A must match the number of rows in matrix B for matrix multiplying");
                 }
 
-                // calculating
                 Matrix<Type, tmplWidthRhs, tmplHeight> res;
                 for (matrixSizeT i = 0; i < tmplWidthRhs; ++i)
                 {
                     for (matrixSizeT j = 0; j < tmplHeight; ++j)
                     {
-                        res.data[i][j] = 0;
+                        res.data[i][j] = Type(0);
                         for (matrixSizeT k = 0; k < tmplWidth; ++k)
                         {
                             res.data[i][j] += this->data[k][j] * rhs.data[i][k];
