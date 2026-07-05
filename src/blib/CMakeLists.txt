@@ -38,6 +38,8 @@ set(____blib_configuration_library_type_undefined 0)
 set(____blib_configuration_library_type_static 1)
 set(____blib_configuration_library_type_shared 2)
 
+option(COMPILE_ASSIMP_COMPATIBLE "Enable Assimp compatibility (loadFromAssimp, Assimp headers)" ON)
+
 file (GLOB blibGloabal "CmakeLists.txt" "*.h")
 
 file (GLOB sound_header_src "*sound/*.h")
@@ -167,6 +169,10 @@ target_compile_definitions(${BIN} PRIVATE ____blib_configuration_platform_undefi
 target_compile_definitions(${BIN} PRIVATE ____blib_configuration_platform_windows=${____blib_configuration_platform_windows})
 target_compile_definitions(${BIN} PRIVATE ____blib_configuration_platform_linux=${____blib_configuration_platform_linux})
 target_compile_definitions(${BIN} PRIVATE ____blib_configuration_platform_macos=${____blib_configuration_platform_macos})
+
+if(COMPILE_ASSIMP_COMPATIBLE)
+    target_compile_definitions(${BIN} PUBLIC COMPILE_ASSIMP_COMPATIBLE)
+endif()
 
 target_compile_definitions(${BIN} PRIVATE ____blib_configuration_library_type_undefined=${____blib_configuration_library_type_undefined})
 target_compile_definitions(${BIN} PRIVATE ____blib_configuration_library_type_shared=${____blib_configuration_library_type_shared})

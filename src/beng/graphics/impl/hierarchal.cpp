@@ -26,6 +26,7 @@ beng::graphics::IHierarchal* beng::graphics::IHierarchal::getParent()
 
 bool beng::graphics::IHierarchal::addChild(beng::graphics::IHierarchal* ph)
 {
+    ph->setParent(this);
     this->childs.push_back(ph);
     return true;
 }

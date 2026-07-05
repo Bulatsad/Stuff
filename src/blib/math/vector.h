@@ -6,6 +6,11 @@
 
 #include <blib/math/utilfuncs.h>
 
+#ifdef COMPILE_ASSIMP_COMPATIBLE
+#include <assimp/vector3.h>
+#endif // COMPILE_ASSIMP_COMPATIBLE
+
+
 //namespace blib
 //{
 //    namespace functional
@@ -82,8 +87,9 @@ namespace blib
                 Type data[size];
             };
 
-
             blib_math_vector_template_common_code(size)
+
+
 
             /*
             Vector(const Type& a_x, const Type& a_y, const Type& a_z)
@@ -229,6 +235,17 @@ namespace blib
                 this->y = a_y;
                 this->z = a_z;
             }
+
+#ifdef COMPILE_ASSIMP_COMPATIBLE
+            bool loadFromAssimp(const aiVector3D* paivector3d)
+            {
+                this->x = paivector3d->x;
+                this->y = paivector3d->y;
+                this->z = paivector3d->z;
+
+                return true;
+            }
+#endif // COMPILE_ASSIMP_COMPATIBLE
 
             blib_math_vector_template_common_code(3)
         };
