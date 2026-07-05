@@ -12,6 +12,7 @@
 #include <blib/graphics/vertex.h>
 #include <blib/graphics/sprite.h>
 #include <blib/graphics/keyboard.h>
+#include <blib/graphics/animator.h>
 
 #include <beng/graphics/model.h>
 #include <beng/graphics/skinmesh.h>
@@ -138,6 +139,9 @@ int main()
         return EXIT_FAILURE;
     }
 
+    blib::graphics::Animator animator;
+    animator.loadFromAssimp(pscene);
+
     beng::graphics::SkinMesh skinMesh;
     skinMesh.loadFromAssimp(pscene);
 
@@ -190,18 +194,18 @@ int main()
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplWin32_NewFrame();
-        ImGui::NewFrame();             // Начало построения UI
+        ImGui::NewFrame();             // пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ- пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ- UI
 
-        // 3. Ваш UI код
+        // 3. пїЅпїЅ-пїЅпїЅ-пїЅпїЅ- UI пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-
         ImGui::Begin("Window");
         ImGui::Button("Click me");
         ImGui::End();
 
-        // 4. Завершаем кадр
+        // 4. пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ- пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-
         ImGui::Render();
 
 
-        // 6. Рендерим ImGui поверх всего
+        // 6. пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ- ImGui пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ- пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-пїЅпїЅ-
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         wnd.display(rt/*,100,100*/);

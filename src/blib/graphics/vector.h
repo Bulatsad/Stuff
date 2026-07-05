@@ -18,6 +18,7 @@ namespace blib
         typedef blib::math::Vector<float, 4> Vector4f;
     }
 }
+
 //template<class T>
 //blib::graphics::Vector3<T> normalize(const blib::graphics::Vector3<T>& v3)
 //{

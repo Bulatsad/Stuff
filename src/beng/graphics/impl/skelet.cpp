@@ -70,9 +70,7 @@ bool beng::graphics::Skelet::makeBoneTree(const aiNode* pbone)
             st.push(newCtx);
         }
 
-        if (!(ctx.bone->getParent()))
-            ctx.bone->setParent(ctx.prev);
-        else
+        if (ctx.bone->getParent() != ctx.prev)
         {
             throw std::runtime_error("Reset bone parent");
             return false;

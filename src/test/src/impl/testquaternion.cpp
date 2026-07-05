@@ -7,7 +7,7 @@ using namespace blib::math;
 
 BLIB_TEST_CASE("Quaternion 4-component constructor")
 {
-	Quatenion<float> q(1.0f, 0.0f, 0.0f, 0.0f);
+	Quaternion<float> q(1.0f, 0.0f, 0.0f, 0.0f);
 	BLIB_TEST_CHECK(q.w == 1.0f);
 	BLIB_TEST_CHECK(q.x == 0.0f);
 	BLIB_TEST_CHECK(q.y == 0.0f);
@@ -16,7 +16,7 @@ BLIB_TEST_CASE("Quaternion 4-component constructor")
 
 BLIB_TEST_CASE("Quaternion 4-component arbitrary values")
 {
-	Quatenion<float> q(1.0f, 2.0f, 3.0f, 4.0f);
+	Quaternion<float> q(1.0f, 2.0f, 3.0f, 4.0f);
 	BLIB_TEST_CHECK(q.w == 1.0f);
 	BLIB_TEST_CHECK(q.x == 2.0f);
 	BLIB_TEST_CHECK(q.y == 3.0f);
@@ -25,7 +25,7 @@ BLIB_TEST_CASE("Quaternion 4-component arbitrary values")
 
 BLIB_TEST_CASE("Quaternion identity")
 {
-	Quatenion<float> q(1.0f, 0.0f, 0.0f, 0.0f);
+	Quaternion<float> q(1.0f, 0.0f, 0.0f, 0.0f);
 	BLIB_TEST_CHECK(q.w == 1.0f);
 	BLIB_TEST_CHECK(q.x == 0.0f);
 	BLIB_TEST_CHECK(q.y == 0.0f);
@@ -35,7 +35,7 @@ BLIB_TEST_CASE("Quaternion identity")
 BLIB_TEST_CASE("Quaternion scalar + axis constructor")
 {
 	Vector<float, 3> axis(0.0f, 0.0f, 1.0f);
-	Quatenion<float> q(1.0f, axis);
+	Quaternion<float> q(1.0f, axis);
 	BLIB_TEST_CHECK(q.w == 1.0f);
 	BLIB_TEST_CHECK(q.x == 0.0f);
 	BLIB_TEST_CHECK(q.y == 0.0f);
@@ -45,7 +45,7 @@ BLIB_TEST_CASE("Quaternion scalar + axis constructor")
 BLIB_TEST_CASE("Quaternion scalar + axis, zero scalar")
 {
 	Vector<float, 3> axis(1.0f, 2.0f, 3.0f);
-	Quatenion<float> q(0.0f, axis);
+	Quaternion<float> q(0.0f, axis);
 	BLIB_TEST_CHECK(q.w == 0.0f);
 	BLIB_TEST_CHECK(q.x == 1.0f);
 	BLIB_TEST_CHECK(q.y == 2.0f);
@@ -56,7 +56,7 @@ BLIB_TEST_CASE("Quaternion axis-angle 180 around X")
 {
 	Vector<float, 3> axis(1.0f, 0.0f, 0.0f);
 	AngleRadian<float> angle(static_cast<float>(pi));
-	Quatenion<float> q(angle, axis);
+	Quaternion<float> q(angle, axis);
 	BLIB_TEST_CHECK_CLOSE(q.w, 0.0f, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(q.x, 1.0f, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(q.y, 0.0f, 0.0001f);
@@ -67,7 +67,7 @@ BLIB_TEST_CASE("Quaternion axis-angle 90 around Z")
 {
 	Vector<float, 3> axis(0.0f, 0.0f, 1.0f);
 	AngleRadian<float> angle(static_cast<float>(pi / 2.0));
-	Quatenion<float> q(angle, axis);
+	Quaternion<float> q(angle, axis);
 	float sin45 = static_cast<float>(std::sin(pi / 4.0));
 	BLIB_TEST_CHECK_CLOSE(q.w, sin45, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(q.x, 0.0f, 0.0001f);
@@ -79,7 +79,7 @@ BLIB_TEST_CASE("Quaternion axis-angle zero rotation = identity")
 {
 	Vector<float, 3> axis(1.0f, 0.0f, 0.0f);
 	AngleRadian<float> angle(0.0f);
-	Quatenion<float> q(angle, axis);
+	Quaternion<float> q(angle, axis);
 	BLIB_TEST_CHECK_CLOSE(q.w, 1.0f, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(q.x, 0.0f, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(q.y, 0.0f, 0.0001f);
@@ -90,7 +90,7 @@ BLIB_TEST_CASE("Quaternion axis-angle degrees 180 around Y")
 {
 	Vector<float, 3> axis(0.0f, 1.0f, 0.0f);
 	AngleDegree<float> angle(180.0f);
-	Quatenion<float> q(angle, axis);
+	Quaternion<float> q(angle, axis);
 	BLIB_TEST_CHECK_CLOSE(q.w, 0.0f, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(q.x, 0.0f, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(q.y, 1.0f, 0.0001f);
@@ -101,7 +101,7 @@ BLIB_TEST_CASE("Quaternion axis-angle degrees 0 = identity")
 {
 	Vector<float, 3> axis(0.0f, 0.0f, 1.0f);
 	AngleDegree<float> angle(0.0f);
-	Quatenion<float> q(angle, axis);
+	Quaternion<float> q(angle, axis);
 	BLIB_TEST_CHECK_CLOSE(q.w, 1.0f, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(q.x, 0.0f, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(q.y, 0.0f, 0.0001f);
@@ -110,8 +110,8 @@ BLIB_TEST_CASE("Quaternion axis-angle degrees 0 = identity")
 
 BLIB_TEST_CASE("Quaternion normalize identity stays identity")
 {
-	Quatenion<float> q(1.0f, 0.0f, 0.0f, 0.0f);
-	Quatenion<float> n = q.normalize();
+	Quaternion<float> q(1.0f, 0.0f, 0.0f, 0.0f);
+	Quaternion<float> n = q.normalize();
 	BLIB_TEST_CHECK_CLOSE(n.w, 1.0f, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(n.x, 0.0f, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(n.y, 0.0f, 0.0001f);
@@ -120,16 +120,16 @@ BLIB_TEST_CASE("Quaternion normalize identity stays identity")
 
 BLIB_TEST_CASE("Quaternion normalize scales to unit length")
 {
-	Quatenion<float> q(2.0f, 4.0f, 4.0f, 4.0f);
-	Quatenion<float> n = q.normalize();
+	Quaternion<float> q(2.0f, 4.0f, 4.0f, 4.0f);
+	Quaternion<float> n = q.normalize();
 	float len = std::sqrt(n.w * n.w + n.x * n.x + n.y * n.y + n.z * n.z);
 	BLIB_TEST_CHECK_CLOSE(len, 1.0f, 0.0001f);
 }
 
 BLIB_TEST_CASE("Quaternion conjugate")
 {
-	Quatenion<float> q(1.0f, 2.0f, 3.0f, 4.0f);
-	Quatenion<float> c = q.conjugate();
+	Quaternion<float> q(1.0f, 2.0f, 3.0f, 4.0f);
+	Quaternion<float> c = q.conjugate();
 	BLIB_TEST_CHECK(c.w == q.w);
 	BLIB_TEST_CHECK(c.x == -q.x);
 	BLIB_TEST_CHECK(c.y == -q.y);
@@ -138,8 +138,8 @@ BLIB_TEST_CASE("Quaternion conjugate")
 
 BLIB_TEST_CASE("Quaternion conjugate identity = identity")
 {
-	Quatenion<float> q(1.0f, 0.0f, 0.0f, 0.0f);
-	Quatenion<float> c = q.conjugate();
+	Quaternion<float> q(1.0f, 0.0f, 0.0f, 0.0f);
+	Quaternion<float> c = q.conjugate();
 	BLIB_TEST_CHECK(c.w == 1.0f);
 	BLIB_TEST_CHECK(c.x == 0.0f);
 	BLIB_TEST_CHECK(c.y == 0.0f);
@@ -148,9 +148,9 @@ BLIB_TEST_CASE("Quaternion conjugate identity = identity")
 
 BLIB_TEST_CASE("Quaternion multiply identity left")
 {
-	Quatenion<float> id(1.0f, 0.0f, 0.0f, 0.0f);
-	Quatenion<float> q(2.0f, 3.0f, 4.0f, 5.0f);
-	Quatenion<float> r = id * q;
+	Quaternion<float> id(1.0f, 0.0f, 0.0f, 0.0f);
+	Quaternion<float> q(2.0f, 3.0f, 4.0f, 5.0f);
+	Quaternion<float> r = id * q;
 	BLIB_TEST_CHECK(r.w == q.w);
 	BLIB_TEST_CHECK(r.x == q.x);
 	BLIB_TEST_CHECK(r.y == q.y);
@@ -159,9 +159,9 @@ BLIB_TEST_CASE("Quaternion multiply identity left")
 
 BLIB_TEST_CASE("Quaternion multiply identity right")
 {
-	Quatenion<float> id(1.0f, 0.0f, 0.0f, 0.0f);
-	Quatenion<float> q(2.0f, 3.0f, 4.0f, 5.0f);
-	Quatenion<float> r = q * id;
+	Quaternion<float> id(1.0f, 0.0f, 0.0f, 0.0f);
+	Quaternion<float> q(2.0f, 3.0f, 4.0f, 5.0f);
+	Quaternion<float> r = q * id;
 	BLIB_TEST_CHECK(r.w == q.w);
 	BLIB_TEST_CHECK(r.x == q.x);
 	BLIB_TEST_CHECK(r.y == q.y);
@@ -172,8 +172,8 @@ BLIB_TEST_CASE("Quaternion multiply two 90-degree rotations about X")
 {
 	Vector<float, 3> axis(1.0f, 0.0f, 0.0f);
 	AngleRadian<float> halfPi(static_cast<float>(pi / 2.0));
-	Quatenion<float> q1(halfPi, axis);
-	Quatenion<float> q2 = q1 * q1;
+	Quaternion<float> q1(halfPi, axis);
+	Quaternion<float> q2 = q1 * q1;
 	BLIB_TEST_CHECK_CLOSE(q2.w, 0.0f, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(q2.x, 1.0f, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(q2.y, 0.0f, 0.0001f);
@@ -182,10 +182,10 @@ BLIB_TEST_CASE("Quaternion multiply two 90-degree rotations about X")
 
 BLIB_TEST_CASE("Quaternion inverse times self = identity")
 {
-	Quatenion<float> q(1.0f, 2.0f, 3.0f, 4.0f);
+	Quaternion<float> q(1.0f, 2.0f, 3.0f, 4.0f);
 	q = q.normalize();
-	Quatenion<float> inv = q.inverse();
-	Quatenion<float> r = q * inv;
+	Quaternion<float> inv = q.inverse();
+	Quaternion<float> r = q * inv;
 	BLIB_TEST_CHECK_CLOSE(r.w, 1.0f, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(r.x, 0.0f, 0.0001f);
 	BLIB_TEST_CHECK_CLOSE(r.y, 0.0f, 0.0001f);
@@ -196,7 +196,7 @@ BLIB_TEST_CASE("Quaternion rotate vector 90 around Z")
 {
 	Vector<float, 3> axis(0.0f, 0.0f, 1.0f);
 	AngleRadian<float> angle(static_cast<float>(pi / 2.0));
-	Quatenion<float> q(angle, axis);
+	Quaternion<float> q(angle, axis);
 	Vector<float, 3> v(1.0f, 0.0f, 0.0f);
 	Vector<float, 3> r = rotate(v, q);
 	BLIB_TEST_CHECK_CLOSE(r.data[0], 0.0f, 0.0001f);
@@ -208,7 +208,7 @@ BLIB_TEST_CASE("Quaternion rotate vector 180 around Y")
 {
 	Vector<float, 3> axis(0.0f, 1.0f, 0.0f);
 	AngleRadian<float> angle(static_cast<float>(pi));
-	Quatenion<float> q(angle, axis);
+	Quaternion<float> q(angle, axis);
 	Vector<float, 3> v(1.0f, 0.0f, 0.0f);
 	Vector<float, 3> r = rotate(v, q);
 	BLIB_TEST_CHECK_CLOSE(r.data[0], -1.0f, 0.0001f);
@@ -220,7 +220,7 @@ BLIB_TEST_CASE("Quaternion rotate zero vector")
 {
 	Vector<float, 3> axis(0.0f, 0.0f, 1.0f);
 	AngleRadian<float> angle(static_cast<float>(pi / 2.0));
-	Quatenion<float> q(angle, axis);
+	Quaternion<float> q(angle, axis);
 	Vector<float, 3> v(0.0f, 0.0f, 0.0f);
 	Vector<float, 3> r = rotate(v, q);
 	BLIB_TEST_CHECK_CLOSE(r.data[0], 0.0f, 0.0001f);
@@ -230,7 +230,7 @@ BLIB_TEST_CASE("Quaternion rotate zero vector")
 
 BLIB_TEST_CASE("Quaternion rotate identity preserves vector")
 {
-	Quatenion<float> q(1.0f, 0.0f, 0.0f, 0.0f);
+	Quaternion<float> q(1.0f, 0.0f, 0.0f, 0.0f);
 	Vector<float, 3> v(3.0f, 5.0f, 7.0f);
 	Vector<float, 3> r = rotate(v, q);
 	BLIB_TEST_CHECK_CLOSE(r.data[0], 3.0f, 0.0001f);
@@ -242,7 +242,7 @@ BLIB_TEST_CASE("Quaternion rotate roundtrip 90 around Z")
 {
 	Vector<float, 3> axis(0.0f, 0.0f, 1.0f);
 	AngleRadian<float> angle(static_cast<float>(pi / 2.0));
-	Quatenion<float> q(angle, axis);
+	Quaternion<float> q(angle, axis);
 	Vector<float, 3> v(1.0f, 0.0f, 0.0f);
 	Vector<float, 3> r = rotate(v, q);
 	r = rotate(r, q.conjugate());

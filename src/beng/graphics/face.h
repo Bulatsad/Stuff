@@ -22,6 +22,7 @@ namespace beng
 
         typedef std::vector<beng::graphics::Face> Faces;
 
+        // bake indices for GL_ELEMENT_ARRAY_BUFFER
         std::vector<buint32> compileFaces(const beng::graphics::Faces& faces);
     }
 }
