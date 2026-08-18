@@ -27,6 +27,8 @@ namespace blib
 			bool load(_In const std::string& path);
 			bool parse(_In const std::string& text);
 
+			bool parseNext(_In const std::string& text, _In _Out size_t& offset);;
+
 			template<class T>
 			bool getVar(_In const std::string& name, _Out T& out) const
 			{
