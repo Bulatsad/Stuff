@@ -1,0 +1,1690 @@
+#include <blib/pdl/pdl.h>
+
+#include <cctype>
+#include <cstdlib>
+#include <fstream>
+#include <iterator>
+#include <map>
+#include <vector>
+
+namespace blib
+{
+	namespace pdl
+	{
+		// ============================================================
+		// value types
+		// ============================================================
+
+		enum class ValueType : buint8
+		{
+			None,
+			String,
+			Int,
+			Float,
+			Bool,
+			AnyList
+		};
+
+		struct Value
+		{
+			ValueType type;
+			std::string str;
+			bint32 i;
+			float f;
+			bool b;
+			std::vector<Value> list;
+
+			Value()
+				: type(ValueType::None)
+				, i(0)
+				, f(0.0f)
+				, b(false)
+			{
+			}
+
+			void clear()
+			{
+				type = ValueType::None;
+				str.clear();
+				i = 0;
+				f = 0.0f;
+				b = false;
+				list.clear();
+			}
+		};
+
+		enum class VarType : buint8
+		{
+			String,
+			Int,
+			Float,
+			Bool,
+			ArrayString,
+			ArrayInt,
+			ArrayFloat,
+			ArrayBool
+		};
+
+		struct Var
+		{
+			std::string name;
+			VarType type;
+			Value value;
+		};
+
+		// ============================================================
+		// grammar structures
+		// ============================================================
+
+		struct Node;
+
+		enum class ElementKind : buint8
+		{
+			Field,
+			Optional,
+			Terminator,
+			Everything
+		};
+
+		struct Element
+		{
+			ElementKind kind;
+			Node* node;
+			std::vector<Element> inner;
+
+			Element()
+				: kind(ElementKind::Terminator)
+				, node(nullptr)
+			{
+			}
+		};
+
+		enum class AltKind : buint8
+		{
+			Sequence,
+			LiteralSet
+		};
+
+		struct Literal
+		{
+			ValueType type;
+			std::string text;
+		};
+
+		struct Guard
+		{
+			Node* node;
+			std::string text;
+		};
+
+		struct Alternative
+		{
+			AltKind kind;
+			std::vector<Element> elems;
+			std::vector<Literal> literals;
+			std::vector<Guard> guards;
+
+			Alternative()
+				: kind(AltKind::LiteralSet)
+			{
+			}
+		};
+
+		struct Node
+		{
+			std::string name;
+			Node* parent;
+			std::vector<Alternative> alts;
+
+			Node()
+				: parent(nullptr)
+			{
+			}
+		};
+
+		struct Binding
+		{
+			Var* var;
+			Node* node;
+		};
+
+		// ============================================================
+		// Parser::Data
+		// ============================================================
+
+		struct Parser::Data
+		{
+			std::string error;
+
+			std::map<std::string, Var> vars;
+			std::map<std::string, Node> nodes;
+			std::vector<Node*> roots;
+			std::vector<Binding> bindings;
+
+			Node* entry;
+
+			Data()
+				: entry(nullptr)
+			{
+			}
+
+			void clearGrammar()
+			{
+				error.clear();
+				vars.clear();
+				nodes.clear();
+				roots.clear();
+				bindings.clear();
+				entry = nullptr;
+			}
+
+			void resetVars()
+			{
+				for (std::map<std::string, Var>::iterator it = vars.begin(); it != vars.end(); ++it)
+					it->second.value.clear();
+			}
+		};
+
+		template<class T>
+		static std::string toStr(T v)
+		{
+			return std::to_string(v);
+		}
+
+		// ============================================================
+		// pdl lexer
+		// ============================================================
+
+		enum class TokKind : buint8
+		{
+			End,
+			DoubleColon,
+			Colon,
+			Semicolon,
+			Comma,
+			Assign,
+			PlusAssign,
+			LAngle,
+			RAngle,
+			LBracket,
+			RBracket,
+			At,
+			EqEq,
+			Ident,
+			String,
+			Number
+		};
+
+		struct Token
+		{
+			TokKind kind;
+			std::string text;
+			buint32 line;
+		};
+
+		static bool lex(const std::string& src, std::vector<Token>& out, std::string& error)
+		{
+			const buint32 n = (buint32)src.size();
+			buint32 i = 0;
+			buint32 line = 1;
+
+			while (i < n)
+			{
+				char c = src[i];
+
+				if (c == ' ' || c == '\t' || c == '\r')
+				{
+					++i;
+					continue;
+				}
+				if (c == '\n')
+				{
+					++i;
+					++line;
+					continue;
+				}
+				if (c == '/' && i + 1 < n && src[i + 1] == '/')
+				{
+					while (i < n && src[i] != '\n')
+						++i;
+					continue;
+				}
+
+				Token t;
+				t.line = line;
+
+				if (c == ':')
+				{
+					if (i + 1 < n && src[i + 1] == ':')
+					{
+						t.kind = TokKind::DoubleColon;
+						i += 2;
+					}
+					else
+					{
+						t.kind = TokKind::Colon;
+						++i;
+					}
+				}
+				else if (c == ';')
+				{
+					t.kind = TokKind::Semicolon;
+					++i;
+				}
+				else if (c == ',')
+				{
+					t.kind = TokKind::Comma;
+					++i;
+				}
+				else if (c == '=')
+				{
+					if (i + 1 < n && src[i + 1] == '=')
+					{
+						t.kind = TokKind::EqEq;
+						i += 2;
+					}
+					else
+					{
+						t.kind = TokKind::Assign;
+						++i;
+					}
+				}
+				else if (c == '+')
+				{
+					if (i + 1 < n && src[i + 1] == '=')
+					{
+						t.kind = TokKind::PlusAssign;
+						i += 2;
+					}
+					else
+					{
+						error = "unexpected character '+' at line " + toStr(line);
+						return false;
+					}
+				}
+				else if (c == '<')
+				{
+					t.kind = TokKind::LAngle;
+					++i;
+				}
+				else if (c == '>')
+				{
+					t.kind = TokKind::RAngle;
+					++i;
+				}
+				else if (c == '[')
+				{
+					t.kind = TokKind::LBracket;
+					++i;
+				}
+				else if (c == ']')
+				{
+					t.kind = TokKind::RBracket;
+					++i;
+				}
+				else if (c == '@')
+				{
+					t.kind = TokKind::At;
+					++i;
+				}
+				else if (c == '"')
+				{
+					t.kind = TokKind::String;
+					++i;
+					bool closed = false;
+					while (i < n)
+					{
+						char ch = src[i];
+						if (ch == '\\' && i + 1 < n && (src[i + 1] == '"' || src[i + 1] == '\\'))
+						{
+							t.text += src[i + 1];
+							i += 2;
+							continue;
+						}
+						if (ch == '"')
+						{
+							++i;
+							closed = true;
+							break;
+						}
+						if (ch == '\n')
+							++line;
+						t.text += ch;
+						++i;
+					}
+					if (!closed)
+					{
+						error = "unterminated string at line " + toStr(line);
+						return false;
+					}
+				}
+				else if (std::isdigit((unsigned char)c) ||
+					(c == '-' && i + 1 < n && std::isdigit((unsigned char)src[i + 1])))
+				{
+					t.kind = TokKind::Number;
+					if (c == '-')
+					{
+						t.text += c;
+						++i;
+					}
+					while (i < n && std::isdigit((unsigned char)src[i]))
+					{
+						t.text += src[i];
+						++i;
+					}
+					if (i < n && src[i] == '.')
+					{
+						t.text += src[i];
+						++i;
+						while (i < n && std::isdigit((unsigned char)src[i]))
+						{
+							t.text += src[i];
+							++i;
+						}
+					}
+				}
+				else if (std::isalpha((unsigned char)c) || c == '_')
+				{
+					t.kind = TokKind::Ident;
+					while (i < n && (std::isalnum((unsigned char)src[i]) || src[i] == '_'))
+					{
+						t.text += src[i];
+						++i;
+					}
+				}
+				else
+				{
+					error = "unexpected character '" + std::string(1, c) + "' at line " + toStr(line);
+					return false;
+				}
+
+				out.push_back(t);
+			}
+
+			Token end;
+			end.kind = TokKind::End;
+			end.line = line;
+			out.push_back(end);
+			return true;
+		}
+
+		// ============================================================
+		// pdl loader
+		// ============================================================
+
+		struct Parser::Loader
+		{
+			const std::vector<Token>* toks;
+			buint32 i;
+			Data* data;
+			std::string error;
+
+			Loader()
+				: toks(nullptr)
+				, i(0)
+				, data(nullptr)
+			{
+			}
+
+			const Token& tok() const
+			{
+				return (*toks)[i];
+			}
+
+			bool at(TokKind k) const
+			{
+				return tok().kind == k;
+			}
+
+			bool take(TokKind k)
+			{
+				if (at(k))
+				{
+					++i;
+					return true;
+				}
+				return false;
+			}
+
+			std::string takeText(TokKind k)
+			{
+				if (at(k))
+				{
+					std::string s = tok().text;
+					++i;
+					return s;
+				}
+				return std::string();
+			}
+
+			std::string errLine() const
+			{
+				return " at line " + toStr(tok().line);
+			}
+
+			Node* resolveNode(const std::string& path)
+			{
+				std::map<std::string, Node>::iterator it = data->nodes.find(path);
+				if (it != data->nodes.end())
+					return &it->second;
+
+				Node n;
+				n.name = path;
+
+				std::string::size_type sep = path.rfind("::<");
+				if (sep != std::string::npos)
+					n.parent = resolveNode(path.substr(0, sep));
+
+				data->nodes[path] = n;
+				Node* res = &data->nodes[path];
+				if (res->parent == nullptr)
+					data->roots.push_back(res);
+				return res;
+			}
+
+			bool parseProgram()
+			{
+				while (!at(TokKind::End))
+				{
+					if (at(TokKind::Ident) && tok().text == "let")
+					{
+						if (!parseDecl())
+							return false;
+					}
+					else if (at(TokKind::At))
+					{
+						if (!parseBinding())
+							return false;
+					}
+					else if (at(TokKind::DoubleColon) || at(TokKind::LBracket))
+					{
+						if (!parseRuleDef())
+							return false;
+					}
+					else
+					{
+						error = "unexpected token '" + tok().text + "'" + errLine();
+						return false;
+					}
+				}
+				return true;
+			}
+
+			bool parseDecl()
+			{
+				// at 'let'
+				++i;
+				if (!(at(TokKind::Ident) && tok().text == "var"))
+				{
+					error = "expected 'var'" + errLine();
+					return false;
+				}
+				++i;
+
+				VarType type;
+				if (!parseType(type))
+					return false;
+
+				if (!take(TokKind::At))
+				{
+					error = "expected '@'" + errLine();
+					return false;
+				}
+				std::string name = takeText(TokKind::Ident);
+				if (name.empty())
+				{
+					error = "expected variable name" + errLine();
+					return false;
+				}
+				name = "@" + name;
+
+				if (!take(TokKind::Semicolon))
+				{
+					error = "expected ';'" + errLine();
+					return false;
+				}
+
+				if (data->vars.find(name) != data->vars.end())
+				{
+					error = "variable '" + name + "' is already declared" + errLine();
+					return false;
+				}
+
+				Var v;
+				v.name = name;
+				v.type = type;
+				data->vars[name] = v;
+				return true;
+			}
+
+			bool parseType(VarType& type)
+			{
+				if (at(TokKind::Ident) && tok().text == "array")
+				{
+					++i;
+					if (!take(TokKind::LAngle))
+					{
+						error = "expected '<' after 'array'" + errLine();
+						return false;
+					}
+					VarType inner;
+					if (!parseType(inner))
+						return false;
+					if (!take(TokKind::RAngle))
+					{
+						error = "expected '>'" + errLine();
+						return false;
+					}
+					switch (inner)
+					{
+					case VarType::String: type = VarType::ArrayString; break;
+					case VarType::Int: type = VarType::ArrayInt; break;
+					case VarType::Float: type = VarType::ArrayFloat; break;
+					case VarType::Bool: type = VarType::ArrayBool; break;
+					default:
+						error = "nested arrays are not supported" + errLine();
+						return false;
+					}
+					return true;
+				}
+
+				if (!at(TokKind::Ident))
+				{
+					error = "expected type" + errLine();
+					return false;
+				}
+				const std::string& s = tok().text;
+				if (s == "string") type = VarType::String;
+				else if (s == "int") type = VarType::Int;
+				else if (s == "float") type = VarType::Float;
+				else if (s == "bool") type = VarType::Bool;
+				else
+				{
+					error = "unknown type '" + s + "'" + errLine();
+					return false;
+				}
+				++i;
+				return true;
+			}
+
+			bool parseBinding()
+			{
+				// at '@'
+				const buint32 line = tok().line;
+				++i;
+				std::string name = takeText(TokKind::Ident);
+				if (name.empty())
+				{
+					error = "expected variable name" + errLine();
+					return false;
+				}
+				name = "@" + name;
+
+				if (!take(TokKind::Assign))
+				{
+					error = "expected '='" + errLine();
+					return false;
+				}
+
+				std::string path;
+				if (!parseNodeRef(path))
+					return false;
+
+				if (!take(TokKind::Semicolon))
+				{
+					error = "expected ';'" + errLine();
+					return false;
+				}
+
+				std::map<std::string, Var>::iterator vit = data->vars.find(name);
+				if (vit == data->vars.end())
+				{
+					error = "unknown variable '" + name + "' at line " + toStr(line);
+					return false;
+				}
+
+				for (std::vector<Binding>::iterator it = data->bindings.begin(); it != data->bindings.end(); ++it)
+				{
+					if (it->var->name == name)
+					{
+						error = "variable '" + name + "' is already bound at line " + toStr(line);
+						return false;
+					}
+				}
+
+				Binding b;
+				b.var = &vit->second;
+				b.node = resolveNode(path);
+				data->bindings.push_back(b);
+				return true;
+			}
+
+			bool parseNodeRef(std::string& path)
+			{
+				if (!take(TokKind::DoubleColon))
+				{
+					error = "expected '::'" + errLine();
+					return false;
+				}
+				std::string name = takeText(TokKind::Ident);
+				if (name.empty())
+				{
+					error = "expected rule name" + errLine();
+					return false;
+				}
+				path = name;
+
+				while (take(TokKind::DoubleColon))
+				{
+					if (!take(TokKind::LAngle))
+					{
+						error = "expected '<'" + errLine();
+						return false;
+					}
+					std::string field = takeText(TokKind::Ident);
+					if (field.empty())
+					{
+						error = "expected field name" + errLine();
+						return false;
+					}
+					if (!take(TokKind::RAngle))
+					{
+						error = "expected '>'" + errLine();
+						return false;
+					}
+					path += "::<" + field + ">";
+				}
+				return true;
+			}
+
+			bool parseGuard(Guard& g)
+			{
+				// at '['
+				++i;
+				std::string path;
+				if (!parseNodeRef(path))
+					return false;
+				if (!take(TokKind::EqEq))
+				{
+					error = "expected '=='" + errLine();
+					return false;
+				}
+				Literal lit;
+				if (!parseLiteral(lit))
+					return false;
+				if (!take(TokKind::RBracket))
+				{
+					error = "expected ']'" + errLine();
+					return false;
+				}
+				g.node = resolveNode(path);
+				g.text = lit.text;
+				return true;
+			}
+
+			bool parseLiteral(Literal& lit)
+			{
+				const Token& t = tok();
+				if (t.kind == TokKind::String)
+				{
+					lit.type = ValueType::String;
+					lit.text = t.text;
+					++i;
+					return true;
+				}
+				if (t.kind == TokKind::Number)
+				{
+					lit.type = (t.text.find('.') != std::string::npos) ? ValueType::Float : ValueType::Int;
+					lit.text = t.text;
+					++i;
+					return true;
+				}
+				if (t.kind == TokKind::Ident && (t.text == "true" || t.text == "false"))
+				{
+					lit.type = ValueType::Bool;
+					lit.text = t.text;
+					++i;
+					return true;
+				}
+				error = "expected literal" + errLine();
+				return false;
+			}
+
+			bool parseSequence(Node* node, std::vector<Element>& elems, TokKind endKind)
+			{
+				while (!at(endKind) && !at(TokKind::End))
+				{
+					Element e;
+					if (at(TokKind::LAngle))
+					{
+						++i;
+						std::string field = takeText(TokKind::Ident);
+						if (field.empty())
+						{
+							error = "expected field name" + errLine();
+							return false;
+						}
+						if (!take(TokKind::RAngle))
+						{
+							error = "expected '>'" + errLine();
+							return false;
+						}
+						e.kind = ElementKind::Field;
+						e.node = resolveNode(node->name + "::<" + field + ">");
+					}
+					else if (at(TokKind::DoubleColon))
+				{
+					std::string ref;
+					if (!parseNodeRef(ref))
+						return false;
+					e.kind = ElementKind::Field;
+					e.node = resolveNode(ref);
+				}
+				else if (at(TokKind::LBracket))
+					{
+						++i;
+						e.kind = ElementKind::Optional;
+						e.node = nullptr;
+						if (!parseSequence(node, e.inner, TokKind::RBracket))
+							return false;
+						if (!take(TokKind::RBracket))
+						{
+							error = "expected ']'" + errLine();
+							return false;
+						}
+					}
+					else if (at(TokKind::Ident) && tok().text == "__terminator")
+					{
+						++i;
+						e.kind = ElementKind::Terminator;
+						e.node = nullptr;
+					}
+					else if (at(TokKind::Ident) && tok().text == "__everything")
+					{
+						++i;
+						e.kind = ElementKind::Everything;
+						e.node = nullptr;
+					}
+					else
+					{
+						error = "unexpected token '" + tok().text + "' in sequence" + errLine();
+						return false;
+					}
+					elems.push_back(e);
+				}
+				return true;
+			}
+
+			bool parseRuleDef()
+			{
+				std::vector<Guard> guards;
+				while (at(TokKind::LBracket))
+				{
+					Guard g;
+					if (!parseGuard(g))
+						return false;
+					guards.push_back(g);
+				}
+
+				std::string path;
+				if (!parseNodeRef(path))
+					return false;
+
+				Node* node = resolveNode(path);
+
+				Alternative a;
+				if (at(TokKind::Colon))
+				{
+					++i;
+					a.kind = AltKind::Sequence;
+					if (!parseSequence(node, a.elems, TokKind::Semicolon))
+						return false;
+					if (!a.elems.empty())
+					{
+						Element& last = a.elems.back();
+						if (last.kind == ElementKind::Field && last.node == node)
+							last.kind = ElementKind::Optional;
+					}
+				}
+				else if (at(TokKind::Assign) || at(TokKind::PlusAssign))
+				{
+					++i;
+					if (at(TokKind::String) || at(TokKind::Number) ||
+						(at(TokKind::Ident) && (tok().text == "true" || tok().text == "false")))
+					{
+						a.kind = AltKind::LiteralSet;
+						while (true)
+						{
+							Literal lit;
+							if (!parseLiteral(lit))
+								return false;
+							a.literals.push_back(lit);
+							if (!take(TokKind::Comma))
+								break;
+						}
+					}
+					else
+					{
+						a.kind = AltKind::Sequence;
+						if (!parseSequence(node, a.elems, TokKind::Semicolon))
+							return false;
+						if (!a.elems.empty())
+						{
+							Element& last = a.elems.back();
+							if (last.kind == ElementKind::Field && last.node == node)
+								last.kind = ElementKind::Optional;
+						}
+					}
+				}
+				else
+				{
+					error = "expected ':' or '='" + errLine();
+					return false;
+				}
+
+				if (!take(TokKind::Semicolon))
+				{
+					error = "expected ';'" + errLine();
+					return false;
+				}
+
+				a.guards = guards;
+				node->alts.push_back(a);
+				return true;
+			}
+
+			static void collectRefs(Element& e, std::map<Node*, bool>& refs)
+			{
+				switch (e.kind)
+				{
+				case ElementKind::Field:
+					refs[e.node] = true;
+					break;
+				case ElementKind::Optional:
+					for (std::vector<Element>::iterator it = e.inner.begin(); it != e.inner.end(); ++it)
+						collectRefs(*it, refs);
+					break;
+				default:
+					break;
+				}
+			}
+
+			static void firstElemNode(Element& e, std::vector<Node*>& out)
+			{
+				switch (e.kind)
+				{
+				case ElementKind::Field:
+					out.push_back(e.node);
+					break;
+				case ElementKind::Optional:
+					if (!e.inner.empty())
+						firstElemNode(e.inner[0], out);
+					break;
+				default:
+					break;
+				}
+			}
+
+			static bool dfsCycle(Node* n, std::map<Node*, std::vector<Node*> >& edges, std::map<Node*, buint8>& color, Node*& bad)
+			{
+				color[n] = 1;
+				std::vector<Node*>& es = edges[n];
+				for (std::vector<Node*>::iterator it = es.begin(); it != es.end(); ++it)
+				{
+					std::map<Node*, buint8>::iterator c = color.find(*it);
+					if (c == color.end())
+					{
+						if (!dfsCycle(*it, edges, color, bad))
+							return false;
+					}
+					else if (c->second == 1)
+					{
+						bad = *it;
+						return false;
+					}
+				}
+				color[n] = 2;
+				return true;
+			}
+
+			bool validate()
+			{
+				if (data->roots.empty())
+				{
+					error = "no grammar rules defined";
+					return false;
+				}
+
+				data->entry = data->roots[0];
+
+				std::map<Node*, bool> referenced;
+				referenced[data->entry] = true;
+
+				for (std::map<std::string, Node>::iterator it = data->nodes.begin(); it != data->nodes.end(); ++it)
+				{
+					Node* n = &it->second;
+					for (std::vector<Alternative>::iterator ait = n->alts.begin(); ait != n->alts.end(); ++ait)
+					{
+						for (std::vector<Guard>::iterator git = ait->guards.begin(); git != ait->guards.end(); ++git)
+							referenced[git->node] = true;
+						for (std::vector<Element>::iterator eit = ait->elems.begin(); eit != ait->elems.end(); ++eit)
+							collectRefs(*eit, referenced);
+					}
+				}
+
+				for (std::vector<Binding>::iterator it = data->bindings.begin(); it != data->bindings.end(); ++it)
+					referenced[it->node] = true;
+
+				for (std::map<Node*, bool>::iterator it = referenced.begin(); it != referenced.end(); ++it)
+				{
+					if (it->first->alts.empty())
+					{
+						error = "no rules defined for '" + it->first->name + "'";
+						return false;
+					}
+				}
+
+				std::map<Node*, std::vector<Node*> > edges;
+				for (std::map<std::string, Node>::iterator it = data->nodes.begin(); it != data->nodes.end(); ++it)
+				{
+					Node* n = &it->second;
+					for (std::vector<Alternative>::iterator ait = n->alts.begin(); ait != n->alts.end(); ++ait)
+					{
+						if (ait->kind != AltKind::Sequence || ait->elems.empty())
+							continue;
+						firstElemNode(ait->elems[0], edges[n]);
+					}
+				}
+
+				std::map<Node*, buint8> color;
+				Node* bad = nullptr;
+				for (std::map<std::string, Node>::iterator it = data->nodes.begin(); it != data->nodes.end(); ++it)
+				{
+					if (color.find(&it->second) == color.end())
+					{
+						if (!dfsCycle(&it->second, edges, color, bad))
+						{
+							error = "left recursion detected at '" + bad->name + "'";
+							return false;
+						}
+					}
+				}
+				return true;
+			}
+		};
+
+		// ============================================================
+		// input tokenization
+		// ============================================================
+
+		struct InTok
+		{
+			std::string text;
+			buint32 offset;
+		};
+
+		static void tokenize(const std::string& text, std::vector<InTok>& out)
+		{
+			const buint32 n = (buint32)text.size();
+			buint32 i = 0;
+			while (i < n)
+			{
+				while (i < n && std::isspace((unsigned char)text[i]))
+					++i;
+				if (i >= n)
+					break;
+				InTok t;
+				t.offset = i;
+				while (i < n && !std::isspace((unsigned char)text[i]))
+				{
+					t.text += text[i];
+					++i;
+				}
+				out.push_back(t);
+			}
+		}
+
+		// ============================================================
+		// matching runtime
+		// ============================================================
+
+		static const buint32 maxMatchDepth = 1024;
+
+		typedef std::map<Node*, Value> CaptureMap;
+
+		struct MatchState
+		{
+			const std::vector<InTok>* tokens;
+			buint32 pos;
+			buint32 depth;
+			CaptureMap captures;
+
+			MatchState()
+				: tokens(nullptr)
+				, pos(0)
+				, depth(0)
+			{
+			}
+		};
+
+		struct MatchResult
+		{
+			bool ok;
+			buint32 consumed;
+			MatchState state;
+			Value value;
+			std::string error;
+		};
+
+		static void matchNode(Node* node, const MatchState& st, MatchResult& res);
+
+		static bool altGuardPass(const Alternative& alt, const CaptureMap& captures)
+		{
+			for (std::vector<Guard>::const_iterator it = alt.guards.begin(); it != alt.guards.end(); ++it)
+			{
+				CaptureMap::const_iterator c = captures.find(it->node);
+				if (c == captures.end() || c->second.str != it->text)
+					return false;
+			}
+			return true;
+		}
+
+		static void pushFlatten(Value& dst, const Value& src)
+		{
+			if (src.type == ValueType::AnyList)
+			{
+				for (std::vector<Value>::const_iterator it = src.list.begin(); it != src.list.end(); ++it)
+					dst.list.push_back(*it);
+			}
+			else if (src.type != ValueType::None)
+			{
+				dst.list.push_back(src);
+			}
+		}
+
+		static bool matchElem(Element& e, MatchState& st, Value& out, std::string& error, buint32& consumed)
+		{
+			consumed = 0;
+
+			switch (e.kind)
+			{
+			case ElementKind::Terminator:
+				if (st.pos != st.tokens->size())
+				{
+					error = "expected end of input at token " + toStr(st.pos) + " (got '" + (*st.tokens)[st.pos].text + "')";
+					return false;
+				}
+				out.type = ValueType::None;
+				return true;
+
+			case ElementKind::Everything:
+			{
+				Value v;
+				v.type = ValueType::AnyList;
+				for (buint32 k = st.pos; k < st.tokens->size(); ++k)
+				{
+					Value t;
+					t.type = ValueType::String;
+					t.str = (*st.tokens)[k].text;
+					v.list.push_back(t);
+				}
+				consumed = (buint32)st.tokens->size() - st.pos;
+				st.pos = (buint32)st.tokens->size();
+				out = v;
+				return true;
+			}
+
+			case ElementKind::Field:
+			{
+				MatchState child;
+				child.tokens = st.tokens;
+				child.pos = st.pos;
+				child.depth = st.depth;
+				child.captures = st.captures;
+
+				MatchResult r;
+				matchNode(e.node, child, r);
+				if (!r.ok)
+				{
+					error = r.error;
+					consumed = r.consumed;
+					return false;
+				}
+				st.pos = r.state.pos;
+				st.captures[e.node] = r.value;
+				out = r.value;
+				consumed = r.consumed;
+				return true;
+			}
+
+			case ElementKind::Optional:
+			{
+				MatchState innerSt = st;
+				std::vector<Value> innerVals;
+				for (std::vector<Element>::iterator it = e.inner.begin(); it != e.inner.end(); ++it)
+				{
+					buint32 ec = 0;
+					Value v;
+					std::string innerErr;
+					if (!matchElem(*it, innerSt, v, innerErr, ec))
+					{
+						consumed += ec;
+						if (consumed == 0)
+						{
+							// nothing matched -> skip silently
+							out.type = ValueType::None;
+							return true;
+						}
+						error = innerErr;
+						return false;
+					}
+					consumed += ec;
+					if (v.type != ValueType::None)
+						innerVals.push_back(v);
+				}
+				st = innerSt;
+				Value v;
+				v.type = ValueType::AnyList;
+				for (std::vector<Value>::iterator it = innerVals.begin(); it != innerVals.end(); ++it)
+					pushFlatten(v, *it);
+				out = v;
+				return true;
+			}
+			}
+
+			return false;
+		}
+
+		static bool matchAlt(Alternative& alt, MatchState& st, Value& out, std::string& error)
+		{
+			if (alt.kind == AltKind::LiteralSet)
+			{
+				std::string expected;
+				for (std::vector<Literal>::iterator it = alt.literals.begin(); it != alt.literals.end(); ++it)
+				{
+					if (it != alt.literals.begin())
+						expected += ", ";
+					expected += "'" + it->text + "'";
+				}
+
+				if (st.pos >= st.tokens->size())
+				{
+					error = "expected " + expected + " but input ended";
+					return false;
+				}
+
+				const std::string& text = (*st.tokens)[st.pos].text;
+				for (std::vector<Literal>::iterator it = alt.literals.begin(); it != alt.literals.end(); ++it)
+				{
+					if (text == it->text)
+					{
+						Value v;
+						v.type = it->type;
+						v.str = text;
+						switch (it->type)
+						{
+						case ValueType::Int:
+							v.i = (bint32)std::strtol(text.c_str(), nullptr, 10);
+							break;
+						case ValueType::Float:
+							v.f = (float)std::atof(text.c_str());
+							break;
+						case ValueType::Bool:
+							v.b = (text == "true");
+							break;
+						default:
+							break;
+						}
+						++st.pos;
+						out = v;
+						return true;
+					}
+				}
+
+				error = "expected " + expected + " but got '" + text + "' at token " + toStr(st.pos);
+				return false;
+			}
+
+			std::vector<Value> seq;
+			for (std::vector<Element>::iterator eit = alt.elems.begin(); eit != alt.elems.end(); ++eit)
+			{
+				buint32 ec = 0;
+				Value v;
+				if (!matchElem(*eit, st, v, error, ec))
+					return false;
+				if (v.type != ValueType::None)
+					seq.push_back(v);
+			}
+
+			Value v;
+			v.type = ValueType::AnyList;
+			for (std::vector<Value>::iterator it = seq.begin(); it != seq.end(); ++it)
+				pushFlatten(v, *it);
+			out = v;
+			return true;
+		}
+
+		static void matchNode(Node* node, const MatchState& st, MatchResult& res)
+		{
+			res.ok = false;
+			res.consumed = 0;
+			res.error.clear();
+
+			if (st.depth >= maxMatchDepth)
+			{
+				res.error = std::string("recursion depth exceeded (possible left recursion) at '") + node->name + "'";
+				return;
+			}
+
+			MatchState start = st;
+
+			for (std::vector<Alternative>::iterator ait = node->alts.begin(); ait != node->alts.end(); ++ait)
+			{
+				MatchState a = start;
+				++a.depth;
+
+				if (!altGuardPass(*ait, a.captures))
+					continue;
+
+				Value v;
+				std::string altErr;
+				bool ok = matchAlt(*ait, a, v, altErr);
+
+				buint32 consumed = a.pos - start.pos;
+				if (consumed > res.consumed)
+					res.consumed = consumed;
+				if (res.error.empty() && !altErr.empty())
+					res.error = altErr;
+
+				if (ok)
+				{
+					res.ok = true;
+					res.consumed = consumed;
+					res.state = a;
+					res.value = v;
+					return;
+				}
+
+				if (consumed > 0)
+				{
+					// greedy commit: the first alternative that started matching fails the node
+					return;
+				}
+			}
+		}
+
+		// ============================================================
+		// conversions
+		// ============================================================
+
+		static bool strictInt(const std::string& s, bint32& out)
+		{
+			if (s.empty())
+				return false;
+			char* end = nullptr;
+			long v = std::strtol(s.c_str(), &end, 10);
+			if (end == s.c_str() || *end != '\0')
+				return false;
+			if (v < INT32_MIN || v > INT32_MAX)
+				return false;
+			out = (bint32)v;
+			return true;
+		}
+
+		static bool strictFloat(const std::string& s, float& out)
+		{
+			if (s.empty())
+				return false;
+			char* end = nullptr;
+			float v = std::strtof(s.c_str(), &end);
+			if (end == s.c_str() || *end != '\0')
+				return false;
+			out = v;
+			return true;
+		}
+
+		static VarType scalarTypeOf(VarType vt)
+		{
+			switch (vt)
+			{
+			case VarType::ArrayString: return VarType::String;
+			case VarType::ArrayInt: return VarType::Int;
+			case VarType::ArrayFloat: return VarType::Float;
+			case VarType::ArrayBool: return VarType::Bool;
+			default: return vt;
+			}
+		}
+
+		static bool valueToVarType(const Value& v, VarType vt, Value& out)
+		{
+			switch (vt)
+			{
+			case VarType::String:
+				if (v.type != ValueType::String && v.type != ValueType::Int && v.type != ValueType::Float && v.type != ValueType::Bool)
+					return false;
+				out.type = ValueType::String;
+				out.str = v.str;
+				return true;
+
+			case VarType::Int:
+				if (v.type == ValueType::Int)
+				{
+					out.type = ValueType::Int;
+					out.str = v.str;
+					out.i = v.i;
+					return true;
+				}
+				if (v.type == ValueType::String)
+				{
+					bint32 x;
+					if (!strictInt(v.str, x))
+						return false;
+					out.type = ValueType::Int;
+					out.str = v.str;
+					out.i = x;
+					return true;
+				}
+				return false;
+
+			case VarType::Float:
+				if (v.type == ValueType::Float)
+				{
+					out.type = ValueType::Float;
+					out.str = v.str;
+					out.f = v.f;
+					return true;
+				}
+				if (v.type == ValueType::Int)
+				{
+					out.type = ValueType::Float;
+					out.str = v.str;
+					out.f = (float)v.i;
+					return true;
+				}
+				if (v.type == ValueType::String)
+				{
+					float x;
+					if (!strictFloat(v.str, x))
+						return false;
+					out.type = ValueType::Float;
+					out.str = v.str;
+					out.f = x;
+					return true;
+				}
+				return false;
+
+			case VarType::Bool:
+				if (v.type == ValueType::Bool)
+				{
+					out.type = ValueType::Bool;
+					out.str = v.str;
+					out.b = v.b;
+					return true;
+				}
+				if (v.type == ValueType::String)
+				{
+					if (v.str == "true")
+					{
+						out.type = ValueType::Bool;
+						out.str = v.str;
+						out.b = true;
+						return true;
+					}
+					if (v.str == "false")
+					{
+						out.type = ValueType::Bool;
+						out.str = v.str;
+						out.b = false;
+						return true;
+					}
+				}
+				return false;
+
+			case VarType::ArrayString:
+			case VarType::ArrayInt:
+			case VarType::ArrayFloat:
+			case VarType::ArrayBool:
+			{
+				if (v.type != ValueType::AnyList)
+					return false;
+				out.type = ValueType::AnyList;
+				VarType elemType = scalarTypeOf(vt);
+				for (std::vector<Value>::const_iterator it = v.list.begin(); it != v.list.end(); ++it)
+				{
+					Value converted;
+					if (!valueToVarType(*it, elemType, converted))
+						return false;
+					out.list.push_back(converted);
+				}
+				return true;
+			}
+			}
+
+			return false;
+		}
+
+		// ============================================================
+		// Parser
+		// ============================================================
+
+		Parser::Parser()
+		{
+			d = new Data();
+		}
+
+		Parser::~Parser()
+		{
+			delete d;
+		}
+
+		bool Parser::load(const std::string& path)
+		{
+			d->clearGrammar();
+
+			std::ifstream file(path.c_str(), std::ios::binary);
+			if (!file.is_open())
+			{
+				d->error = "cannot open file '" + path + "'";
+				return false;
+			}
+
+			std::string src((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+			file.close();
+
+			std::vector<Token> tokens;
+			if (!lex(src, tokens, d->error))
+			{
+				d->error = "pdl: " + d->error;
+				return false;
+			}
+
+			Loader l;
+			l.toks = &tokens;
+			l.i = 0;
+			l.data = d;
+
+			if (!l.parseProgram())
+			{
+				d->error = "pdl: " + l.error;
+				return false;
+			}
+			if (!l.validate())
+			{
+				d->error = "pdl: " + l.error;
+				return false;
+			}
+			return true;
+		}
+
+		bool Parser::parse(const std::string& text)
+		{
+			d->error.clear();
+			d->resetVars();
+
+			if (d->entry == nullptr)
+			{
+				d->error = "no grammar loaded";
+				return false;
+			}
+
+			std::vector<InTok> tokens;
+			tokenize(text, tokens);
+
+			MatchState st;
+			st.tokens = &tokens;
+
+			MatchResult res;
+			matchNode(d->entry, st, res);
+
+			if (!res.ok)
+			{
+				d->error = "parse error";
+				if (!res.error.empty())
+					d->error += ": " + res.error;
+				return false;
+			}
+
+			if (res.state.pos != tokens.size())
+			{
+				d->error = "unexpected trailing input '" + tokens[res.state.pos].text + "' at offset " + toStr(tokens[res.state.pos].offset);
+				return false;
+			}
+
+			for (std::vector<Binding>::iterator it = d->bindings.begin(); it != d->bindings.end(); ++it)
+			{
+				Binding& b = *it;
+				CaptureMap::const_iterator c = res.state.captures.find(b.node);
+				if (c == res.state.captures.end())
+				{
+					switch (b.var->type)
+					{
+					case VarType::ArrayString:
+					case VarType::ArrayInt:
+					case VarType::ArrayFloat:
+					case VarType::ArrayBool:
+					{
+						Value empty;
+						empty.type = ValueType::AnyList;
+						b.var->value = empty;
+						break;
+					}
+					default:
+						d->error = "variable '" + b.var->name + "' was not captured";
+						return false;
+					}
+					continue;
+				}
+
+				Value converted;
+				if (!valueToVarType(c->second, b.var->type, converted))
+				{
+					d->error = "cannot assign captured value to variable '" + b.var->name + "'";
+					return false;
+				}
+				b.var->value = converted;
+			}
+			return true;
+		}
+
+		const std::string& Parser::getLastError() const
+		{
+			return d->error;
+		}
+
+		bool Parser::getVarImpl(const Data& data, const std::string& name, std::string& out) const
+		{
+			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
+			if (it == data.vars.end() || it->second.type != VarType::String || it->second.value.type != ValueType::String)
+				return false;
+			out = it->second.value.str;
+			return true;
+		}
+
+		bool Parser::getVarImpl(const Data& data, const std::string& name, bint32& out) const
+		{
+			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
+			if (it == data.vars.end() || it->second.type != VarType::Int || it->second.value.type != ValueType::Int)
+				return false;
+			out = it->second.value.i;
+			return true;
+		}
+
+		bool Parser::getVarImpl(const Data& data, const std::string& name, float& out) const
+		{
+			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
+			if (it == data.vars.end() || it->second.type != VarType::Float || it->second.value.type != ValueType::Float)
+				return false;
+			out = it->second.value.f;
+			return true;
+		}
+
+		bool Parser::getVarImpl(const Data& data, const std::string& name, bool& out) const
+		{
+			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
+			if (it == data.vars.end() || it->second.type != VarType::Bool || it->second.value.type != ValueType::Bool)
+				return false;
+			out = it->second.value.b;
+			return true;
+		}
+
+		bool Parser::getVarImpl(const Data& data, const std::string& name, std::vector<std::string>& out) const
+		{
+			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
+			if (it == data.vars.end() || it->second.type != VarType::ArrayString || it->second.value.type != ValueType::AnyList)
+				return false;
+			out.clear();
+			for (std::vector<Value>::const_iterator vit = it->second.value.list.begin(); vit != it->second.value.list.end(); ++vit)
+			{
+				if (vit->type != ValueType::String)
+					return false;
+				out.push_back(vit->str);
+			}
+			return true;
+		}
+
+		bool Parser::getVarImpl(const Data& data, const std::string& name, std::vector<bint32>& out) const
+		{
+			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
+			if (it == data.vars.end() || it->second.type != VarType::ArrayInt || it->second.value.type != ValueType::AnyList)
+				return false;
+			out.clear();
+			for (std::vector<Value>::const_iterator vit = it->second.value.list.begin(); vit != it->second.value.list.end(); ++vit)
+			{
+				if (vit->type != ValueType::Int)
+					return false;
+				out.push_back(vit->i);
+			}
+			return true;
+		}
+
+		bool Parser::getVarImpl(const Data& data, const std::string& name, std::vector<float>& out) const
+		{
+			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
+			if (it == data.vars.end() || it->second.type != VarType::ArrayFloat || it->second.value.type != ValueType::AnyList)
+				return false;
+			out.clear();
+			for (std::vector<Value>::const_iterator vit = it->second.value.list.begin(); vit != it->second.value.list.end(); ++vit)
+			{
+				if (vit->type != ValueType::Float)
+					return false;
+				out.push_back(vit->f);
+			}
+			return true;
+		}
+
+		bool Parser::getVarImpl(const Data& data, const std::string& name, std::vector<bool>& out) const
+		{
+			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
+			if (it == data.vars.end() || it->second.type != VarType::ArrayBool || it->second.value.type != ValueType::AnyList)
+				return false;
+			out.clear();
+			for (std::vector<Value>::const_iterator vit = it->second.value.list.begin(); vit != it->second.value.list.end(); ++vit)
+			{
+				if (vit->type != ValueType::Bool)
+					return false;
+				out.push_back(vit->b);
+			}
+			return true;
+		}
+	}
+}
