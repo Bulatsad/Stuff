@@ -160,6 +160,7 @@ namespace blib
 			std::map<std::string, Node> nodes;
 			std::vector<Node*> roots;
 			std::vector<Binding> bindings;
+			std::vector<std::string> terminatorLiterals;
 
 			Node* entry;
 
@@ -175,6 +176,7 @@ namespace blib
 				nodes.clear();
 				roots.clear();
 				bindings.clear();
+				terminatorLiterals.clear();
 				entry = nullptr;
 			}
 
@@ -208,6 +210,8 @@ namespace blib
 			RAngle,
 			LBracket,
 			RBracket,
+			LBrace,
+			RBrace,
 			At,
 			EqEq,
 			Ident,
@@ -247,6 +251,30 @@ namespace blib
 				{
 					while (i < n && src[i] != '\n')
 						++i;
+					continue;
+				}
+				if (c == '/' && i + 1 < n && src[i + 1] == '*')
+				{
+					const buint32 startLine = line;
+					i += 2;
+					bool closed = false;
+					while (i < n)
+					{
+						if (src[i] == '\n')
+							++line;
+						if (src[i] == '*' && i + 1 < n && src[i + 1] == '/')
+						{
+							i += 2;
+							closed = true;
+							break;
+						}
+						++i;
+					}
+					if (!closed)
+					{
+						error = "unterminated comment at line " + toStr(startLine);
+						return false;
+					}
 					continue;
 				}
 
@@ -320,6 +348,16 @@ namespace blib
 				else if (c == ']')
 				{
 					t.kind = TokKind::RBracket;
+					++i;
+				}
+				else if (c == '{')
+				{
+					t.kind = TokKind::LBrace;
+					++i;
+				}
+				else if (c == '}')
+				{
+					t.kind = TokKind::RBrace;
 					++i;
 				}
 				else if (c == '@')
@@ -496,15 +534,36 @@ namespace blib
 						if (!parseBinding())
 							return false;
 					}
-					else if (at(TokKind::DoubleColon) || at(TokKind::LBracket))
+					else if (at(TokKind::String))
 					{
-						if (!parseRuleDef())
+						if (!parseTerminatorDecl())
 							return false;
 					}
 					else
 					{
-						error = "unexpected token '" + tok().text + "'" + errLine();
-						return false;
+						std::vector<Guard> guards;
+						while (at(TokKind::LBracket))
+						{
+							Guard g;
+							if (!parseGuard(g))
+								return false;
+							guards.push_back(g);
+						}
+						if (at(TokKind::LBrace))
+						{
+							if (!parseBlock(guards))
+								return false;
+						}
+						else if (at(TokKind::DoubleColon))
+						{
+							if (!parseRuleDef(guards))
+								return false;
+						}
+						else
+						{
+							error = "unexpected token '" + tok().text + "'" + errLine();
+							return false;
+						}
 					}
 				}
 				return true;
@@ -815,17 +874,81 @@ namespace blib
 				return true;
 			}
 
-			bool parseRuleDef()
+			bool parseTerminatorDecl()
 			{
-				std::vector<Guard> guards;
-				while (at(TokKind::LBracket))
+				// at String
+				std::vector<std::string> lits;
+				while (true)
 				{
-					Guard g;
-					if (!parseGuard(g))
+					if (!at(TokKind::String))
+					{
+						error = "expected literal" + errLine();
 						return false;
-					guards.push_back(g);
+					}
+					lits.push_back(tok().text);
+					++i;
+					if (!take(TokKind::Comma))
+						break;
 				}
 
+				if (!take(TokKind::Assign))
+				{
+					error = "expected '='" + errLine();
+					return false;
+				}
+				if (!(at(TokKind::Ident) && tok().text == "__terminator"))
+				{
+					error = "expected '__terminator'" + errLine();
+					return false;
+				}
+				++i;
+				if (!take(TokKind::Semicolon))
+				{
+					error = "expected ';'" + errLine();
+					return false;
+				}
+
+				if (!data->terminatorLiterals.empty())
+				{
+					error = "terminator is already declared" + errLine();
+					return false;
+				}
+				data->terminatorLiterals = lits;
+				return true;
+			}
+
+			bool parseBlock(const std::vector<Guard>& outer)
+			{
+				// at '{'
+				++i;
+				while (!at(TokKind::RBrace) && !at(TokKind::End))
+				{
+					std::vector<Guard> guards = outer;
+					while (at(TokKind::LBracket))
+					{
+						Guard g;
+						if (!parseGuard(g))
+							return false;
+						guards.push_back(g);
+					}
+					if (at(TokKind::LBrace))
+					{
+						if (!parseBlock(guards))
+							return false;
+					}
+					else if (!parseRuleDef(guards))
+						return false;
+				}
+				if (!take(TokKind::RBrace))
+				{
+					error = "expected '}'" + errLine();
+					return false;
+				}
+				return true;
+			}
+
+			bool parseRuleDef(const std::vector<Guard>& guards)
+			{
 				std::string path;
 				if (!parseNodeRef(path))
 					return false;
@@ -1055,12 +1178,14 @@ namespace blib
 		struct MatchState
 		{
 			const std::vector<InTok>* tokens;
+			const std::vector<std::string>* terms;
 			buint32 pos;
 			buint32 depth;
 			CaptureMap captures;
 
 			MatchState()
 				: tokens(nullptr)
+				, terms(nullptr)
 				, pos(0)
 				, depth(0)
 			{
@@ -1102,6 +1227,18 @@ namespace blib
 			}
 		}
 
+		static bool isTermToken(const MatchState& st, const std::string& text)
+		{
+			if (st.terms == nullptr)
+				return false;
+			for (std::vector<std::string>::const_iterator it = st.terms->begin(); it != st.terms->end(); ++it)
+			{
+				if (text == *it)
+					return true;
+			}
+			return false;
+		}
+
 		static bool matchElem(Element& e, MatchState& st, Value& out, std::string& error, buint32& consumed)
 		{
 			consumed = 0;
@@ -1109,27 +1246,34 @@ namespace blib
 			switch (e.kind)
 			{
 			case ElementKind::Terminator:
+			{
 				if (st.pos != st.tokens->size())
 				{
-					error = "expected end of input at token " + toStr(st.pos) + " (got '" + (*st.tokens)[st.pos].text + "')";
-					return false;
+					if (!isTermToken(st, (*st.tokens)[st.pos].text))
+					{
+						error = "expected terminator at token " + toStr(st.pos) + " (got '" + (*st.tokens)[st.pos].text + "')";
+						return false;
+					}
+					++st.pos;
+					consumed = 1;
 				}
 				out.type = ValueType::None;
 				return true;
+			}
 
 			case ElementKind::Everything:
 			{
 				Value v;
 				v.type = ValueType::AnyList;
-				for (buint32 k = st.pos; k < st.tokens->size(); ++k)
+				for (buint32 k = st.pos; k < st.tokens->size() && !isTermToken(st, (*st.tokens)[k].text); ++k)
 				{
 					Value t;
 					t.type = ValueType::String;
 					t.str = (*st.tokens)[k].text;
 					v.list.push_back(t);
 				}
-				consumed = (buint32)st.tokens->size() - st.pos;
-				st.pos = (buint32)st.tokens->size();
+				consumed = (buint32)v.list.size();
+				st.pos += consumed;
 				out = v;
 				return true;
 			}
@@ -1138,6 +1282,7 @@ namespace blib
 			{
 				MatchState child;
 				child.tokens = st.tokens;
+				child.terms = st.terms;
 				child.pos = st.pos;
 				child.depth = st.depth;
 				child.captures = st.captures;
@@ -1152,6 +1297,8 @@ namespace blib
 				}
 				st.pos = r.state.pos;
 				st.captures[e.node] = r.value;
+				for (CaptureMap::iterator cit = r.state.captures.begin(); cit != r.state.captures.end(); ++cit)
+					st.captures[cit->first] = cit->second;
 				out = r.value;
 				consumed = r.consumed;
 				return true;
@@ -1467,6 +1614,44 @@ namespace blib
 		// Parser
 		// ============================================================
 
+		static bool assignBindings(std::vector<Binding>& bindings, std::string& error, const CaptureMap& captures)
+		{
+			for (std::vector<Binding>::iterator it = bindings.begin(); it != bindings.end(); ++it)
+			{
+				Binding& b = *it;
+				CaptureMap::const_iterator c = captures.find(b.node);
+				if (c == captures.end())
+				{
+					switch (b.var->type)
+					{
+					case VarType::ArrayString:
+					case VarType::ArrayInt:
+					case VarType::ArrayFloat:
+					case VarType::ArrayBool:
+					{
+						Value empty;
+						empty.type = ValueType::AnyList;
+						b.var->value = empty;
+						break;
+					}
+					default:
+						error = "variable '" + b.var->name + "' was not captured";
+						return false;
+					}
+					continue;
+				}
+
+				Value converted;
+				if (!valueToVarType(c->second, b.var->type, converted))
+				{
+					error = "cannot assign captured value to variable '" + b.var->name + "'";
+					return false;
+				}
+				b.var->value = converted;
+			}
+			return true;
+		}
+
 		Parser::Parser()
 		{
 			d = new Data();
@@ -1532,6 +1717,7 @@ namespace blib
 
 			MatchState st;
 			st.tokens = &tokens;
+			st.terms = &d->terminatorLiterals;
 
 			MatchResult res;
 			matchNode(d->entry, st, res);
@@ -1550,40 +1736,58 @@ namespace blib
 				return false;
 			}
 
-			for (std::vector<Binding>::iterator it = d->bindings.begin(); it != d->bindings.end(); ++it)
-			{
-				Binding& b = *it;
-				CaptureMap::const_iterator c = res.state.captures.find(b.node);
-				if (c == res.state.captures.end())
-				{
-					switch (b.var->type)
-					{
-					case VarType::ArrayString:
-					case VarType::ArrayInt:
-					case VarType::ArrayFloat:
-					case VarType::ArrayBool:
-					{
-						Value empty;
-						empty.type = ValueType::AnyList;
-						b.var->value = empty;
-						break;
-					}
-					default:
-						d->error = "variable '" + b.var->name + "' was not captured";
-						return false;
-					}
-					continue;
-				}
+			return assignBindings(d->bindings, d->error, res.state.captures);
+		}
 
-				Value converted;
-				if (!valueToVarType(c->second, b.var->type, converted))
-				{
-					d->error = "cannot assign captured value to variable '" + b.var->name + "'";
-					return false;
-				}
-				b.var->value = converted;
+		bool Parser::parseNext(const std::string& text, size_t& offset)
+		{
+			d->error.clear();
+			d->resetVars();
+
+			if (d->entry == nullptr)
+			{
+				d->error = "no grammar loaded";
+				return false;
 			}
-			return true;
+
+			std::vector<InTok> tokens;
+			tokenize(text, tokens);
+
+			buint32 startIdx = 0;
+			while (startIdx < tokens.size() && tokens[startIdx].offset < offset)
+				++startIdx;
+
+			if (startIdx >= tokens.size())
+				return false;
+
+			MatchState st;
+			st.tokens = &tokens;
+			st.pos = startIdx;
+			st.terms = &d->terminatorLiterals;
+
+			MatchResult res;
+			matchNode(d->entry, st, res);
+
+			if (!res.ok)
+			{
+				d->error = "parse error";
+				if (!res.error.empty())
+					d->error += ": " + res.error;
+				return false;
+			}
+
+			if (res.state.pos <= startIdx && res.state.pos < tokens.size())
+			{
+				d->error = "zero-length match at offset " + toStr(tokens[startIdx].offset);
+				return false;
+			}
+
+			if (res.state.pos >= tokens.size())
+				offset = text.size();
+			else
+				offset = tokens[res.state.pos].offset;
+
+			return assignBindings(d->bindings, d->error, res.state.captures);
 		}
 
 		const std::string& Parser::getLastError() const
