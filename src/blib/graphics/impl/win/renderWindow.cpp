@@ -156,7 +156,7 @@ void blib::graphics::RenderWindow::update()
     {
         if (msg.message == WM_CLOSE || msg.message == WM_QUIT || msg.message == WM_DESTROY)
         {
-            __blib_render_window_this_context(this)->open = false;
+            this->close();
         }
         TranslateMessage(&msg);
         DispatchMessage(&msg);

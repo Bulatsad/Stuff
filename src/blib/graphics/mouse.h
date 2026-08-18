@@ -27,6 +27,7 @@ namespace blib
             static bool isButtonPressed(Button button);
             static Vector2i getPosition(RenderWindow& wnd);
             static void setPosition(RenderWindow& wnd, const Vector2i& position);
+            static void setVisible(bool visible);
 
         };
     }

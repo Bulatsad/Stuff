@@ -35,16 +35,18 @@ const blib::math::Matrix<float, 4, 4>& blib::graphics::Camera::getViewMatrix() c
     return this->viewMatrix;
 }
 
-void blib::graphics::Camera::controlUpdate(float deltaTime, blib::graphics::RenderWindow& wnd)
+void blib::graphics::Camera::controlUpdate(float deltaTime, blib::graphics::RenderWindow& wnd, bool isFocused)
 {
     blib::graphics::Vector2i mousepos = blib::graphics::Mouse::getPosition(wnd);
-    blib::graphics::Vector2i zeropos;
     blib::graphics::Vector2i deltapos;
+    blib::graphics::Vector2i zeropos;
     zeropos.y = wnd.getHeight() / 2;
     zeropos.x = wnd.getWight() / 2;
     deltapos.x = zeropos.x - mousepos.x;
     deltapos.y = zeropos.y - mousepos.y;
-    blib::graphics::Mouse::setPosition(wnd, zeropos);
+
+    if(!isFocused)
+        blib::graphics::Mouse::setPosition(wnd, zeropos);
 
     this->yaw.data += deltapos.x * -this->rotatespeed * deltaTime;
     this->pitch.data += deltapos.y * this->rotatespeed * deltaTime;

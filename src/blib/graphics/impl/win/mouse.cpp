@@ -45,3 +45,8 @@ void blib::graphics::Mouse::setPosition(RenderWindow& wnd, const Vector2i& posit
     ClientToScreen(__blib_render_window_context(wnd.__getCtx())->hwnd, &point);
     SetCursorPos(point.x, point.y);
 }
+
+void blib::graphics::Mouse::setVisible(bool visible)
+{
+    ::ShowCursor(visible ? TRUE : FALSE);
+}
