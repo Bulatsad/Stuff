@@ -12,12 +12,10 @@ endfunction()
 
 set(blib_project_name blib)
 set(beng_project_name beng)
-set(vochat_project_name vochat)
 
 set(root_dir ${CMAKE_CURRENT_SOURCE_DIR})
 set(blib_dir ${root_dir}/blib)
 set(beng_dir ${root_dir}/beng)
-set(vochat_dir ${root_dir}/vochat)
 
 set(thirdparty_dir ${root_dir}/thirdparty)
 
@@ -36,7 +34,6 @@ option(BUILD_TESTS "Build tests" OFF)
 
 add_subdirectory(${blib_dir})
 add_subdirectory(${beng_dir})
-add_subdirectory(${vochat_dir})
 
 if(BUILD_TESTS)
 	enable_testing()

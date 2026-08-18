@@ -1,0 +1,28 @@
+let var string @command;
+let var array<string> @options;
+let var array<string> @commandArgs;
+
+::globalRule1: <command> [<options>] <commandArgs>;
+@command = ::globalRule1::<command>;
+@options = ::globalRule1::<options>;
+@commandArgs = ::globalRule1::<commandArgs>;
+
+::globalRule1::<command> = "add","sub";
+
+::globalRule1::<options> = <flagName> <value> ::globalRule1::<options>;
+::globalRule1::<options> = __terminator;
+
+::globalRule1::<options>::<flagName> = "checkError";
+::globalRule1::<options>::<flagName> += "signed";
+
+[::globalRule1::<options>::<flagName> == "signed"]
+::globalRule1::<options>::<value> = "1","0";
+
+[::globalRule1::<options>::<flagName> == "checkError"]
+::globalRule1::<options>::<value> = "true";
+[::globalRule1::<options>::<flagName> == "checkError"]
+::globalRule1::<options>::<value> += "false";
+
+::globalRule1::<commandArgs> = __everything __terminator;
+
+

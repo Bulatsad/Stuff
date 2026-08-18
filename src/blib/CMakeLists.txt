@@ -60,6 +60,9 @@ file (GLOB graphics_header_src "*graphics/*.h")
 file (GLOB math_header_src "*math/*.h")
 file (GLOB math_impl_src "*math/impl/*.inl" "*math/impl/*.cpp")
 
+file (GLOB pdl_header_src "*pdl/*.h")
+file (GLOB pdl_impl_src "*pdl/impl/*.cpp")
+
 #dear imgui
 file (GLOB imgui_sources_src "${imgui_dir}/imgui/*.h" "${imgui_dir}/imgui/*.cpp")
 
@@ -107,6 +110,9 @@ GroupSoureces("${SourceGroupPrefix}/graphics" "${graphics_impl_src}")
 GroupSoureces("${HeaderGroupPrefix}/math" "${math_header_src}")
 GroupSoureces("${SourceGroupPrefix}/math/impl" "${math_impl_src}")  
 
+GroupSoureces("${HeaderGroupPrefix}/pdl" "${pdl_header_src}")  
+GroupSoureces("${SourceGroupPrefix}/pdl/impl" "${pdl_impl_src}")  
+
 #dear imgui
 GroupSoureces("imgui" "${imgui_sources_src}")  
 
@@ -139,6 +145,9 @@ set(blib_sources
 
     ${math_header_src} 
     ${math_impl_src}
+
+    ${pdl_header_src}
+    ${pdl_impl_src}
     
 #dear imgui
     ${imgui_sources_src}
