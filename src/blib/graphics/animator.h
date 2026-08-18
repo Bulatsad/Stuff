@@ -18,6 +18,7 @@ namespace blib
             std::vector<blib::graphics::AnimationClip> animationList;
 
         public:
+            const std::vector<blib::graphics::AnimationClip>& getAnimations() const { return this->animationList; }
             bool play(clock_t deltaTime);
             bool selectAnimation(const std::string& animationName);
             bool loadFromAssimp(const aiScene* paiscene);

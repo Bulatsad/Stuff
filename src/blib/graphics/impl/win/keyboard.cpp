@@ -224,7 +224,32 @@ __blib_private_func __blib_force_inline blib::graphics::Keyboard::Key WinApiToBl
     }
 }
 
+static bool s_keyPrevState[static_cast<int>(blib::graphics::Keyboard::Key::END_OF_ENUM)] = { false };
+static bool s_keyJustPressed[static_cast<int>(blib::graphics::Keyboard::Key::END_OF_ENUM)] = { false };
+static bool s_keyJustReleased[static_cast<int>(blib::graphics::Keyboard::Key::END_OF_ENUM)] = { false };
+
 bool blib::graphics::Keyboard::isKeyPressed(Keyboard::Key key)
 {
     return (GetAsyncKeyState(blibToWinApi(key)) & 0x8000) != 0;
+}
+
+void blib::graphics::Keyboard::update()
+{
+    for (int i = 0; i < static_cast<int>(Keyboard::Key::END_OF_ENUM); ++i)
+    {
+        const bool cur = (GetAsyncKeyState(blibToWinApi(static_cast<Keyboard::Key>(i))) & 0x8000) != 0;
+        s_keyJustPressed[i] = cur && !s_keyPrevState[i];
+        s_keyJustReleased[i] = !cur && s_keyPrevState[i];
+        s_keyPrevState[i] = cur;
+    }
+}
+
+bool blib::graphics::Keyboard::isKeyJustPressed(Keyboard::Key key)
+{
+    return s_keyJustPressed[static_cast<int>(key)];
+}
+
+bool blib::graphics::Keyboard::isKeyJustReleased(Keyboard::Key key)
+{
+    return s_keyJustReleased[static_cast<int>(key)];
 }

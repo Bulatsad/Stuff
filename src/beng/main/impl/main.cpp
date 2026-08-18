@@ -13,6 +13,7 @@
 #include <blib/graphics/sprite.h>
 #include <blib/graphics/keyboard.h>
 #include <blib/graphics/animator.h>
+#include <blib/graphics/mouse.h>
 
 #include <beng/graphics/model.h>
 #include <beng/graphics/skinmesh.h>
@@ -93,6 +94,19 @@
 #include <imgui/imgui_impl_win32.h>
 #include <imgui/imgui_impl_opengl3.h>
 #include <blib/graphics/impl/win/winRenderWindowUtil.h>
+
+static WNDPROC s_engineWndProc = nullptr;
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+static LRESULT CALLBACK bengImguiWndProc(HWND hwnd, UINT uMsg, WPARAM wparam, LPARAM lparam)
+{
+    if (ImGui_ImplWin32_WndProcHandler(hwnd, uMsg, wparam, lparam))
+        return true;
+
+    return CallWindowProc(s_engineWndProc, hwnd, uMsg, wparam, lparam);
+}
+
 int main()
 {
     blib::graphics::RenderWindow wnd(800, 600, "beng");
@@ -166,92 +180,95 @@ int main()
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
 
-    ImGui_ImplWin32_Init(__blib_render_window_context(wnd.__getCtx())->hwnd);
+    HWND hwnd = __blib_render_window_context(wnd.__getCtx())->hwnd;
+    ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplOpenGL3_Init();
+    s_engineWndProc = reinterpret_cast<WNDPROC>(SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(bengImguiWndProc)));
         
     float endframe = clock();
+
+    bool isFocused = false;
+    blib::graphics::Mouse::setVisible(isFocused);
+
     while (wnd.isOpen())
     {
         float deltatime = (clock() - endframe) / 1000.f;
         endframe = clock();
-        if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Escape))
+        blib::graphics::Keyboard::update();
+        if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::Escape))
         {
-            wnd.close();
+            //wnd.close();
+            isFocused = !isFocused;
+            blib::graphics::Mouse::setVisible(isFocused);
         }
 
         rt.clear();
         wnd.update();
 
-        camera.controlUpdate(deltatime, wnd);
+        if (!isFocused)
+        {
+            camera.controlUpdate(deltatime, wnd, isFocused);
 
-        model.meshes[0].rotateZ(deltatime * 10);
+            model.meshes[0].rotateZ(deltatime * 10);
 
-        std::cout << camera.getPosition().x << " " << camera.getPosition().y << " " << camera.getPosition().z << std::endl;
+            std::cout << camera.getPosition().x << " " << camera.getPosition().y << " " << camera.getPosition().z << std::endl;
+        }
 
         //wnd.draw(mesh);
         rt.draw(model);
         //wnd.draw(spr);
 
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplWin32_NewFrame();
-        ImGui::NewFrame();             // ��-��-��-��-��-��- ��-��-��-��-��-��-��-��-��-��- UI
+        if (isFocused)
+        {
+            // UI
+            {   
+                ImGui_ImplOpenGL3_NewFrame();
+                ImGui_ImplWin32_NewFrame();
+                ImGui::NewFrame();             // ��-��-��-��-��-��- ��-��-��-��-��-��-��-��-��-��- UI
 
-        // 3. ��-��-��- UI ��-��-��-
-        ImGui::Begin("Window");
-        ImGui::Button("Click me");
-        ImGui::End();
+                // 3. ��-��-��- UI ��-��-��-
+                ImGui::SetNextWindowSize(ImVec2(350, 300), ImGuiCond_FirstUseEver);
+                ImGui::Begin("Menu");
 
-        // 4. ��-��-��-��-��-��-��-��-��- ��-��-��-��-
-        ImGui::Render();
+                if (ImGui::Button("Continue"))
+                {
+                    isFocused = false;
+                    blib::graphics::Mouse::setVisible(isFocused);
+                }
+
+                const auto& animations = animator.getAnimations();
+                for (const auto& animation : animations)
+                {
+                    if(animation.name.empty())
+                        ImGui::Button("Animation name is not defined");
+                    else
+                        ImGui::Button(animation.name.c_str());
+                }
+
+                if (ImGui::Button("EXIT"))
+                {
+                    wnd.close();
+                }
+
+                ImGui::End();
+
+                // 4. ��-��-��-��-��-��-��-��-��- ��-��-��-��-
+                ImGui::Render();
 
 
-        // 6. ��-��-��-��-��-��-��-��- ImGui ��-��-��-��-��-��- ��-��-��-��-��-
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+                // 6. ��-��-��-��-��-��-��-��- ImGui ��-��-��-��-��-��- ��-��-��-��-��-
+                ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            }
+        }
 
         wnd.display(rt/*,100,100*/);
     }
 
-    //{
-    //    {
-    //        blib::math::Matrix<int, 3, 2> a({ 1, -2, 4,
-    //                                          2,  0,-1 });
-    //
-    //        blib::math::Matrix<int, 3, 2> b({ 5, 2, 3,
-    //                                          4, 6, 2 });
-    //        auto c = a + b;
-    //        auto d = a + b;
-    //        /*
-    //        6 0 7
-    //        6 6 1
-    //        */
-    //    }
-    //    {
-    //        blib::math::Matrix<int, 3, 2> a({ 1, 2, 0,
-    //                                          3, 1,-1 });
-    //
-    //        blib::math::Matrix<int, 1, 3> b({ 1,
-    //                                          2,
-    //                                          3 });
-    //
-    //        auto c = a * b;
-    //        auto d = a * b;
-    //        /*
-    //        5
-    //        2
-    //        */
-    //    }
-    //    {
-    //        blib::math::Matrix<int, 3, 2> a({ 1, 3, 7,
-    //                                          2, 4,-1 });
-    //
-    //        auto t = a.Transpose();
-    //        auto t1 = a.Transpose();
-    //        /*
-    //        1  2
-    //        3  4
-    //        7 -1
-    //        */
-    //    }
-    //}
+    SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(s_engineWndProc));
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    ImGui::DestroyContext();
+
     return 0;
 }

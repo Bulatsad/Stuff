@@ -116,6 +116,9 @@ namespace blib
                 END_OF_ENUM
             };
             static bool isKeyPressed(Keyboard::Key key);
+            static void update();
+            static bool isKeyJustPressed(Keyboard::Key key);
+            static bool isKeyJustReleased(Keyboard::Key key);
         };
     }
 }

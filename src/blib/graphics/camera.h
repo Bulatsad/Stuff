@@ -50,7 +50,7 @@ namespace blib
             const blib::graphics::TransformMatrix& getProjectionMatrix() const;
             const blib::graphics::TransformMatrix& getViewMatrix() const;
 
-            void controlUpdate(float deltaTime,  RenderWindow& wnd);
+            void controlUpdate(float deltaTime,  RenderWindow& wnd, bool isFocused);
 
         };
     }
