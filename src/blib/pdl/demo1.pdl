@@ -1,0 +1,41 @@
+// linkage variables
+let var string @command;
+let var array<string> @options;
+let var array<string> @commandArgs;
+
+/* explicit terminator */
+"|" = __terminator;
+
+::CommandTemplate: <globalTemplate>;
+::CommandTemplate::<globalTemplate> = <command> [<options>] <commandArgs> __terminator;
+
+@command = ::CommandTemplate::<globalTemplate>::<command>;
+@options = ::CommandTemplate::<globalTemplate>::<options>;
+@commandArgs = ::CommandTemplate::<globalTemplate>::<commandArgs>;
+
+::CommandTemplate::<globalTemplate>::<command> = "get","set";
+::CommandTemplate::<globalTemplate>::<options> = <flagName> <flagValue>;
+
+[::CommandTemplate::<globalTemplate>::<command> == "get"]
+::CommandTemplate::<globalTemplate>::<options>::<flagName> = "safe","checkValue";
+
+[::CommandTemplate::<globalTemplate>::<command> == "get"]
+[::CommandTemplate::<globalTemplate>::<options>::<flagName> == "safe"]
+::CommandTemplate::<globalTemplate>::<options>::<flagValue> = true,false;
+
+// if (::CommandTemplate::<globalTemplate>::<command> == "get" AND ::CommandTemplate::<globalTemplate>::<options>::<flagName> == "checkValue")
+[::CommandTemplate::<globalTemplate>::<command> == "get"]
+[::CommandTemplate::<globalTemplate>::<options>::<flagName> == "checkValue"]
+::CommandTemplate::<globalTemplate>::<options>::<flagValue> = 1,2;
+
+// if(::CommandTemplate::<globalTemplate>::<command> == "set") {...}
+[::CommandTemplate::<globalTemplate>::<command> == "set"]
+{
+	::CommandTemplate::<globalTemplate>::<options>::<flagName> = "force";
+	[::CommandTemplate::<globalTemplate>::<options>::<flagName> == "force"]
+	{
+		::CommandTemplate::<globalTemplate>::<options>::<flagValue> = "yes","no";
+	}
+}
+
+::CommandTemplate::<globalTemplate>::<commandArgs> = __everything;
