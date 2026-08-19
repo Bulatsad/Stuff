@@ -76,6 +76,7 @@ void blib::graphics::RenderApi::InitGraphicsApi()
     this->ogl.ext.__blib_glBufferData              = static_cast<__blib_gl_signature_glBufferData>(getprocaddr("glBufferData"));
     this->ogl.ext.__blib_glEnableVertexAttribArray = static_cast<__blib_gl_signature_glEnableVertexAttribArray>(getprocaddr("glEnableVertexAttribArray"));
     this->ogl.ext.__blib_glVertexAttribPointer     = static_cast<__blib_gl_signature_glVertexAttribPointer>(getprocaddr("glVertexAttribPointer"));
+    this->ogl.ext.__blib_glVertexAttribIPointer    = static_cast<__blib_gl_signature_glVertexAttribIPointer>(getprocaddr("glVertexAttribIPointer"));
 
     this->ogl.ext.__blib_gl_glCreateProgram = static_cast<__blib_gl_signature_glCreateProgram>(getprocaddr("glCreateProgram"));
     this->ogl.ext.__blib_gl_glAttachShader = static_cast<__blib_gl_signature_glAttachShader>(getprocaddr("glAttachShader"));

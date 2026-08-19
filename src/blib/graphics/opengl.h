@@ -65,6 +65,7 @@ typedef void (__blib_gl_calling_convension* __blib_gl_signature_glBindBuffer)(GL
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glBufferData)(GLenum target,GLsizeiptr size,const void* data,GLenum usage);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glEnableVertexAttribArray)(GLuint index);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glVertexAttribPointer)(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void* pointer);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glVertexAttribIPointer)(GLuint index, GLint size, GLenum type, GLsizei stride, const void* pointer);
 
 typedef GLuint (__blib_gl_calling_convension* __blib_gl_signature_glCreateShader)(GLenum shaderType);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glShaderSource)(GLuint shader, GLsizei count, const GLchar** string, const GLint* length);
@@ -125,6 +126,7 @@ namespace blib
             __blib_gl_signature_glBufferData __blib_glBufferData = nullptr;
             __blib_gl_signature_glEnableVertexAttribArray __blib_glEnableVertexAttribArray = nullptr;
             __blib_gl_signature_glVertexAttribPointer __blib_glVertexAttribPointer  = nullptr;
+            __blib_gl_signature_glVertexAttribIPointer __blib_glVertexAttribIPointer  = nullptr;
             __blib_gl_signature_glCreateProgram __blib_gl_glCreateProgram = nullptr;
             __blib_gl_signature_glAttachShader __blib_gl_glAttachShader = nullptr;
             __blib_gl_signature_glDetachShader __blib_gl_glDetachShader = nullptr;

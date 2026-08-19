@@ -121,20 +121,33 @@ blib::graphics::TransformMatrix blib::graphics::lookAt(const blib::graphics::Vec
     return lookAtRightHand(camera, target, worldUp);
 }
 
-void blib::graphics::decomposeMatrix(const TransformMatrix& matrix, Transform& transform)
+blib::graphics::TransformMatrix blib::graphics::mul(const TransformMatrix& lhs, const TransformMatrix& rhs)
 {
+    TransformMatrix res = blib::graphics::Identity;
+    for (size_t i = 0; i < 4; ++i)
+    {
+        for (size_t j = 0; j < 4; ++j)
+        {
+            res.data[i][j] = 0;
+            for (size_t k = 0; k < 4; ++k)
+                res.data[i][j] += lhs.data[i][k] * rhs.data[k][j];
+        }
+    }
+    return res;
+}
 
-    // Позиция
+void blib::graphics::decomposeMatrix(const TransformMatrix& matrix, Transform& transform)
+{    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     blib::graphics::Vector3f& position = transform.getPosition();
     position = blib::graphics::Vector3f(matrix.data[3]);
 
-    // Масштаб
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     blib::graphics::Vector3f& scale = transform.getScale();
     scale.x = blib::math::length(blib::graphics::Vector3f(matrix.data[0]));
     scale.y = blib::math::length(blib::graphics::Vector3f(matrix.data[1]));
     scale.z = blib::math::length(blib::graphics::Vector3f(matrix.data[2]));
 
-    //// Поворот
+    //// пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     //glm::mat3 rotMat;
     //rotMat[0] = glm::vec3(matrix[0]) / scale.x;
     //rotMat[1] = glm::vec3(matrix[1]) / scale.y;

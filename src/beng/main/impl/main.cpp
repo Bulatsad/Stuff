@@ -15,8 +15,7 @@
 #include <blib/graphics/animator.h>
 #include <blib/graphics/mouse.h>
 
-#include <beng/graphics/model.h>
-#include <beng/graphics/skinmesh.h>
+#include <blib/graphics/skinmodel.h>
 //int main()
 //{
 //    Assimp::Importer importer;
@@ -153,23 +152,31 @@ int main()
         return EXIT_FAILURE;
     }
 
-    blib::graphics::Animator animator;
-    animator.loadFromAssimp(pscene);
+    blib::graphics::SkinModel skinModel;
+    skinModel.loadFromAssimp(pscene, objectfilename);
+    skinModel.playAnimation();
+    skinModel.setPosition(0, -30, -50);
+    skinModel.setRotation(90, 0, 0);
 
-    beng::graphics::SkinMesh skinMesh;
-    skinMesh.loadFromAssimp(pscene);
+    // TEMP DEBUG
+    {
+        std::cout << "animations count: " << pscene->mNumAnimations << std::endl;
+        const auto& animations = skinModel.getAnimator().getAnimations();
+        for (const auto& animation : animations)
+            std::cout << "animation: " << animation.name << " durationMs=" << animation.durationMs << " channels=" << animation.channels.size() << std::endl;
+
+        const auto& bones = skinModel.getSkelet().getBoneStorage();
+        std::cout << "bones count: " << bones.size() << " root=" << (skinModel.getSkelet().root ? skinModel.getSkelet().root->name : "NULL") << std::endl;
+        for (size_t i = 0; i < bones.size() && i < 3; ++i)
+            std::cout << "bone[" << i << "] " << bones[i].name << " offsetPos=" << bones[i].offsetMatrix.data[0][3] << " " << bones[i].offsetMatrix.data[1][3] << " " << bones[i].offsetMatrix.data[2][3] << std::endl;
+
+        const auto& modelTransform = skinModel.getTransform();
+        std::cout << "modelTransform pos=" << modelTransform.data[0][3] << " " << modelTransform.data[1][3] << " " << modelTransform.data[2][3] << std::endl;
+        std::cout << "modelTransform row0=" << modelTransform.data[0][0] << " " << modelTransform.data[0][1] << " " << modelTransform.data[0][2] << " " << modelTransform.data[0][3] << std::endl;
+    }
 
     blib::graphics::Image t(512, 256);
     t[456][0] = blib::graphics::Color(255, 255, 255, 255);
-
-    beng::graphics::Model model;
-    model.parseFromAssimpScene(pscene, objectfilename);
-    model.setPosition(0, -30, -50);
-    model.setRotation(90, 0, 0);
-
-    model.meshes[0].move(0, -10, 0);
-
-    //model.meshes = { beng::graphics::Model::bakeMeshes(model.meshes) };
     
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -188,6 +195,7 @@ int main()
     float endframe = clock();
 
     bool isFocused = false;
+    bool printedFinalMatrices = false;
     blib::graphics::Mouse::setVisible(isFocused);
 
     while (wnd.isOpen())
@@ -209,13 +217,24 @@ int main()
         {
             camera.controlUpdate(deltatime, wnd, isFocused);
 
-            model.meshes[0].rotateZ(deltatime * 10);
+            // TEMP: T-pose test — animation disabled, finalMatrices must stay identity
+            //skinModel.update(deltatime);
+
+            // TEMP DEBUG
+            if (!printedFinalMatrices)
+            {
+                printedFinalMatrices = true;
+                const auto& finalMatrices = skinModel.getSkelet().getFinalMatrices();
+                std::cout << "finalMatrices count: " << finalMatrices.size() << std::endl;
+                for (size_t i = 0; i < finalMatrices.size() && i < 3; ++i)
+                    std::cout << "final[" << i << "] row0=" << finalMatrices[i].data[0][0] << " " << finalMatrices[i].data[0][1] << " " << finalMatrices[i].data[0][2] << " pos=" << finalMatrices[i].data[0][3] << " " << finalMatrices[i].data[1][3] << " " << finalMatrices[i].data[2][3] << std::endl;
+            }
 
             std::cout << camera.getPosition().x << " " << camera.getPosition().y << " " << camera.getPosition().z << std::endl;
         }
 
         //wnd.draw(mesh);
-        rt.draw(model);
+        rt.draw(skinModel);
         //wnd.draw(spr);
 
         if (isFocused)
@@ -236,13 +255,15 @@ int main()
                     blib::graphics::Mouse::setVisible(isFocused);
                 }
 
-                const auto& animations = animator.getAnimations();
+                const auto& animations = skinModel.getAnimator().getAnimations();
                 for (const auto& animation : animations)
                 {
-                    if(animation.name.empty())
-                        ImGui::Button("Animation name is not defined");
-                    else
-                        ImGui::Button(animation.name.c_str());
+                    std::string buttonName = animation.name.empty() ? "Animation name is not defined" : animation.name;
+                    if (ImGui::Button(buttonName.c_str()))
+                    {
+                        skinModel.selectAnimation(animation.name);
+                        skinModel.playAnimation();
+                    }
                 }
 
                 if (ImGui::Button("EXIT"))

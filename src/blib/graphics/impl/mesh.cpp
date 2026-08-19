@@ -10,9 +10,11 @@ enum class MeshAttributeNames : GLuint
     position = 0,
     color = 1,
     textureCoords = 1,
-    normals = 3,
+    boneIds = 2,
+    boneWeights = 3,
     indices = 4,
-    vbCount
+    normals = 5,
+    vbCount = 6
 };
 
 struct oglMeshContext
@@ -168,6 +170,20 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderContext& ctx) const
     ctx.api.ogl.ext.__blib_glEnableVertexAttribArray((GLuint)MeshAttributeNames::textureCoords);
     ctx.api.ogl.ext.__blib_glVertexAttribPointer((GLuint)MeshAttributeNames::textureCoords, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
+    // populate bone ids and weights vbo and enable attributes
+    if (this->boneIds.size() == this->vertices.size() && this->boneWeights.size() == this->vertices.size() && !(this->boneIds.empty()))
+    {
+        ctx.api.ogl.ext.__blib_glBindBuffer(GL_ARRAY_BUFFER, __blib_this_context(this)->vbos[(GLuint)MeshAttributeNames::boneIds]);
+        ctx.api.ogl.ext.__blib_glBufferData(GL_ARRAY_BUFFER, sizeof(this->boneIds[0]) * this->boneIds.size(), this->boneIds.data(), GL_STATIC_DRAW);
+        ctx.api.ogl.ext.__blib_glEnableVertexAttribArray((GLuint)MeshAttributeNames::boneIds);
+        ctx.api.ogl.ext.__blib_glVertexAttribIPointer((GLuint)MeshAttributeNames::boneIds, 4, GL_INT, 0, 0);
+
+        ctx.api.ogl.ext.__blib_glBindBuffer(GL_ARRAY_BUFFER, __blib_this_context(this)->vbos[(GLuint)MeshAttributeNames::boneWeights]);
+        ctx.api.ogl.ext.__blib_glBufferData(GL_ARRAY_BUFFER, sizeof(this->boneWeights[0]) * this->boneWeights.size(), this->boneWeights.data(), GL_STATIC_DRAW);
+        ctx.api.ogl.ext.__blib_glEnableVertexAttribArray((GLuint)MeshAttributeNames::boneWeights);
+        ctx.api.ogl.ext.__blib_glVertexAttribPointer((GLuint)MeshAttributeNames::boneWeights, 4, GL_FLOAT, GL_FALSE, 0, 0);
+    }
+
     //// populate normals vbo and enable attribute
     //ctx.api.ogl.ext.__blib_glBindBuffer(GL_ARRAY_BUFFER, __blib_this_context(this)->vbos[normalAttributeName]);
     //ctx.api.ogl.ext.__blib_glBufferData(GL_ARRAY_BUFFER, sizeof(this->normals[0]) * this->normals.size(), this->normals.data(), GL_STATIC_DRAW);
@@ -180,7 +196,8 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderContext& ctx) const
     ctx.api.ogl.ext.__blib_glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(this->faces[0].indices[0]) * this->faces[0].indices.size() * this->faces.size(), &(tmp[0]), GL_STATIC_DRAW);
 
 
-    this->vertexShader.setPath("M:\\Stuff\\src\\shaders\\mesh\\MeshVertexShader.glsl");
+    const char* vertexShaderPath = this->boneIds.empty() ? "M:\\Stuff\\src\\shaders\\mesh\\MeshVertexShader.glsl" : "M:\\Stuff\\src\\shaders\\mesh\\SkinMeshVertexShader.glsl";
+    this->vertexShader.setPath(vertexShaderPath);
     this->vertexShader.setType(blib::graphics::Shader::Type::vertex);
     this->vertexShader.setRenderApi(&(ctx.api));
     this->vertexShader.compile();
@@ -209,6 +226,11 @@ blib::graphics::Mesh::Mesh()
 
 void blib::graphics::Mesh::draw(blib::graphics::RenderContext& ctx) const
 {
+    this->draw(ctx, nullptr);
+}
+
+void blib::graphics::Mesh::draw(blib::graphics::RenderContext& ctx, const std::vector<blib::graphics::TransformMatrix>* pBoneMatrices) const
+{
     if (!(this->baked))
         this->bake(ctx);
 
@@ -216,6 +238,11 @@ void blib::graphics::Mesh::draw(blib::graphics::RenderContext& ctx) const
     ctx.sendVievMatrixToShaderProgram();
     ctx.sendProjectionMatrixToShaderProgram();
     ctx.sendModelMatrixToShaderProgram(this->getTransform());
+
+    if (pBoneMatrices)
+    {
+        ctx.sendBoneMatricesToShaderProgram(*pBoneMatrices);
+    }
 
     ctx.api.ogl.ext.__blib_gl_glActiveTexture(GL_TEXTURE0);
     ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, this->material.diffuse.getContext().textureID);

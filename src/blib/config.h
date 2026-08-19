@@ -2,6 +2,8 @@
 
 #define __blib_default_cache_size 64
 
+#define __blib_max_bones 100
+
 #define __blib_platform_depended
 
 #if ____blib_configuration_platform_value == ____blib_configuration_platform_undefined
