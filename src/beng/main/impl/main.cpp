@@ -195,12 +195,11 @@ int main()
     float endframe = clock();
 
     bool isFocused = false;
-    bool printedFinalMatrices = false;
     blib::graphics::Mouse::setVisible(isFocused);
 
     while (wnd.isOpen())
     {
-        float deltatime = (clock() - endframe) / 1000.f;
+        float deltatime = static_cast<float>(clock() - endframe);
         endframe = clock();
         blib::graphics::Keyboard::update();
         if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::Escape))
@@ -215,22 +214,12 @@ int main()
 
         if (!isFocused)
         {
-            camera.controlUpdate(deltatime, wnd, isFocused);
-
-            skinModel.update(deltatime);
-
-            // TEMP DEBUG
-            if (!printedFinalMatrices)
-            {
-                printedFinalMatrices = true;
-                const auto& finalMatrices = skinModel.getSkelet().getFinalMatrices();
-                std::cout << "finalMatrices count: " << finalMatrices.size() << std::endl;
-                for (size_t i = 0; i < finalMatrices.size() && i < 3; ++i)
-                    std::cout << "final[" << i << "] row0=" << finalMatrices[i].data[0][0] << " " << finalMatrices[i].data[0][1] << " " << finalMatrices[i].data[0][2] << " pos=" << finalMatrices[i].data[0][3] << " " << finalMatrices[i].data[1][3] << " " << finalMatrices[i].data[2][3] << std::endl;
-            }
+            camera.controlUpdate(deltatime / 1000, wnd, isFocused);
 
             std::cout << camera.getPosition().x << " " << camera.getPosition().y << " " << camera.getPosition().z << std::endl;
         }
+
+        skinModel.update(deltatime);
 
         //wnd.draw(mesh);
         rt.draw(skinModel);
