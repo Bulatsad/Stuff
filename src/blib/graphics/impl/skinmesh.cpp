@@ -1,6 +1,5 @@
 #include <blib/graphics/skinmesh.h>
 
-#include <iostream>
 #include <stdexcept>
 
 bool blib::graphics::SkinMesh::loadFromAssimpMesh(const aiMesh* paimesh, const blib::graphics::Skelet& skelet)
@@ -48,17 +47,6 @@ bool blib::graphics::SkinMesh::loadFromAssimpMesh(const aiMesh* paimesh, const b
             this->mesh.boneWeights[vertexId].data[slot] = weight;
             weightCount[vertexId]++;
         }
-    }
-
-    // TEMP DEBUG
-    if (!(this->mesh.boneIds.empty()))
-    {
-        int raw = this->mesh.boneIds[0].data[0];
-        float asFloat = *reinterpret_cast<float*>(&raw);
-        std::cout << "boneIds[0] raw=" << raw << " hex=0x" << std::hex << raw << std::dec << " asFloat=" << asFloat
-            << " sizeOfElem=" << sizeof(this->mesh.boneIds[0]) << " vecSize=" << this->mesh.boneIds.size()
-            << " vertSize=" << this->mesh.vertices.size() << std::endl;
-        std::cout << "boneWeights[0] = " << this->mesh.boneWeights[0].data[0] << " " << this->mesh.boneWeights[0].data[1] << " " << this->mesh.boneWeights[0].data[2] << " " << this->mesh.boneWeights[0].data[3] << std::endl;
     }
 
     return true;
