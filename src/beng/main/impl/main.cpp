@@ -217,8 +217,7 @@ int main()
         {
             camera.controlUpdate(deltatime, wnd, isFocused);
 
-            // TEMP: T-pose test — animation disabled, finalMatrices must stay identity
-            //skinModel.update(deltatime);
+            skinModel.update(deltatime);
 
             // TEMP DEBUG
             if (!printedFinalMatrices)
