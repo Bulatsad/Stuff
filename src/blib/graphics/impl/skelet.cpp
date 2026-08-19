@@ -254,14 +254,9 @@ void blib::graphics::Skelet::updateTransforms(blib::graphics::Bone* pbone)
 
 void blib::graphics::Skelet::applyClip(const blib::graphics::AnimationClip& clip, double timeTicks)
 {
-    // restore default (bind pose) globals for bones without animated channels
-    if (this->root)
-    {
-        this->updateTransforms(this->root);
-    }
-
-    // MD5/Assimp animation channels store ABSOLUTE joint transforms (not node-local),
-    // so sampled values are used directly as bone global transforms
+    // MD5/Assimp animation channels store PARENT-RELATIVE (local) joint transforms,
+    // so sampled values are written into bone local transforms,
+    // then globals are recomputed top-down through the hierarchy
     for (const blib::graphics::AnimationChannel& channel : clip.channels)
     {
         blib::graphics::Bone* pbone = this->find(channel.boneName);
@@ -279,7 +274,14 @@ void blib::graphics::Skelet::applyClip(const blib::graphics::AnimationClip& clip
             continue;
         }
 
-        pbone->globalTransform = blib::graphics::composeMatrix(position, rotation, scale);
+        pbone->localTransform = blib::graphics::composeMatrix(position, rotation, scale);
+    }
+
+    // bones without animated channels keep their bind local transforms,
+    // so the whole hierarchy always has valid locals
+    if (this->root)
+    {
+        this->updateTransforms(this->root);
     }
 
     for (size_t i = 0; i < this->boneStorage.size(); ++i)
