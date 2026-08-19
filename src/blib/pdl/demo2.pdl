@@ -1,0 +1,46 @@
+let var string @exepath;
+let var string @command;
+let var array<string> @options;
+let var array<string> @subCommandArgs;
+let var array<string> @commandArgs;
+
+::GCommand: <ExePath> <Command> <CommandArgs>;
+
+::GCommand::<ExePath> = __any;
+
+::GCommand::<Command> = "move","jump","stop";
+
+// move desc
+[::GCommand::<Command> == "move"]
+{
+    ::GCommand::<CommandArgs>: <moveArgs>;
+
+    ::GCommand::<CommandArgs>::<moveArgs> = <subCommand> <subCommandArgs>;
+
+    ::GCommand::<CommandArgs>::<moveArgs>::<subCommand> = "forward";
+    [::GCommand::<CommandArgs>::<moveArgs>::<subCommand> == "forward"]
+    {
+        ::GCommand::<CommandArgs>::<moveArgs>::<subCommandArgs> = __everything __terminator;
+    }
+}
+
+"|" = __terminator;
+[::GCommand::<Command> == "jump"]
+{
+    ::GCommand::<CommandArgs>: [<jumpOptions>] ::GCommand::<CommandArgs>::<moveArgs>;
+    ::GCommand::<CommandArgs>::<jumpOptions> = <OptionName> [<OptionValue>];
+
+    ::GCommand::<CommandArgs>::<jumpOptions>::<OptionName> = "notempfiles";
+    [::GCommand::<CommandArgs>::<jumpOptions>::<OptionName> == "notempfiles"]
+    {
+        ::GCommand::<CommandArgs>::<jumpOptions>::<OptionValue> = "";
+    }
+}
+
+
+@exepath = ::GCommand::<ExePath>;
+@command = ::GCommand::<Command>;
+@commandArgs = ::GCommand::<CommandArgs>;
+@subCommandArgs = ::GCommand::<CommandArgs>::<moveArgs>::<subCommandArgs>;
+
+

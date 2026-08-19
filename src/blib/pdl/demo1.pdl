@@ -1,19 +1,20 @@
 // linkage variables
 let var string @command;
+let var string @word;
 let var array<string> @options;
 let var array<string> @commandArgs;
 
 /* explicit terminator */
 "|" = __terminator;
 
-::CommandTemplate: <globalTemplate>;
+::CommandTemplate: ::SingleWord <globalTemplate>;
 ::CommandTemplate::<globalTemplate> = <command> [<options>] <commandArgs> __terminator;
 
 @command = ::CommandTemplate::<globalTemplate>::<command>;
 @options = ::CommandTemplate::<globalTemplate>::<options>;
 @commandArgs = ::CommandTemplate::<globalTemplate>::<commandArgs>;
 
-::CommandTemplate::<globalTemplate>::<command> = "get","set";
+::CommandTemplate::<globalTemplate>::<command> = "get","set","one";
 ::CommandTemplate::<globalTemplate>::<options> = <flagName> <flagValue>;
 
 [::CommandTemplate::<globalTemplate>::<command> == "get"]
@@ -37,5 +38,19 @@ let var array<string> @commandArgs;
 		::CommandTemplate::<globalTemplate>::<options>::<flagValue> = "yes","no";
 	}
 }
+
+// if(::CommandTemplate::<globalTemplate>::<command> == "one") {...}
+[::CommandTemplate::<globalTemplate>::<command> == "one"]
+{
+	::CommandTemplate::<globalTemplate>::<options>::<flagName> = "any","skip";
+	[::CommandTemplate::<globalTemplate>::<options>::<flagName> == "any"]
+	::CommandTemplate::<globalTemplate>::<options>::<flagValue> = ::SingleWord;
+	[::CommandTemplate::<globalTemplate>::<options>::<flagName> == "skip"]
+	::CommandTemplate::<globalTemplate>::<options>::<flagValue> = [::SingleWord];
+}
+
+// один произвольный токен: __any (не терминатор и не конец ввода)
+::SingleWord: __any;
+@word = ::SingleWord;
 
 ::CommandTemplate::<globalTemplate>::<commandArgs> = __everything;

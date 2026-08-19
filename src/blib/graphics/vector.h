@@ -16,6 +16,7 @@ namespace blib
         typedef Vector3f Vertex;
 
         typedef blib::math::Vector<float, 4> Vector4f;
+        typedef blib::math::Vector<int, 4> Vector4i;
     }
 }
 

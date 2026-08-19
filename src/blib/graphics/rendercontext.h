@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include <blib/config.h>
 #include <blib/graphics/opengl.h>
 
@@ -32,6 +34,7 @@ namespace blib
             void sendVievMatrixToShaderProgram();
             void sendProjectionMatrixToShaderProgram();
             void sendModelMatrixToShaderProgram(const blib::graphics::TransformMatrix& modelMatix);
+            void sendBoneMatricesToShaderProgram(const std::vector<blib::graphics::TransformMatrix>& boneMatrices);
             void setCamera(blib::graphics::Camera* a_pCamera);
 
             void applyTransform(const Transform& transform);

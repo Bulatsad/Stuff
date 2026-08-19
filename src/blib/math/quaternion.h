@@ -53,6 +53,15 @@ namespace blib
                 *this = Quaternion(angle.toRadian(), axis);
             }
 
+            template<class OtherType>
+            Quaternion(const Quaternion<OtherType>& rhs)
+            {
+                this->w = static_cast<Type>(rhs.w);
+                this->x = static_cast<Type>(rhs.x);
+                this->y = static_cast<Type>(rhs.y);
+                this->z = static_cast<Type>(rhs.z);
+            }
+
 #ifdef COMPILE_ASSIMP_COMPATIBLE
             bool loadFromAssimp(const aiQuaternion* paiquaternion)
             {
@@ -93,6 +102,24 @@ namespace blib
             Quaternion<Type> qp = ::operator*(qn, p);
             Quaternion<Type> result = ::operator*(qp, qn.conjugate());
             return Vector<Type, 3>(result.x, result.y, result.z);
+        }
+
+        template<class Type>
+        Type dot(const Quaternion<Type>& lhs, const Quaternion<Type>& rhs)
+        {
+            return lhs.w * rhs.w + lhs.x * rhs.x + lhs.y * rhs.y + lhs.z * rhs.z;
+        }
+
+        template<class Type>
+        Quaternion<Type> nlerp(const Quaternion<Type>& lhs, const Quaternion<Type>& rhs, Type t)
+        {
+            Type sign = blib::math::dot(lhs, rhs) < Type(0) ? Type(-1) : Type(1);
+            return Quaternion<Type>(
+                lhs.w * (Type(1) - t) + sign * rhs.w * t,
+                lhs.x * (Type(1) - t) + sign * rhs.x * t,
+                lhs.y * (Type(1) - t) + sign * rhs.y * t,
+                lhs.z * (Type(1) - t) + sign * rhs.z * t
+            ).normalize();
         }
     }
 }

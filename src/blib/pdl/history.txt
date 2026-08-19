@@ -3,6 +3,60 @@
 правило: каждая правка/фича - новая запись сверху не удаляется и не переписывается
 ============================================================
 
+[патч 5] детальные сообщения об ошибках
+файлы: impl/pdl.cpp, src/test/src/impl/testpdl.cpp
+
+- многострочный формат ошибок: expected ... at '::узел' + but got ...
+  + позиция во входной строке (token N/M, byte offset, line:col)
+- InTok/tokenize: входные токены получили line/col
+- matchNode: при жадном отказе добавляется строка "alternative at
+  '::узел' failed after consuming N token(s)"; если ни одна альтернатива
+  не совпала без потребления - сводка "no alternative matched" с
+  причинами по каждой (сначала совпавшие по guard'ам, потом отсеянные;
+  guard-причина: какой guard, что захвачено / not captured)
+- попутно починен предсуществующий баг подсчёта потребления: Field и
+  Optional при провале не продвигали позицию состояния (commit-счётчик
+  и furthest-position в MatchResult теперь корректны)
+- assignBindings: ошибки с типами (type 'list' vs 'string') и путём
+  привязки; variable not captured - с путём привязки
+- trailing input: сколько токенов осталось + первый лишний с позицией
+- loader: ошибки последовательностей с именем узла
+- тесты: усилены проверки содержимого ошибок, новые кейсы
+  "PDL demo1/demo2: error message details", итого 156
+- standart.txt: раздел 10 "ОШИБКИ"
+
+[патч 4] фикс: захват одноэлементной последовательности
+файлы: impl/pdl.cpp, demo1.pdl, src/test/src/impl/testpdl.cpp
+
+- matchAlt: последовательность из одного элемента теперь отдаёт значение
+  самого элемента, а не список - узел "= __any;" захватывается как string,
+  и его можно биндить к скалярной переменной (было: AnyList, скалярная
+  переменная падала с "cannot assign captured value to variable")
+- новая семантика: узел захватывает значение единственного элемента,
+  иначе список значений элементов (standart.txt обновлён)
+- demo1.pdl: корень теперь ::CommandTemplate: ::SingleWord <globalTemplate>;
+  (::SingleWord - обязательный первый элемент каждой команды), добавлены
+  let var string @word; и @word = ::SingleWord; - скалярный захват __any
+  проверяется в каждом парсе demo1
+- тесты: все входы demo1 дополнены первым словом (exe/exe1/exe2),
+  новый кейс "PDL demo1: __any scalar binding"
+- demo2.pdl: GCommand с ExePath = __any (скалярный захват exepath);
+  тест "PDL demo2: __any" починен (parse успешен, а не фейлится) +
+  fail-кейс "PDL demo2: unknown command fails", итого 154
+
+[патч 3] wildcard-элемент __any
+файлы: impl/pdl.cpp, demo1.pdl, src/test/src/impl/testpdl.cpp
+
+- новый встроенный элемент __any: матчит ровно один произвольный токен
+- терминатор (объявленный) и конец ввода __any НЕ ест - при встрече с ними
+  обычный fail с нулевым потреблением (в [__any] просто пропускается),
+  hard-error из-за __any невозможен (потребление всегда 0 или 1)
+- захват __any - текст токена как string (можно биндить к @var)
+- demo1.pdl: команда "one" - flagName "any"/"skip", flagValue = ::SingleWord
+  и [::SingleWord], где ::SingleWord: __any;
+- тесты: 4 новых кейса (одиночный токен, optional skip, parseNext через
+  терминатор, fail на терминаторе/EOS), итого 151
+
 [патч 2] v2: guard-блоки, явный терминатор, parseNext
 файлы: impl/pdl.cpp, pdl.h, demo1.pdl, src/test/src/impl/testpdl.cpp
 

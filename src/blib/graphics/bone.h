@@ -5,16 +5,16 @@
 
 #include <assimp/scene.h>
 
+#include <blib/config.h>
 #include <blib/graphics/transformMatrix.h>
 
-#include <beng/graphics/hierarchal.h>
-#include <beng/config.h>
+#include <blib/graphics/hierarchal.h>
 
-namespace beng
+namespace blib
 {
     namespace graphics
     {
-        class __beng_api Bone : public beng::graphics::IHierarchal
+        class __blib_api Bone : public blib::graphics::IHierarchal
         {
         public:
 
@@ -23,6 +23,8 @@ namespace beng
             std::string name;
             std::vector<std::pair<size_t/*VertexId*/, float /*Weight*/> >weights;
             blib::graphics::TransformMatrix offsetMatrix;
+            blib::graphics::TransformMatrix localTransform;
+            blib::graphics::TransformMatrix globalTransform;
         };
     }
 }

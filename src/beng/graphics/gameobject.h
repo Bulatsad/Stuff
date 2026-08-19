@@ -3,16 +3,16 @@
 #include <vector>
 
 #include <blib/graphics/transformable.h>
+#include <blib/graphics/hierarchal.h>
 
 #include <beng/config.h>
 #include <beng/graphics/scene.h>
-#include <beng/graphics/hierarchal.h>
 
 namespace beng
 {
     namespace graphics
     {
-        class __beng_api GameObject : public blib::graphics::ITransformable, public beng::graphics::IHierarchal
+        class __beng_api GameObject : public blib::graphics::ITransformable, public blib::graphics::IHierarchal
         {
         public:
             virtual ~GameObject();

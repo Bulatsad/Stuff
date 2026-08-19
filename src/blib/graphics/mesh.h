@@ -49,13 +49,16 @@ namespace blib
             std::vector<blib::graphics::Vector3f>normals;
             std::vector<blib::graphics::Vector3f>textureCoords;
             std::vector<blib::graphics::Color>colors;
+            std::vector<blib::graphics::Vector4i>boneIds;
+            std::vector<blib::graphics::Vector4f>boneWeights;
             std::vector<beng::graphics::Face>faces;
             mutable blib::graphics::Material material;
 
             void loadFromAssimpMesh(const aiMesh* paimesh);
 
-            // Унаследовано через IDrawable
+            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ IDrawable
             virtual void draw(blib::graphics::RenderContext& ctx) const override;
+            void draw(blib::graphics::RenderContext& ctx, const std::vector<blib::graphics::TransformMatrix>* pBoneMatrices) const;
         };
     }
 }

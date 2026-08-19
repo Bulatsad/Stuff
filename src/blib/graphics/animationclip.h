@@ -4,9 +4,11 @@
 
 #include <blib/graphics/vector.h>
 #include <blib/math/quaternion.h>
+#include <blib/math/vector.h>
 
 #include <assimp/anim.h>
 
+#include <stdexcept>
 #include <vector>
 
 namespace blib
@@ -17,13 +19,11 @@ namespace blib
         {
         public:
             template<class KeyT, class ValT>
-            std::pair<size_t, size_t> findBorders(const std::vector<std::pair<KeyT, ValT> >& vec, const KeyT& currentKey)
+            std::pair<size_t, size_t> findBorders(const std::vector<std::pair<KeyT, ValT> >& vec, const KeyT& currentKey) const
             {
                 if (vec.size() == 0)
                 {
-                    // TODO : Logging
-                    // get from t-pose. not implemented
-                    exit(1);
+                    throw std::runtime_error("Cannot find borders in empty key vector");
                 }
                 if (vec.size() == 1)
                 {
@@ -49,10 +49,52 @@ namespace blib
                 return std::make_pair(vec.size() - 2, vec.size() - 1);
             }
 
+            static blib::graphics::Vector3f interpolateKeys(const blib::graphics::Vector3f& a, const blib::graphics::Vector3f& b, double t)
+            {
+                return blib::math::lerp(a, b, static_cast<float>(t));
+            }
+
+            static blib::math::Quaternion<double> interpolateKeys(const blib::math::Quaternion<double>& a, const blib::math::Quaternion<double>& b, double t)
+            {
+                return blib::math::nlerp(a, b, t);
+            }
+
+            template<class ValT>
+            ValT sampleKey(const std::vector<std::pair<double, ValT> >& keys, double time) const
+            {
+                std::pair<size_t, size_t> borders = this->findBorders(keys, time);
+                if (borders.first == borders.second)
+                {
+                    return keys[borders.first].second;
+                }
+
+                double t0 = keys[borders.first].first;
+                double t1 = keys[borders.second].first;
+                double t = (t1 > t0) ? ((time - t0) / (t1 - t0)) : 0.0;
+
+                return AnimationChannel::interpolateKeys(keys[borders.first].second, keys[borders.second].second, t);
+            }
+
+            bool sample(double time, blib::graphics::Vector3f& position, blib::math::Quaternion<double>& rotation, blib::graphics::Vector3f& scale) const
+            {
+                position = blib::graphics::Vector3f(0, 0, 0);
+                rotation = blib::math::Quaternion<double>(1, 0, 0, 0);
+                scale = blib::graphics::Vector3f(1, 1, 1);
+
+                if (!(this->positionKeys.empty()))
+                    position = this->sampleKey(this->positionKeys, time);
+                if (!(this->rotaionKeys.empty()))
+                    rotation = this->sampleKey(this->rotaionKeys, time);
+                if (!(this->scaleKeys.empty()))
+                    scale = this->sampleKey(this->scaleKeys, time);
+
+                return true;
+            }
+
             std::string boneName;
 
-            std::vector<std::pair<double/*time*/, blib::graphics::Vector3f      /*position*/> >positionKeys;
-            std::vector<std::pair<double/*time*/, blib::math::Quaternion<double>/*rotation*/> >rotaionKeys;
+            std::vector<std::pair<double/*time*/, blib::graphics::Vector3f      /*position*/ > >positionKeys;
+            std::vector<std::pair<double/*time*/, blib::math::Quaternion<double>/*rotation*/ > >rotaionKeys;
             std::vector<std::pair<double/*time*/, blib::graphics::Vector3f      /*scale*/   > >scaleKeys;
 
             
@@ -114,7 +156,8 @@ namespace blib
                 this->name = panim->mName.C_Str();
                 this->durationTicks = panim->mDuration;
                 this->tickPerSecond = panim->mTicksPerSecond;
-                this->durationMs = this->durationTicks / this->tickPerSecond;
+                this->durationMs = (this->tickPerSecond > 0.0) ? ((this->durationTicks / this->tickPerSecond) * 1000.0) : 0.0;
+                this->cycled = true;
 
                 for (size_t i = 0 ; i < this->channels.size(); ++i)
                 {

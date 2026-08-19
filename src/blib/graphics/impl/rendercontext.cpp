@@ -67,3 +67,17 @@ void blib::graphics::RenderContext::sendModelMatrixToShaderProgram(const blib::g
         throw std::runtime_error("no location for projection matrix uniform");
     this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_TRUE, reinterpret_cast<const GLfloat*>(pModelMatrix));
 }
+
+void blib::graphics::RenderContext::sendBoneMatricesToShaderProgram(const std::vector<blib::graphics::TransformMatrix>& boneMatrices)
+{
+    if (boneMatrices.empty())
+        return;
+
+    GLint location = this->api.ogl.ext.__blib_gl_glGetUniformLocation(this->lastShader->getContext(), "gBones");
+
+    if (location == -1)
+        return;
+
+    size_t count = boneMatrices.size() > __blib_max_bones ? __blib_max_bones : boneMatrices.size();
+    this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, static_cast<GLsizei>(count), GL_TRUE, reinterpret_cast<const GLfloat*>(boneMatrices.data()));
+}

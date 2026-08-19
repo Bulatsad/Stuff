@@ -431,6 +431,15 @@ namespace blib
         {
             return blib::math::sqrt(blib::math::dot(vector, vector));
         }
+
+        template<class Type, VectorSizeT size>
+        Vector<Type, size> lerp(const Vector<Type, size>& lhs, const Vector<Type, size>& rhs, Type t)
+        {
+            Vector<Type, size> res;
+            for (VectorSizeT i = 0; i < size; ++i)
+                res.data[i] = lhs.data[i] * (Type(1) - t) + rhs.data[i] * t;
+            return res;
+        }
     }
 }
 

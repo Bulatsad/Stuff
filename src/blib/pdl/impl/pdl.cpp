@@ -83,7 +83,8 @@ namespace blib
 			Field,
 			Optional,
 			Terminator,
-			Everything
+			Everything,
+			Any
 		};
 
 		struct Element
@@ -820,12 +821,12 @@ namespace blib
 						std::string field = takeText(TokKind::Ident);
 						if (field.empty())
 						{
-							error = "expected field name" + errLine();
+							error = "expected field name in sequence of '" + node->name + "'" + errLine();
 							return false;
 						}
 						if (!take(TokKind::RAngle))
 						{
-							error = "expected '>'" + errLine();
+							error = "expected '>' in sequence of '" + node->name + "'" + errLine();
 							return false;
 						}
 						e.kind = ElementKind::Field;
@@ -864,9 +865,15 @@ namespace blib
 						e.kind = ElementKind::Everything;
 						e.node = nullptr;
 					}
+					else if (at(TokKind::Ident) && tok().text == "__any")
+					{
+						++i;
+						e.kind = ElementKind::Any;
+						e.node = nullptr;
+					}
 					else
 					{
-						error = "unexpected token '" + tok().text + "' in sequence" + errLine();
+						error = "unexpected token '" + tok().text + "' in sequence of '" + node->name + "'" + errLine();
 						return false;
 					}
 					elems.push_back(e);
@@ -1144,24 +1151,42 @@ namespace blib
 		{
 			std::string text;
 			buint32 offset;
+			buint32 line;
+			buint32 col;
 		};
 
 		static void tokenize(const std::string& text, std::vector<InTok>& out)
 		{
 			const buint32 n = (buint32)text.size();
 			buint32 i = 0;
+			buint32 line = 1;
+			buint32 col = 1;
 			while (i < n)
 			{
 				while (i < n && std::isspace((unsigned char)text[i]))
+				{
+					if (text[i] == '\n')
+					{
+						++line;
+						col = 1;
+					}
+					else
+					{
+						++col;
+					}
 					++i;
+				}
 				if (i >= n)
 					break;
 				InTok t;
 				t.offset = i;
+				t.line = line;
+				t.col = col;
 				while (i < n && !std::isspace((unsigned char)text[i]))
 				{
 					t.text += text[i];
 					++i;
+					++col;
 				}
 				out.push_back(t);
 			}
@@ -1203,15 +1228,45 @@ namespace blib
 
 		static void matchNode(Node* node, const MatchState& st, MatchResult& res);
 
-		static bool altGuardPass(const Alternative& alt, const CaptureMap& captures)
+		static std::string guardFailReason(const Alternative& alt, const CaptureMap& captures)
 		{
 			for (std::vector<Guard>::const_iterator it = alt.guards.begin(); it != alt.guards.end(); ++it)
 			{
 				CaptureMap::const_iterator c = captures.find(it->node);
-				if (c == captures.end() || c->second.str != it->text)
-					return false;
+				if (c == captures.end())
+					return "guard '::" + it->node->name + " == \"" + it->text + "\"' failed: not captured";
+				if (c->second.str != it->text)
+				{
+					std::string got = (c->second.type == ValueType::AnyList)
+						? "list of " + toStr(c->second.list.size()) + " value(s)"
+						: "'" + c->second.str + "'";
+					return "guard '::" + it->node->name + " == \"" + it->text + "\"' failed: captured " + got;
+				}
 			}
-			return true;
+			return std::string();
+		}
+
+		static void pushUniqueReason(std::vector<std::string>& list, const std::string& r, buint32& skipped)
+		{
+			for (std::vector<std::string>::const_iterator it = list.begin(); it != list.end(); ++it)
+			{
+				if (*it == r)
+					return;
+			}
+			if (list.size() < 3)
+				list.push_back(r);
+			else
+				++skipped;
+		}
+
+		static void indentLines(std::string& s)
+		{
+			std::string::size_type pos = 0;
+			while ((pos = s.find('\n', pos)) != std::string::npos)
+			{
+				s.insert(pos + 1, "    ");
+				pos += 5;
+			}
 		}
 
 		static void pushFlatten(Value& dst, const Value& src)
@@ -1239,7 +1294,51 @@ namespace blib
 			return false;
 		}
 
-		static bool matchElem(Element& e, MatchState& st, Value& out, std::string& error, buint32& consumed)
+		static std::string describeTok(const std::vector<InTok>& tokens, buint32 pos)
+		{
+			if (pos >= tokens.size())
+				return "end of input";
+			const InTok& t = tokens[pos];
+			return "token " + toStr(pos + 1) + "/" + toStr(tokens.size()) + " '" + t.text +
+				"' (byte offset " + toStr(t.offset) + ", line " + toStr(t.line) + ":" + toStr(t.col) + ")";
+		}
+
+		static std::string describePos(const MatchState& st, buint32 pos)
+		{
+			return describeTok(*st.tokens, pos);
+		}
+
+		static std::string valueTypeName(ValueType t)
+		{
+			switch (t)
+			{
+			case ValueType::None: return "none";
+			case ValueType::String: return "string";
+			case ValueType::Int: return "int";
+			case ValueType::Float: return "float";
+			case ValueType::Bool: return "bool";
+			case ValueType::AnyList: return "list";
+			}
+			return "unknown";
+		}
+
+		static std::string varTypeName(VarType t)
+		{
+			switch (t)
+			{
+			case VarType::String: return "string";
+			case VarType::Int: return "int";
+			case VarType::Float: return "float";
+			case VarType::Bool: return "bool";
+			case VarType::ArrayString: return "array<string>";
+			case VarType::ArrayInt: return "array<int>";
+			case VarType::ArrayFloat: return "array<float>";
+			case VarType::ArrayBool: return "array<bool>";
+			}
+			return "unknown";
+		}
+
+		static bool matchElem(Element& e, MatchState& st, Value& out, std::string& error, buint32& consumed, const std::string& nodeName)
 		{
 			consumed = 0;
 
@@ -1251,7 +1350,23 @@ namespace blib
 				{
 					if (!isTermToken(st, (*st.tokens)[st.pos].text))
 					{
-						error = "expected terminator at token " + toStr(st.pos) + " (got '" + (*st.tokens)[st.pos].text + "')";
+						if (st.terms->empty())
+						{
+							error = "expected end of input at '::" + nodeName + "'\n  but got '" +
+								(*st.tokens)[st.pos].text + "' (" + describePos(st, st.pos) + ")";
+						}
+						else
+						{
+							std::string terms;
+							for (std::vector<std::string>::const_iterator it = st.terms->begin(); it != st.terms->end(); ++it)
+							{
+								if (!terms.empty())
+									terms += ", ";
+								terms += "'" + *it + "'";
+							}
+							error = "expected terminator " + terms + " at '::" + nodeName + "'\n  but got '" +
+								(*st.tokens)[st.pos].text + "' (" + describePos(st, st.pos) + ")";
+						}
 						return false;
 					}
 					++st.pos;
@@ -1278,6 +1393,24 @@ namespace blib
 				return true;
 			}
 
+			case ElementKind::Any:
+			{
+				if (st.pos < st.tokens->size() && !isTermToken(st, (*st.tokens)[st.pos].text))
+				{
+					out.type = ValueType::String;
+					out.str = (*st.tokens)[st.pos].text;
+					++st.pos;
+					consumed = 1;
+					return true;
+				}
+				if (st.pos >= st.tokens->size())
+					error = "expected any token at '::" + nodeName + "'\n  but found end of input";
+				else
+					error = "expected any token at '::" + nodeName + "'\n  but found terminator '" +
+						(*st.tokens)[st.pos].text + "' (" + describePos(st, st.pos) + ")";
+				return false;
+			}
+
 			case ElementKind::Field:
 			{
 				MatchState child;
@@ -1292,6 +1425,7 @@ namespace blib
 				if (!r.ok)
 				{
 					error = r.error;
+					st.pos = r.state.pos;
 					consumed = r.consumed;
 					return false;
 				}
@@ -1313,7 +1447,7 @@ namespace blib
 					buint32 ec = 0;
 					Value v;
 					std::string innerErr;
-					if (!matchElem(*it, innerSt, v, innerErr, ec))
+					if (!matchElem(*it, innerSt, v, innerErr, ec, nodeName))
 					{
 						consumed += ec;
 						if (consumed == 0)
@@ -1322,6 +1456,7 @@ namespace blib
 							out.type = ValueType::None;
 							return true;
 						}
+						st = innerSt;
 						error = innerErr;
 						return false;
 					}
@@ -1342,7 +1477,7 @@ namespace blib
 			return false;
 		}
 
-		static bool matchAlt(Alternative& alt, MatchState& st, Value& out, std::string& error)
+		static bool matchAlt(Alternative& alt, MatchState& st, Value& out, std::string& error, const std::string& nodeName)
 		{
 			if (alt.kind == AltKind::LiteralSet)
 			{
@@ -1356,7 +1491,7 @@ namespace blib
 
 				if (st.pos >= st.tokens->size())
 				{
-					error = "expected " + expected + " but input ended";
+					error = "expected " + expected + " at '::" + nodeName + "'\n  but input ended";
 					return false;
 				}
 
@@ -1388,7 +1523,7 @@ namespace blib
 					}
 				}
 
-				error = "expected " + expected + " but got '" + text + "' at token " + toStr(st.pos);
+				error = "expected " + expected + " at '::" + nodeName + "'\n  but got '" + text + "' (" + describePos(st, st.pos) + ")";
 				return false;
 			}
 
@@ -1397,10 +1532,16 @@ namespace blib
 			{
 				buint32 ec = 0;
 				Value v;
-				if (!matchElem(*eit, st, v, error, ec))
+				if (!matchElem(*eit, st, v, error, ec, nodeName))
 					return false;
 				if (v.type != ValueType::None)
 					seq.push_back(v);
+			}
+
+			if (seq.size() == 1)
+			{
+				out = seq[0];
+				return true;
 			}
 
 			Value v;
@@ -1424,24 +1565,34 @@ namespace blib
 			}
 
 			MatchState start = st;
+			res.state = start;
+
+			std::vector<std::string> matchReasons;
+			std::vector<std::string> guardReasons;
+			buint32 skippedReasons = 0;
 
 			for (std::vector<Alternative>::iterator ait = node->alts.begin(); ait != node->alts.end(); ++ait)
 			{
 				MatchState a = start;
 				++a.depth;
 
-				if (!altGuardPass(*ait, a.captures))
+				std::string gfail = guardFailReason(*ait, a.captures);
+				if (!gfail.empty())
+				{
+					pushUniqueReason(guardReasons, "alternative " + toStr(ait - node->alts.begin() + 1) + ": " + gfail, skippedReasons);
 					continue;
+				}
 
 				Value v;
 				std::string altErr;
-				bool ok = matchAlt(*ait, a, v, altErr);
+				bool ok = matchAlt(*ait, a, v, altErr, node->name);
 
 				buint32 consumed = a.pos - start.pos;
 				if (consumed > res.consumed)
+				{
 					res.consumed = consumed;
-				if (res.error.empty() && !altErr.empty())
-					res.error = altErr;
+					res.state = a;
+				}
 
 				if (ok)
 				{
@@ -1455,9 +1606,43 @@ namespace blib
 				if (consumed > 0)
 				{
 					// greedy commit: the first alternative that started matching fails the node
+					res.error = altErr.empty()
+						? "alternative at '::" + node->name + "' failed after consuming " + toStr(consumed) + " token(s)"
+						: altErr + "\n  alternative at '::" + node->name + "' failed after consuming " + toStr(consumed) + " token(s)";
 					return;
 				}
+
+				if (!altErr.empty())
+				{
+					std::string r = "alternative " + toStr(ait - node->alts.begin() + 1) + ": " + altErr;
+					indentLines(r);
+					pushUniqueReason(matchReasons, r, skippedReasons);
+				}
 			}
+
+			std::vector<std::string> reasons;
+			for (std::vector<std::string>::const_iterator it = matchReasons.begin(); it != matchReasons.end(); ++it)
+			{
+				if (reasons.size() < 4)
+					reasons.push_back(*it);
+				else
+					++skippedReasons;
+			}
+			for (std::vector<std::string>::const_iterator it = guardReasons.begin(); it != guardReasons.end(); ++it)
+			{
+				if (reasons.size() < 4)
+					reasons.push_back(*it);
+				else
+					++skippedReasons;
+			}
+
+			res.error = "no alternative matched at '::" + node->name + "'";
+			if (reasons.empty() && skippedReasons == 0)
+				res.error += " (node has no alternatives)";
+			for (std::vector<std::string>::const_iterator it = reasons.begin(); it != reasons.end(); ++it)
+				res.error += "\n  " + *it;
+			if (skippedReasons > 0)
+				res.error += "\n  ... and " + toStr(skippedReasons) + " more alternative(s)";
 		}
 
 		// ============================================================
@@ -1635,7 +1820,7 @@ namespace blib
 						break;
 					}
 					default:
-						error = "variable '" + b.var->name + "' was not captured";
+						error = "variable '" + b.var->name + "' was not captured (binding '::" + b.node->name + "')";
 						return false;
 					}
 					continue;
@@ -1644,7 +1829,9 @@ namespace blib
 				Value converted;
 				if (!valueToVarType(c->second, b.var->type, converted))
 				{
-					error = "cannot assign captured value to variable '" + b.var->name + "'";
+					error = "cannot assign captured value of type '" + valueTypeName(c->second.type) +
+						"' to variable '" + b.var->name + "' of type '" + varTypeName(b.var->type) +
+						"' (binding '::" + b.node->name + "')";
 					return false;
 				}
 				b.var->value = converted;
@@ -1732,7 +1919,21 @@ namespace blib
 
 			if (res.state.pos != tokens.size())
 			{
-				d->error = "unexpected trailing input '" + tokens[res.state.pos].text + "' at offset " + toStr(tokens[res.state.pos].offset);
+				buint32 left = (buint32)tokens.size() - res.state.pos;
+				d->error = "unexpected trailing input at '::" + d->entry->name + "': " + toStr(left) + " token(s) left";
+				d->error += "\n  first leftover: " + describeTok(tokens, res.state.pos);
+				if (left > 1)
+				{
+					std::string rest;
+					buint32 maxK = tokens.size() < res.state.pos + 4 ? (buint32)tokens.size() : res.state.pos + 4;
+					for (buint32 k = res.state.pos + 1; k < maxK; ++k)
+					{
+						if (!rest.empty())
+							rest += ", ";
+						rest += "'" + tokens[k].text + "'";
+					}
+					d->error += "\n  rest: " + rest + (maxK < tokens.size() ? ", ..." : "");
+				}
 				return false;
 			}
 
@@ -1778,7 +1979,7 @@ namespace blib
 
 			if (res.state.pos <= startIdx && res.state.pos < tokens.size())
 			{
-				d->error = "zero-length match at offset " + toStr(tokens[startIdx].offset);
+				d->error = "zero-length match at '::" + d->entry->name + "' (" + describeTok(tokens, startIdx) + ")";
 				return false;
 			}
 
