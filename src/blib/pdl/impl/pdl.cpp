@@ -70,6 +70,7 @@ namespace blib
 			std::string name;
 			VarType type;
 			Value value;
+			bool captured;
 		};
 
 		// ============================================================
@@ -84,7 +85,8 @@ namespace blib
 			Optional,
 			Terminator,
 			Everything,
-			Any
+			Any,
+			Empty
 		};
 
 		struct Element
@@ -184,7 +186,10 @@ namespace blib
 			void resetVars()
 			{
 				for (std::map<std::string, Var>::iterator it = vars.begin(); it != vars.end(); ++it)
+				{
 					it->second.value.clear();
+					it->second.captured = false;
+				}
 			}
 		};
 
@@ -613,6 +618,7 @@ namespace blib
 				Var v;
 				v.name = name;
 				v.type = type;
+				v.captured = false;
 				data->vars[name] = v;
 				return true;
 			}
@@ -869,6 +875,12 @@ namespace blib
 					{
 						++i;
 						e.kind = ElementKind::Any;
+						e.node = nullptr;
+					}
+					else if (at(TokKind::Ident) && tok().text == "__none")
+					{
+						++i;
+						e.kind = ElementKind::Empty;
 						e.node = nullptr;
 					}
 					else
@@ -1411,6 +1423,13 @@ namespace blib
 				return false;
 			}
 
+			case ElementKind::Empty:
+			{
+				consumed = 0;
+				out.type = ValueType::None;
+				return true;
+			}
+
 			case ElementKind::Field:
 			{
 				MatchState child;
@@ -1430,9 +1449,9 @@ namespace blib
 					return false;
 				}
 				st.pos = r.state.pos;
-				st.captures[e.node] = r.value;
 				for (CaptureMap::iterator cit = r.state.captures.begin(); cit != r.state.captures.end(); ++cit)
 					st.captures[cit->first] = cit->second;
+				st.captures[e.node] = r.value;
 				out = r.value;
 				consumed = r.consumed;
 				return true;
@@ -1820,10 +1839,18 @@ namespace blib
 						break;
 					}
 					default:
-						error = "variable '" + b.var->name + "' was not captured (binding '::" + b.node->name + "')";
-						return false;
+						break;
 					}
 					continue;
+				}
+
+				b.var->captured = true;
+
+				if (b.var->type == VarType::String || b.var->type == VarType::Int ||
+					b.var->type == VarType::Float || b.var->type == VarType::Bool)
+				{
+					if (c->second.type == ValueType::AnyList && c->second.list.empty())
+						continue;
 				}
 
 				Value converted;
@@ -1996,52 +2023,137 @@ namespace blib
 			return d->error;
 		}
 
+		bool Parser::isCaptured(const std::string& name) const
+		{
+			d->error.clear();
+			std::map<std::string, Var>::const_iterator it = d->vars.find(name);
+			if (it == d->vars.end())
+			{
+				d->error = "variable '" + name + "' is not declared in the grammar";
+				return false;
+			}
+			return it->second.captured;
+		}
+
 		bool Parser::getVarImpl(const Data& data, const std::string& name, std::string& out) const
 		{
+			d->error.clear();
 			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
-			if (it == data.vars.end() || it->second.type != VarType::String || it->second.value.type != ValueType::String)
+			if (it == data.vars.end())
+			{
+				d->error = "variable '" + name + "' is not declared in the grammar";
 				return false;
+			}
+			if (it->second.type != VarType::String)
+			{
+				d->error = "variable '" + name + "' has type " + varTypeName(it->second.type) + ", requested " + varTypeName(VarType::String);
+				return false;
+			}
+			if (it->second.value.type != ValueType::String)
+			{
+				d->error = "variable '" + name + "' was not captured";
+				return false;
+			}
 			out = it->second.value.str;
 			return true;
 		}
 
 		bool Parser::getVarImpl(const Data& data, const std::string& name, bint32& out) const
 		{
+			d->error.clear();
 			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
-			if (it == data.vars.end() || it->second.type != VarType::Int || it->second.value.type != ValueType::Int)
+			if (it == data.vars.end())
+			{
+				d->error = "variable '" + name + "' is not declared in the grammar";
 				return false;
+			}
+			if (it->second.type != VarType::Int)
+			{
+				d->error = "variable '" + name + "' has type " + varTypeName(it->second.type) + ", requested " + varTypeName(VarType::Int);
+				return false;
+			}
+			if (it->second.value.type != ValueType::Int)
+			{
+				d->error = "variable '" + name + "' was not captured";
+				return false;
+			}
 			out = it->second.value.i;
 			return true;
 		}
 
 		bool Parser::getVarImpl(const Data& data, const std::string& name, float& out) const
 		{
+			d->error.clear();
 			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
-			if (it == data.vars.end() || it->second.type != VarType::Float || it->second.value.type != ValueType::Float)
+			if (it == data.vars.end())
+			{
+				d->error = "variable '" + name + "' is not declared in the grammar";
 				return false;
+			}
+			if (it->second.type != VarType::Float)
+			{
+				d->error = "variable '" + name + "' has type " + varTypeName(it->second.type) + ", requested " + varTypeName(VarType::Float);
+				return false;
+			}
+			if (it->second.value.type != ValueType::Float)
+			{
+				d->error = "variable '" + name + "' was not captured";
+				return false;
+			}
 			out = it->second.value.f;
 			return true;
 		}
 
 		bool Parser::getVarImpl(const Data& data, const std::string& name, bool& out) const
 		{
+			d->error.clear();
 			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
-			if (it == data.vars.end() || it->second.type != VarType::Bool || it->second.value.type != ValueType::Bool)
+			if (it == data.vars.end())
+			{
+				d->error = "variable '" + name + "' is not declared in the grammar";
 				return false;
+			}
+			if (it->second.type != VarType::Bool)
+			{
+				d->error = "variable '" + name + "' has type " + varTypeName(it->second.type) + ", requested " + varTypeName(VarType::Bool);
+				return false;
+			}
+			if (it->second.value.type != ValueType::Bool)
+			{
+				d->error = "variable '" + name + "' was not captured";
+				return false;
+			}
 			out = it->second.value.b;
 			return true;
 		}
 
 		bool Parser::getVarImpl(const Data& data, const std::string& name, std::vector<std::string>& out) const
 		{
+			d->error.clear();
 			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
-			if (it == data.vars.end() || it->second.type != VarType::ArrayString || it->second.value.type != ValueType::AnyList)
+			if (it == data.vars.end())
+			{
+				d->error = "variable '" + name + "' is not declared in the grammar";
 				return false;
+			}
+			if (it->second.type != VarType::ArrayString)
+			{
+				d->error = "variable '" + name + "' has type " + varTypeName(it->second.type) + ", requested " + varTypeName(VarType::ArrayString);
+				return false;
+			}
+			if (it->second.value.type != ValueType::AnyList)
+			{
+				d->error = "variable '" + name + "' was not captured";
+				return false;
+			}
 			out.clear();
 			for (std::vector<Value>::const_iterator vit = it->second.value.list.begin(); vit != it->second.value.list.end(); ++vit)
 			{
 				if (vit->type != ValueType::String)
+				{
+					d->error = "variable '" + name + "' contains non-string element";
 					return false;
+				}
 				out.push_back(vit->str);
 			}
 			return true;
@@ -2049,14 +2161,31 @@ namespace blib
 
 		bool Parser::getVarImpl(const Data& data, const std::string& name, std::vector<bint32>& out) const
 		{
+			d->error.clear();
 			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
-			if (it == data.vars.end() || it->second.type != VarType::ArrayInt || it->second.value.type != ValueType::AnyList)
+			if (it == data.vars.end())
+			{
+				d->error = "variable '" + name + "' is not declared in the grammar";
 				return false;
+			}
+			if (it->second.type != VarType::ArrayInt)
+			{
+				d->error = "variable '" + name + "' has type " + varTypeName(it->second.type) + ", requested " + varTypeName(VarType::ArrayInt);
+				return false;
+			}
+			if (it->second.value.type != ValueType::AnyList)
+			{
+				d->error = "variable '" + name + "' was not captured";
+				return false;
+			}
 			out.clear();
 			for (std::vector<Value>::const_iterator vit = it->second.value.list.begin(); vit != it->second.value.list.end(); ++vit)
 			{
 				if (vit->type != ValueType::Int)
+				{
+					d->error = "variable '" + name + "' contains non-int element";
 					return false;
+				}
 				out.push_back(vit->i);
 			}
 			return true;
@@ -2064,14 +2193,31 @@ namespace blib
 
 		bool Parser::getVarImpl(const Data& data, const std::string& name, std::vector<float>& out) const
 		{
+			d->error.clear();
 			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
-			if (it == data.vars.end() || it->second.type != VarType::ArrayFloat || it->second.value.type != ValueType::AnyList)
+			if (it == data.vars.end())
+			{
+				d->error = "variable '" + name + "' is not declared in the grammar";
 				return false;
+			}
+			if (it->second.type != VarType::ArrayFloat)
+			{
+				d->error = "variable '" + name + "' has type " + varTypeName(it->second.type) + ", requested " + varTypeName(VarType::ArrayFloat);
+				return false;
+			}
+			if (it->second.value.type != ValueType::AnyList)
+			{
+				d->error = "variable '" + name + "' was not captured";
+				return false;
+			}
 			out.clear();
 			for (std::vector<Value>::const_iterator vit = it->second.value.list.begin(); vit != it->second.value.list.end(); ++vit)
 			{
 				if (vit->type != ValueType::Float)
+				{
+					d->error = "variable '" + name + "' contains non-float element";
 					return false;
+				}
 				out.push_back(vit->f);
 			}
 			return true;
@@ -2079,14 +2225,31 @@ namespace blib
 
 		bool Parser::getVarImpl(const Data& data, const std::string& name, std::vector<bool>& out) const
 		{
+			d->error.clear();
 			std::map<std::string, Var>::const_iterator it = data.vars.find(name);
-			if (it == data.vars.end() || it->second.type != VarType::ArrayBool || it->second.value.type != ValueType::AnyList)
+			if (it == data.vars.end())
+			{
+				d->error = "variable '" + name + "' is not declared in the grammar";
 				return false;
+			}
+			if (it->second.type != VarType::ArrayBool)
+			{
+				d->error = "variable '" + name + "' has type " + varTypeName(it->second.type) + ", requested " + varTypeName(VarType::ArrayBool);
+				return false;
+			}
+			if (it->second.value.type != ValueType::AnyList)
+			{
+				d->error = "variable '" + name + "' was not captured";
+				return false;
+			}
 			out.clear();
 			for (std::vector<Value>::const_iterator vit = it->second.value.list.begin(); vit != it->second.value.list.end(); ++vit)
 			{
 				if (vit->type != ValueType::Bool)
+				{
+					d->error = "variable '" + name + "' contains non-bool element";
 					return false;
+				}
 				out.push_back(vit->b);
 			}
 			return true;

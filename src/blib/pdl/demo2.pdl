@@ -11,24 +11,22 @@ let var array<string> @commandArgs;
 ::GCommand::<Command> = "move","jump","stop";
 
 // move desc
-[::GCommand::<Command> == "move"]
+::GCommand::<CommandArgs>: <moveArgs>;
+
+::GCommand::<CommandArgs>::<moveArgs> = <subCommand> <subCommandArgs>;
+
+::GCommand::<CommandArgs>::<moveArgs>::<subCommand> = "forward";
+[::GCommand::<CommandArgs>::<moveArgs>::<subCommand> == "forward"]
 {
-    ::GCommand::<CommandArgs>: <moveArgs>;
-
-    ::GCommand::<CommandArgs>::<moveArgs> = <subCommand> <subCommandArgs>;
-
-    ::GCommand::<CommandArgs>::<moveArgs>::<subCommand> = "forward";
-    [::GCommand::<CommandArgs>::<moveArgs>::<subCommand> == "forward"]
-    {
-        ::GCommand::<CommandArgs>::<moveArgs>::<subCommandArgs> = __everything __terminator;
-    }
+    ::GCommand::<CommandArgs>::<moveArgs>::<subCommandArgs> = __everything __terminator;
 }
 
 "|" = __terminator;
 [::GCommand::<Command> == "jump"]
 {
     ::GCommand::<CommandArgs>: [<jumpOptions>] ::GCommand::<CommandArgs>::<moveArgs>;
-    ::GCommand::<CommandArgs>::<jumpOptions> = <OptionName> [<OptionValue>];
+    ::GCommand::<CommandArgs>::<jumpOptions>: <OptionName> [<OptionValue>] [::GCommand::<CommandArgs>::<jumpOptions>];
+    ::GCommand::<CommandArgs>::<jumpOptions>: __none;
 
     ::GCommand::<CommandArgs>::<jumpOptions>::<OptionName> = "notempfiles";
     [::GCommand::<CommandArgs>::<jumpOptions>::<OptionName> == "notempfiles"]
@@ -40,6 +38,7 @@ let var array<string> @commandArgs;
 
 @exepath = ::GCommand::<ExePath>;
 @command = ::GCommand::<Command>;
+@options = ::GCommand::<CommandArgs>::<jumpOptions>;
 @commandArgs = ::GCommand::<CommandArgs>;
 @subCommandArgs = ::GCommand::<CommandArgs>::<moveArgs>::<subCommandArgs>;
 
