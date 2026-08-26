@@ -1,0 +1,22 @@
+// demo3: необязательная часть и __none - различие между
+// "узел не участвовал в матче" и "узел сматчился через __none"
+//
+//   run              -> @opt не захвачен, @maybe захвачен пустым (__none)
+//   run verbose      -> @opt = "verbose", @maybe пустой (__none)
+//   run quiet        -> @opt не захвачен, @maybe = "quiet"
+//   run verbose quiet -> @opt = "verbose", @maybe = "quiet"
+
+let var string @opt;
+let var string @maybe;
+
+::Cmd: <name> [<opt>] <maybe> __terminator;
+
+::Cmd::<name> = "run";
+::Cmd::<opt> = "verbose";
+
+::Cmd::<maybe>: ::Maybe;
+::Maybe = "quiet";
+::Maybe += __none;
+
+@opt = ::Cmd::<opt>;
+@maybe = ::Cmd::<maybe>;

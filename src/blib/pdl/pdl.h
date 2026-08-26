@@ -37,6 +37,8 @@ namespace blib
 
 			const std::string& getLastError() const;
 
+			bool isCaptured(_In const std::string& name) const;
+
 		private:
 			bool getVarImpl(const Data& data, const std::string& name, std::string& out) const;
 			bool getVarImpl(const Data& data, const std::string& name, bint32& out) const;

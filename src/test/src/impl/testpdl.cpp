@@ -396,7 +396,173 @@ BLIB_TEST_CASE("PDL demo2: error message details")
 
 	const std::string& err = p.getLastError();
 	BLIB_TEST_CHECK(err.find("no alternative matched at '::GCommand::<CommandArgs>'") != std::string::npos);
-	BLIB_TEST_CHECK(err.find("guard '::GCommand::<Command> == \"move\"'") != std::string::npos);
+	BLIB_TEST_CHECK(err.find("guard '::GCommand::<Command> == \"jump\"'") != std::string::npos);
 	BLIB_TEST_CHECK(err.find("captured 'stop'") != std::string::npos);
 	BLIB_TEST_CHECK(err.find("alternative at '::GCommand' failed after consuming") != std::string::npos);
+}
+
+BLIB_TEST_CASE("PDL demo2: __none base case")
+{
+	blib::pdl::Parser p;
+	BLIB_TEST_REQUIRE(loadDemoNum(p, 2));
+	BLIB_TEST_REQUIRE(p.parse("exepath jump forward"));
+
+	std::string command;
+	std::vector<std::string> options;
+	std::vector<std::string> subCommandArgs;
+
+	BLIB_TEST_REQUIRE(p.getVar("@command", command));
+	BLIB_TEST_REQUIRE(p.getVar("@options", options));
+	BLIB_TEST_REQUIRE(p.getVar("@subCommandArgs", subCommandArgs));
+
+	BLIB_TEST_CHECK(command == "jump");
+	BLIB_TEST_CHECK(options.empty());
+	BLIB_TEST_CHECK(subCommandArgs.empty());
+}
+
+BLIB_TEST_CASE("PDL demo2: __none one option")
+{
+	blib::pdl::Parser p;
+	BLIB_TEST_REQUIRE(loadDemoNum(p, 2));
+	BLIB_TEST_REQUIRE(p.parse("exepath jump notempfiles forward"));
+
+	std::string command;
+	std::vector<std::string> options;
+	std::vector<std::string> subCommandArgs;
+
+	BLIB_TEST_REQUIRE(p.getVar("@command", command));
+	BLIB_TEST_REQUIRE(p.getVar("@options", options));
+	BLIB_TEST_REQUIRE(p.getVar("@subCommandArgs", subCommandArgs));
+
+	BLIB_TEST_CHECK(command == "jump");
+	BLIB_TEST_CHECK(options.size() == 1);
+	BLIB_TEST_CHECK(options[0] == "notempfiles");
+	BLIB_TEST_CHECK(subCommandArgs.empty());
+}
+
+BLIB_TEST_CASE("PDL demo2: __none repeated options")
+{
+	blib::pdl::Parser p;
+	BLIB_TEST_REQUIRE(loadDemoNum(p, 2));
+	BLIB_TEST_REQUIRE(p.parse("exepath jump notempfiles notempfiles forward"));
+
+	std::string command;
+	std::vector<std::string> options;
+	std::vector<std::string> subCommandArgs;
+
+	BLIB_TEST_REQUIRE(p.getVar("@command", command));
+	BLIB_TEST_REQUIRE(p.getVar("@options", options));
+	BLIB_TEST_REQUIRE(p.getVar("@subCommandArgs", subCommandArgs));
+
+	BLIB_TEST_CHECK(command == "jump");
+	BLIB_TEST_CHECK(options.size() == 2);
+	BLIB_TEST_CHECK(options[0] == "notempfiles" && options[1] == "notempfiles");
+	BLIB_TEST_CHECK(subCommandArgs.empty());
+}
+
+BLIB_TEST_CASE("PDL demo3: unfilled scalar binding doesn't fail parse")
+{
+	blib::pdl::Parser p;
+	BLIB_TEST_REQUIRE(loadDemoNum(p, 3));
+	BLIB_TEST_REQUIRE(p.parse("run"));
+
+	std::string s;
+	BLIB_TEST_CHECK(!p.getVar("@opt", s));
+	BLIB_TEST_CHECK(p.getLastError() == "variable '@opt' was not captured");
+	BLIB_TEST_CHECK(!p.isCaptured("@opt"));
+}
+
+BLIB_TEST_CASE("PDL demo3: __none match is captured but empty")
+{
+	blib::pdl::Parser p;
+	BLIB_TEST_REQUIRE(loadDemoNum(p, 3));
+	BLIB_TEST_REQUIRE(p.parse("run"));
+
+	std::string s;
+	BLIB_TEST_CHECK(!p.getVar("@maybe", s));
+	BLIB_TEST_CHECK(p.getLastError() == "variable '@maybe' was not captured");
+	BLIB_TEST_CHECK(p.isCaptured("@maybe"));
+}
+
+BLIB_TEST_CASE("PDL demo3: scalar bindings filled")
+{
+	blib::pdl::Parser p;
+	BLIB_TEST_REQUIRE(loadDemoNum(p, 3));
+	BLIB_TEST_REQUIRE(p.parse("run verbose quiet"));
+
+	std::string opt;
+	std::string maybe;
+
+	BLIB_TEST_REQUIRE(p.getVar("@opt", opt));
+	BLIB_TEST_REQUIRE(p.getVar("@maybe", maybe));
+
+	BLIB_TEST_CHECK(opt == "verbose");
+	BLIB_TEST_CHECK(maybe == "quiet");
+	BLIB_TEST_CHECK(p.isCaptured("@opt"));
+	BLIB_TEST_CHECK(p.isCaptured("@maybe"));
+}
+
+BLIB_TEST_CASE("PDL demo3: isCaptured on undeclared variable")
+{
+	blib::pdl::Parser p;
+	BLIB_TEST_REQUIRE(loadDemoNum(p, 3));
+	BLIB_TEST_REQUIRE(p.parse("run"));
+
+	BLIB_TEST_CHECK(!p.isCaptured("@unknown"));
+	BLIB_TEST_CHECK(p.getLastError() == "variable '@unknown' is not declared in the grammar");
+}
+
+BLIB_TEST_CASE("PDL getVar: undeclared variable sets error")
+{
+	blib::pdl::Parser p;
+	BLIB_TEST_REQUIRE(loadDemoNum(p, 1));
+	BLIB_TEST_REQUIRE(p.parse("exe one any hello"));
+
+	std::string s;
+	BLIB_TEST_CHECK(!p.getVar("@unknown", s));
+	BLIB_TEST_CHECK(p.getLastError() == "variable '@unknown' is not declared in the grammar");
+}
+
+BLIB_TEST_CASE("PDL getVar: wrong requested type sets error")
+{
+	blib::pdl::Parser p;
+	BLIB_TEST_REQUIRE(loadDemoNum(p, 1));
+	BLIB_TEST_REQUIRE(p.parse("exe one any hello"));
+
+	bint32 i = 0;
+	BLIB_TEST_CHECK(!p.getVar("@command", i));
+	BLIB_TEST_CHECK(p.getLastError() == "variable '@command' has type string, requested int");
+
+	std::string s;
+	BLIB_TEST_CHECK(!p.getVar("@options", s));
+	BLIB_TEST_CHECK(p.getLastError() == "variable '@options' has type array<string>, requested string");
+}
+
+BLIB_TEST_CASE("PDL getVar: not captured variable sets error")
+{
+	blib::pdl::Parser p;
+	BLIB_TEST_REQUIRE(loadDemoNum(p, 1));
+
+	std::string s;
+	BLIB_TEST_CHECK(!p.getVar("@command", s));
+	BLIB_TEST_CHECK(p.getLastError() == "variable '@command' was not captured");
+}
+
+BLIB_TEST_CASE("PDL getVar: success clears previous error")
+{
+	blib::pdl::Parser p;
+	BLIB_TEST_REQUIRE(loadDemoNum(p, 1));
+	BLIB_TEST_REQUIRE(p.parse("exe one any hello"));
+
+	std::string command;
+	std::vector<std::string> options;
+
+	BLIB_TEST_REQUIRE(p.getVar("@command", command));
+	BLIB_TEST_CHECK(p.getLastError() == "");
+
+	BLIB_TEST_CHECK(!p.getVar("@unknown", command));
+	BLIB_TEST_CHECK(p.getLastError() == "variable '@unknown' is not declared in the grammar");
+
+	BLIB_TEST_REQUIRE(p.getVar("@options", options));
+	BLIB_TEST_CHECK(p.getLastError() == "");
 }
