@@ -1,11 +1,19 @@
 #pragma once
 
+#ifdef WIN32
+#include <Windows.h>
+typedef SRWLOCK locker_t;
+#else
+#error "Define rwlock type"
+#endif // !WIN32
+
+
 namespace thread
 {
-    class ReadWriteSyncronizer
+    class RWLocker
     {
     private:
-        void* rwsyncer;
+        locker_t rwsyncer;
     public:
         void readLock();
         void readUnock();
@@ -13,9 +21,9 @@ namespace thread
         void writeLock();
         void writeUnlock();
 
-        ReadWriteSyncronizer();
-        ~ReadWriteSyncronizer();
-        ReadWriteSyncronizer(const ReadWriteSyncronizer&) = delete;
-        ReadWriteSyncronizer(ReadWriteSyncronizer&&) = delete;
+        RWLocker();
+        ~RWLocker();
+        RWLocker(const RWLocker&) = delete;
+        RWLocker(RWLocker&&) = delete;
     };
 }

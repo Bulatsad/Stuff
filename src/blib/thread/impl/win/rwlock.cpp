@@ -4,34 +4,31 @@
 
 #include <Windows.h>
 
-typedef SRWLOCK locker_t;
-
-__blib_inline void thread::ReadWriteSyncronizer::readLock()
+void thread::RWLocker::readLock()
 {
-    AcquireSRWLockShared((locker_t*)this->rwsyncer);
+    AcquireSRWLockShared(&(this->rwsyncer));
 }
 
-__blib_inline void thread::ReadWriteSyncronizer::readUnock()
+void thread::RWLocker::readUnock()
 {
-    ReleaseSRWLockShared((locker_t*)this->rwsyncer);
+    ReleaseSRWLockShared(&(this->rwsyncer));
 }
 
-__blib_inline void thread::ReadWriteSyncronizer::writeLock()
+void thread::RWLocker::writeLock()
 {
-    AcquireSRWLockExclusive((locker_t*)this->rwsyncer);
+    AcquireSRWLockExclusive(&(this->rwsyncer));
 }
 
-__blib_inline void thread::ReadWriteSyncronizer::writeUnlock()
+void thread::RWLocker::writeUnlock()
 {
-     ReleaseSRWLockExclusive((locker_t*)this->rwsyncer);
+     ReleaseSRWLockExclusive(&(this->rwsyncer));
 }
 
-__blib_inline thread::ReadWriteSyncronizer::ReadWriteSyncronizer()
+thread::RWLocker::RWLocker()
 {
-    InitializeSRWLock((locker_t*)this->rwsyncer);
+    InitializeSRWLock(&(this->rwsyncer));
 }
 
-__blib_inline thread::ReadWriteSyncronizer::~ReadWriteSyncronizer()
+thread::RWLocker::~RWLocker()
 {
-    this->rwsyncer = nullptr;
 }
