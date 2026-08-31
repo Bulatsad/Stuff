@@ -49,8 +49,14 @@ file (GLOB thread_header_src "*thread/*.h")
 file (GLOB core_header_src "*core/*.h")
 file (GLOB core_impl_src "*core/*.cpp")
 
+file (GLOB memory_header_src "*memory/*.h" "*memory/allocators/*.h")
+file (GLOB memory_impl_src "*memory/impl/*.cpp" "*memory/impl/*.inl")
+
 file (GLOB algorithm_header_src "*algorithm/*.h")
 file (GLOB algorithm_impl_src "*algorithm/impl/*.cpp")
+
+file (GLOB compression_header_src "*algorithm/compression/*.h")
+file (GLOB compression_impl_src "*algorithm/compression/impl/*.cpp")
 
 file (GLOB network_header_src "*network/*.h")
 file (GLOB network_impl_src "*network/impl/*.cpp")
@@ -71,6 +77,8 @@ if(WIN32)
     file (GLOB sound_platform_impl_header "*sound/impl/win/*.h")
 
     file (GLOB thread_platform_impl_src "*thread/impl/win/*.cpp")
+    # Явно добавляем rwlock.cpp на случай если glob не работает
+    list(APPEND thread_platform_impl_src "${CMAKE_CURRENT_SOURCE_DIR}/thread/impl/win/rwlock.cpp")
     
     file (GLOB network_platform_impl_src "*network/impl/win/*.cpp")
     file (GLOB network_platform_impl_header "*network/impl/win/*.h")
@@ -94,8 +102,14 @@ GroupSoureces("${SourceGroupPrefix}/thread" "${thread_platform_impl_src}")
 GroupSoureces("${HeaderGroupPrefix}/core" "${core_header_src}")  
 GroupSoureces("${SourceGroupPrefix}/core" "${core_impl_src}")  
 
+GroupSoureces("${HeaderGroupPrefix}/memory" "${memory_header_src}")  
+GroupSoureces("${SourceGroupPrefix}/memory" "${memory_impl_src}")  
+
 GroupSoureces("${HeaderGroupPrefix}/algorithm" "${algorithm_header_src}")  
 GroupSoureces("${SourceGroupPrefix}/algorithm" "${algorithm_impl_src}")  
+
+GroupSoureces("${HeaderGroupPrefix}/algorithm/compression" "${compression_header_src}")  
+GroupSoureces("${SourceGroupPrefix}/algorithm/compression/impl" "${compression_impl_src}")  
 
 GroupSoureces("${HeaderGroupPrefix}/network" "${network_header_src}")  
 GroupSoureces("${HeaderGroupPrefix}/network" "${network_platform_impl_header}")  
@@ -130,8 +144,14 @@ set(blib_sources
     ${core_header_src} 
     ${core_impl_src}
 
+    ${memory_header_src}
+    ${memory_impl_src}
+
     ${algorithm_header_src}
     ${algorithm_impl_src}
+
+    ${compression_header_src}
+    ${compression_impl_src}
 
     ${network_header_src}
     ${network_impl_src}
@@ -160,9 +180,11 @@ elseif(blib_build_type STREQUAL "blib_build_dynamic")
 	add_library(${BIN} SHARED ${blib_sources})
     target_compile_definitions(${BIN} PRIVATE ____blib_configuration_library_type_value=${____blib_configuration_library_type_shared})
 else()
-    message(FATAL_ERROR "Undefined build type")
+	message(FATAL_ERROR "Undefined build type")
     message(FATAL_ERROR "blib_build_type is not defined")
 endif()
+
+set_target_properties(${BIN} PROPERTIES FOLDER "blib")
 
 if(blib_inline_mode STREQUAL "__blib_inline_always")
     target_compile_definitions(${BIN} PRIVATE __blib_inline_always)
@@ -223,5 +245,10 @@ if(WIN32)
 
 	message(STATUS ${CMAKE_CXX_FLAGS_DEBUG})
 else()
+endif()
+
+#tests
+if(BUILD_TESTS)
+	add_subdirectory(test)
 endif()
 

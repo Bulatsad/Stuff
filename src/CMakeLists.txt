@@ -32,10 +32,9 @@ set(stb_include ${stb_dir})
 
 option(BUILD_TESTS "Build tests" OFF)
 
-add_subdirectory(${blib_dir})
-add_subdirectory(${beng_dir})
-
 if(BUILD_TESTS)
 	enable_testing()
-	add_subdirectory(${root_dir}/test)
 endif()
+
+add_subdirectory(${blib_dir})
+add_subdirectory(${beng_dir})
