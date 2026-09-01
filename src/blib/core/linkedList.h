@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cstddef>
+#include <iterator>
 #include <memory>
+#include <utility>
 
 #include <blib/inline.h>
 
@@ -12,41 +15,123 @@ namespace blib
         T data;
         LinkedListNode* next;
 
-        LinkedListNode(const T&obj)
+        LinkedListNode(const T& obj)
+            : data(obj)
+            , next(nullptr)
         {
-            new (const_cast<void*>(static_cast<const volatile void*>(&data))) T(obj);
-            next = nullptr;
-        }
-        LinkedListNode(T&& obj)
-        {
-            new (const_cast<void*>(static_cast<const volatile void*>(&this->data))) T(std::move(obj));
-            next = nullptr;
         }
 
-        //template<typename ...Args>
-        //LinkedListNode(Args&&... args)
-        //{
-        //    new (const_cast<void*>(static_cast<const volatile void*>(&data))) T(std::forward<Args>(args)...);
-        //    next = nullptr;
-        //}
-        LinkedListNode() = delete;
-        //{
-        //    data = T();
-        //    next = nullptr;
-        //}
+        LinkedListNode(T&& obj)
+            : data(std::move(obj))
+            , next(nullptr)
+        {
+        }
     };
+
     template<typename T, typename AllocatorT = std::allocator<LinkedListNode<T> > >
     class LinkedList
     {
+    public:
+        // std-совместимый forward iterator для обхода списка.
+        // Инвариант: итератор валиден пока список не модифицировался
+        // (как и у любого двусвязного/односвязного списка).
+        class Iterator
+        {
+        public:
+            typedef std::forward_iterator_tag iterator_category;
+            typedef T value_type;
+            typedef std::ptrdiff_t difference_type;
+            typedef T* pointer;
+            typedef T& reference;
+
+            Iterator()
+                : current(nullptr)
+            {
+            }
+
+            explicit Iterator(LinkedListNode<T>* node)
+                : current(node)
+            {
+            }
+
+            T& operator*() const { return this->current->data; }
+            T* operator->() const { return &this->current->data; }
+
+            Iterator& operator++()
+            {
+                this->current = this->current->next;
+                return *this;
+            }
+
+            Iterator operator++(int)
+            {
+                Iterator tmp(*this);
+                ++(*this);
+                return tmp;
+            }
+
+            bool operator==(const Iterator& other) const { return this->current == other.current; }
+            bool operator!=(const Iterator& other) const { return this->current != other.current; }
+
+        private:
+            LinkedListNode<T>* current;
+        };
+
+        // Константная версия итератора (возвращает const T&).
+        class ConstIterator
+        {
+        public:
+            typedef std::forward_iterator_tag iterator_category;
+            typedef T value_type;
+            typedef std::ptrdiff_t difference_type;
+            typedef const T* pointer;
+            typedef const T& reference;
+
+            ConstIterator()
+                : current(nullptr)
+            {
+            }
+
+            explicit ConstIterator(LinkedListNode<T>* node)
+                : current(node)
+            {
+            }
+
+            const T& operator*() const { return this->current->data; }
+            const T* operator->() const { return &this->current->data; }
+
+            ConstIterator& operator++()
+            {
+                this->current = this->current->next;
+                return *this;
+            }
+
+            ConstIterator operator++(int)
+            {
+                ConstIterator tmp(*this);
+                ++(*this);
+                return tmp;
+            }
+
+            bool operator==(const ConstIterator& other) const { return this->current == other.current; }
+            bool operator!=(const ConstIterator& other) const { return this->current != other.current; }
+
+        private:
+            LinkedListNode<T>* current;
+        };
+
     private:
         AllocatorT allocator;
         LinkedListNode<T>* head;
         LinkedListNode<T>* tail;
         size_t sz;
+
     public:
         LinkedList();
         ~LinkedList();
+
         size_t size() const;
+        bool empty() const;
 
         bool pushBack(const T& obj);
         bool pushBack(T&& obj);
@@ -62,13 +147,19 @@ namespace blib
         void pop(size_t pos);
 
         T popFront();
-        const T popFront() const;
-
         T popBack();
-        const T popBack() const;
 
         T& operator[](size_t pos);
         const T& operator[](size_t pos) const;
+
+        Iterator begin() { return Iterator(this->head); }
+        Iterator end() { return Iterator(nullptr); }
+
+        ConstIterator begin() const { return ConstIterator(this->head); }
+        ConstIterator end() const { return ConstIterator(nullptr); }
+
+        ConstIterator cbegin() const { return ConstIterator(this->head); }
+        ConstIterator cend() const { return ConstIterator(nullptr); }
     };
 
     template<typename T, typename AllocatorT>
@@ -82,14 +173,14 @@ namespace blib
     template<typename T, typename AllocatorT>
     __blib_inline LinkedList<T, AllocatorT>::~LinkedList()
     {
+        // Разрушаем и освобождаем все узлы (destroy + deallocate, размер обязателен).
         LinkedListNode<T>* pcurrent = this->head;
-        LinkedListNode<T>* pnext = pcurrent ? pcurrent->next : nullptr;
-
-        for (size_t i = 0; i < this->sz; ++i)
+        while (pcurrent)
         {
+            LinkedListNode<T>* pnext = pcurrent->next;
             this->allocator.destroy(pcurrent);
+            this->allocator.deallocate(pcurrent, sizeof(LinkedListNode<T>));
             pcurrent = pnext;
-            pnext = pcurrent ? pcurrent->next : nullptr;
         }
     }
 
@@ -100,139 +191,148 @@ namespace blib
     }
 
     template<typename T, typename AllocatorT>
+    __blib_inline bool LinkedList<T, AllocatorT>::empty() const
+    {
+        return this->sz == 0;
+    }
+
+    template<typename T, typename AllocatorT>
     __blib_inline bool LinkedList<T, AllocatorT>::pushBack(const T& obj)
     {
-        bool res = false;
-        if (!sz)
-        {
-            this->tail = this->allocator.construct(obj);
-            if (!this->tail)
-                return false;
-            this->head = this->tail;
-            this->head->next = this->tail;
-        }
-        else
-        {
-            this->tail->next = this->allocator.construct(obj);
-            if (!this->tail->next)
-                return false;
-        }
-
-        if (this->tail.next)
+        // Выделяем память под узел и конструируем его (протокол std::allocator:
+        // allocate + construct(ptr, args...)).
+        LinkedListNode<T>* pnode = this->allocator.allocate(sizeof(LinkedListNode<T>));
+        if (!pnode)
             return false;
+        this->allocator.construct(pnode, obj);
 
-        this->tail = this->tail->next;
-        ++sz;
+        // Новый узел всегда становится хвостом, его next - nullptr (конец списка).
+        pnode->next = nullptr;
+        if (!this->sz)
+            this->head = pnode;
+        else
+            this->tail->next = pnode;
+        this->tail = pnode;
+        ++this->sz;
         return true;
     }
 
     template<typename T, typename AllocatorT>
     __blib_inline bool LinkedList<T, AllocatorT>::pushBack(T&& obj)
     {
-        bool res = false;
-        if (!sz)
-        {
-            this->tail = this->allocator.allocate(sizeof(LinkedListNode<T>));
-            this->allocator.construct(this->tail, std::move(obj));
-            
-            if (!this->tail)
-                return false;
-            this->head = this->tail;
-            this->head->next = this->tail;
-        }
-        else
-        {
-            this->tail->next = this->allocator.allocate(sizeof(LinkedListNode<T>));
-            this->allocator.construct(this->tail->next, std::move(obj));
-            if (!this->tail->next)
-                return false;
-        }
+        LinkedListNode<T>* pnode = this->allocator.allocate(sizeof(LinkedListNode<T>));
+        if (!pnode)
+            return false;
+        this->allocator.construct(pnode, std::move(obj));
 
-        this->tail = this->tail->next;
-        ++sz;
+        pnode->next = nullptr;
+        if (!this->sz)
+            this->head = pnode;
+        else
+            this->tail->next = pnode;
+        this->tail = pnode;
+        ++this->sz;
+        return true;
+    }
+
+    template<typename T, typename AllocatorT>
+    __blib_inline bool LinkedList<T, AllocatorT>::pushFront(const T& obj)
+    {
+        LinkedListNode<T>* pnode = this->allocator.allocate(sizeof(LinkedListNode<T>));
+        if (!pnode)
+            return false;
+        this->allocator.construct(pnode, obj);
+
+        // Новый узел становится головой и указывает на прежнюю голову.
+        pnode->next = this->head;
+        this->head = pnode;
+        if (!this->sz)
+            this->tail = pnode;
+        ++this->sz;
+        return true;
+    }
+
+    template<typename T, typename AllocatorT>
+    __blib_inline bool LinkedList<T, AllocatorT>::pushFront(T&& obj)
+    {
+        LinkedListNode<T>* pnode = this->allocator.allocate(sizeof(LinkedListNode<T>));
+        if (!pnode)
+            return false;
+        this->allocator.construct(pnode, std::move(obj));
+
+        pnode->next = this->head;
+        this->head = pnode;
+        if (!this->sz)
+            this->tail = pnode;
+        ++this->sz;
         return true;
     }
 
     template<typename T, typename AllocatorT>
     __blib_inline T& LinkedList<T, AllocatorT>::front()
     {
-        return head->data;
+        return this->head->data;
     }
 
     template<typename T, typename AllocatorT>
     __blib_inline const T& LinkedList<T, AllocatorT>::front() const
     {
-        return this->front();
+        return this->head->data;
     }
 
     template<typename T, typename AllocatorT>
     __blib_inline T& LinkedList<T, AllocatorT>::back()
     {
-        return tail->data;
+        return this->tail->data;
     }
 
     template<typename T, typename AllocatorT>
     __blib_inline const T& LinkedList<T, AllocatorT>::back() const
     {
-        return this->back();
+        return this->tail->data;
     }
 
     template<typename T, typename AllocatorT>
     __blib_inline void LinkedList<T, AllocatorT>::pop(size_t pos)
     {
+        // pos должен быть в пределах [0, sz), иначе - UB (согласовано с operator[]).
         LinkedListNode<T>* pprev = nullptr;
         LinkedListNode<T>* pcurrent = this->head;
-        LinkedListNode<T>* pdeleting;
-        LinkedListNode<T>* pretarget;
-
         for (size_t i = 0; i < pos; ++i)
         {
             pprev = pcurrent;
             pcurrent = pcurrent->next;
         }
 
-        if (!pprev)
-            this->head = this->head->next;
-        else if (pcurrent == this->tail)
+        // Вынимаем узел из цепочки: предыдущий пропускает его, либо двигается голова.
+        if (pprev)
+            pprev->next = pcurrent->next;
+        else
+            this->head = pcurrent->next;
+
+        // Если удаляли хвост - новым хвостом становится предыдущий узел.
+        if (pcurrent == this->tail)
             this->tail = pprev;
 
-        pdeleting = pprev ? pcurrent : nullptr;
-        pretarget = pprev ? pprev : pcurrent;
-
-        pretarget->next = pdeleting ? pdeleting->next : nullptr;
-
-        this->allocator.destroy(pdeleting);
-        this->allocator.deallocate(pdeleting, sizeof(LinkedListNode<T>));
-
-        --sz;
+        this->allocator.destroy(pcurrent);
+        this->allocator.deallocate(pcurrent, sizeof(LinkedListNode<T>));
+        --this->sz;
     }
 
     template<typename T, typename AllocatorT>
     __blib_inline T LinkedList<T, AllocatorT>::popFront()
     {
-        T res(std::move(this->operator[](0)));
+        T res(std::move(this->front()));
         this->pop(0);
         return res;
     }
 
     template<typename T, typename AllocatorT>
-    __blib_inline const T LinkedList<T, AllocatorT>::popFront() const
-    {
-        this->popFront();
-    }
-
-    template<typename T, typename AllocatorT>
     __blib_inline T LinkedList<T, AllocatorT>::popBack()
     {
-        T res(std::move(this->operator[](this->sz - 1)));
+        T res(std::move(this->back()));
         this->pop(this->sz - 1);
         return res;
-    }
-
-    template<typename T, typename AllocatorT>
-    __blib_inline const T LinkedList<T, AllocatorT>::popBack() const
-    {
-        this->popBack();
     }
 
     template<typename T, typename AllocatorT>
@@ -248,6 +348,10 @@ namespace blib
     template<typename T, typename AllocatorT>
     __blib_inline const T& LinkedList<T, AllocatorT>::operator[](size_t pos) const
     {
-        return this->operator[](pos);
+        LinkedListNode<T>* res = this->head;
+        for (size_t i = 0; i < pos; ++i)
+            res = res->next;
+
+        return res->data;
     }
 }

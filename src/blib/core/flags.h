@@ -10,12 +10,14 @@ namespace blib
         struct Flags
         {
             StoteType storage;
-            bool isUp(EnunFlags flag)
+            bool isUp(EnunFlags flag) const
             {
-                return this->storage && flag;
+                // Побитовая проверка (важно: именно &, не логический &&,
+                // иначе любой ненулевой флаг совпадёт с любым ненулевым storage)
+                return (this->storage & static_cast<StoteType>(flag)) != 0;
             }
 
-            bool isDown(EnunFlags flag)
+            bool isDown(EnunFlags flag) const
             {
                 return !this->isUp(flag);
             }

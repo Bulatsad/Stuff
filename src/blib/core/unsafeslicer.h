@@ -9,7 +9,7 @@ namespace blib
     {
         // Utill class for array slicing
         template<class Type>
-        class __blib_api UnsafeSlicer
+        class __blib_core_api UnsafeSlicer
         {
         public:
             UnsafeSlicer(Type* pBase, size_t aStrideElem = 1);
@@ -22,7 +22,7 @@ namespace blib
         };
 
         template<class Type>
-        class __blib_api ConstUnsafeSlicer
+        class __blib_core_api ConstUnsafeSlicer
         {
         public:
             ConstUnsafeSlicer(const Type* pBase, size_t aStrideElem = 1);
