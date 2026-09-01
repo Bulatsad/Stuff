@@ -1,8 +1,9 @@
 #include <blib/test/src/test.h>
 
-// Hash: интерфейс и реализация MD5
+// Hash: интерфейс, реализации MD5 и CRC32
 #include <blib/core/algorithm/hash/ihasher.h>
 #include <blib/core/algorithm/hash/md5Hasher.h>
+#include <blib/core/algorithm/hash/crc32Hasher.h>
 
 // Потоки: MemoryStream для in-memory хеширования
 #include <blib/core/istream.h>
@@ -259,6 +260,79 @@ namespace
         buint64 tell() const __blib_override { return 0; }
         buint64 size() const __blib_override { return 0; }
     };
+
+    /**
+     * Эталонная побитовая реализация CRC-32 (без таблицы) -- независимая
+     * кросс-проверка табличной реализации Crc32Hasher.
+     *
+     * @param data Исходные данные (может быть nullptr при size == 0)
+     * @param size Размер данных
+     * @return Итоговое значение CRC-32 (IEEE 802.3)
+     */
+    buint32 crc32Reference(const buint8* data, size_t size)
+    {
+        buint32 crc = 0xFFFFFFFFu;
+        for (size_t i = 0; i < size; ++i)
+        {
+            crc ^= data[i];
+            for (buint32 k = 0; k < 8; ++k)
+            {
+                crc = (crc & 1) ? (0xEDB88320u ^ (crc >> 1)) : (crc >> 1);
+            }
+        }
+        return crc ^ 0xFFFFFFFFu;
+    }
+
+    /**
+     * Хелпер: вычислить CRC-32 через IHasher из готового потока
+     * и сравнить с ожидаемым значением.
+     *
+     * @param hasher      Настроенный хешер
+     * @param in          Входной поток (позиционированный)
+     * @param expectedCrc Ожидаемое значение CRC-32
+     * @return true при совпадении
+     */
+    bool expectCrc32Stream(IHasher& hasher, IInputStream& in, buint32 expectedCrc)
+    {
+        MemoryStream out;
+        if (!hasher.hash(in, out))
+            return false;
+
+        const ByteArray& got = out.getData();
+        if (got.size() != 4)
+            return false;
+
+        // Дайджест -- 4 байта little-endian итогового значения CRC-32
+        buint32 value = 0;
+        for (size_t i = 0; i < 4; ++i)
+            value |= static_cast<buint32>(got[i]) << (8 * i);
+
+        return value == expectedCrc;
+    }
+
+    /**
+     * Хелпер: вычислить CRC-32 данных через IHasher и сравнить
+     * с ожидаемым значением.
+     *
+     * @param hasher      Настроенный хешер
+     * @param data        Исходные данные
+     * @param dataSize    Размер данных
+     * @param expectedCrc Ожидаемое значение CRC-32
+     * @return true при совпадении
+     */
+    bool expectCrc32(
+        IHasher& hasher,
+        const buint8* data,
+        size_t dataSize,
+        buint32 expectedCrc)
+    {
+        MemoryStream inStream;
+        if (dataSize > 0)
+            inStream.write(data, dataSize);
+        inStream.seek(0, SeekOrigin::Begin);
+
+        return expectCrc32Stream(hasher, inStream, expectedCrc);
+    }
 }
 
 // ============================================================
@@ -541,4 +615,202 @@ BLIB_TEST_CASE("MD5: output size is exactly digestSize() for any input")
     MemoryStream out;
     BLIB_TEST_REQUIRE(hashData(hasher, data.data(), data.size(), out));
     BLIB_TEST_CHECK(out.getData().size() == static_cast<size_t>(hasher.digestSize()));
+}
+
+// ============================================================
+// 5. CRC32: интерфейс, известные векторы и свойства
+// ============================================================
+
+BLIB_TEST_CASE("CRC32: algorithmName returns CRC32")
+{
+    Crc32Hasher hasher;
+    const char* name = hasher.algorithmName();
+
+    BLIB_TEST_REQUIRE(name != nullptr);
+    BLIB_TEST_CHECK(std::strcmp(name, "CRC32") == 0);
+}
+
+BLIB_TEST_CASE("CRC32: digestSize returns 4")
+{
+    Crc32Hasher hasher;
+    BLIB_TEST_CHECK(hasher.digestSize() == 4);
+}
+
+BLIB_TEST_CASE("CRC32: known test vectors")
+{
+    Crc32Hasher hasher;
+
+    struct Vector
+    {
+        const char* data;
+        buint32 crc;
+    };
+
+    // Общеизвестные проверочные значения CRC-32 (каталог CRC, zlib):
+    // "" -> 0x00000000, "a" -> 0xE8B7BE43, "abc" -> 0x352441C2,
+    // "123456789" -> 0xCBF43926 (стандартный check value алгоритма)
+    const Vector vectors[] =
+    {
+        { "",          0x00000000u },
+        { "a",         0xE8B7BE43u },
+        { "abc",       0x352441C2u },
+        { "123456789", 0xCBF43926u }
+    };
+
+    for (const Vector& v : vectors)
+    {
+        BLIB_TEST_CHECK(expectCrc32(hasher,
+            reinterpret_cast<const buint8*>(v.data), std::strlen(v.data), v.crc));
+    }
+}
+
+BLIB_TEST_CASE("CRC32: empty input produces zero digest")
+{
+    Crc32Hasher hasher;
+    MemoryStream out;
+
+    BLIB_TEST_CHECK(hashData(hasher, nullptr, 0, out));
+    const ByteArray& got = out.getData();
+    BLIB_TEST_REQUIRE(got.size() == 4);
+
+    // CRC-32 пустого сообщения == 0x00000000
+    const buint8 expected[4] = { 0, 0, 0, 0 };
+    BLIB_TEST_CHECK(std::memcmp(got.data(), expected, 4) == 0);
+}
+
+BLIB_TEST_CASE("CRC32: hashBuffer matches hash()")
+{
+    // Буферный one-shot API обязан давать тот же результат,
+    // что и потоковый hash() интерфейса IHasher
+    Crc32Hasher hasher;
+
+    const size_t sizes[] = { 0, 1, 2, 3, 7, 8, 9, 63, 64, 65, 255, 256, 257, 1024, 4097 };
+
+    for (size_t len : sizes)
+    {
+        std::vector<buint8> data(len);
+        for (size_t i = 0; i < len; ++i)
+            data[i] = static_cast<buint8>((i * 37 + len * 11) & 0xFF);
+
+        buint32 viaBuffer = Crc32Hasher::hashBuffer(data.data(), data.size());
+        BLIB_TEST_CHECK(expectCrc32(hasher, data.data(), data.size(), viaBuffer));
+    }
+}
+
+BLIB_TEST_CASE("CRC32: incremental update matches one-shot")
+{
+    // Инкрементальное вычисление чанками обязано давать тот же
+    // результат, что и one-shot hashBuffer()
+    std::vector<buint8> data(10000);
+    for (size_t i = 0; i < data.size(); ++i)
+        data[i] = static_cast<buint8>(i * 2654435761u >> 24);
+
+    const buint32 oneShot = Crc32Hasher::hashBuffer(data.data(), data.size());
+
+    // Чанки разного размера, включая больше/меньше буфера чтения hash()
+    const size_t chunks[] = { 1, 3, 4095, 4096, 4097, 7777 };
+
+    for (size_t chunkSize : chunks)
+    {
+        buint32 state = Crc32Hasher::hashInit();
+        size_t off = 0;
+        while (off < data.size())
+        {
+            size_t take = data.size() - off;
+            if (take > chunkSize)
+                take = chunkSize;
+            state = Crc32Hasher::update(state, data.data() + off, take);
+            off += take;
+        }
+
+        BLIB_TEST_CHECK(Crc32Hasher::hashFinal(state) == oneShot);
+    }
+}
+
+BLIB_TEST_CASE("CRC32: non-seekable input stream")
+{
+    Crc32Hasher hasher;
+    NonSeekableInputStream in(
+        reinterpret_cast<const buint8*>("123456789"), 9);
+
+    // Стандартный check value CRC-32
+    BLIB_TEST_CHECK(expectCrc32Stream(hasher, in, 0xCBF43926u));
+}
+
+BLIB_TEST_CASE("CRC32: partial-write output stream")
+{
+    Crc32Hasher hasher;
+    MemoryStream in;
+    in.write(reinterpret_cast<const buint8*>("abc"), 3);
+    in.seek(0, SeekOrigin::Begin);
+
+    // Приёмник принимает максимум 1 байт за вызов write()
+    MemoryStream target;
+    PartialWriteOutputStream out(target, 1);
+
+    BLIB_TEST_REQUIRE(hasher.hash(in, out));
+
+    const ByteArray& got = target.getData();
+    BLIB_TEST_REQUIRE(got.size() == 4);
+
+    // "abc" -> 0x352441C2, little-endian: {0xC2, 0x41, 0x24, 0x35}
+    const buint8 expected[4] = { 0xC2, 0x41, 0x24, 0x35 };
+    BLIB_TEST_CHECK(std::memcmp(got.data(), expected, 4) == 0);
+}
+
+BLIB_TEST_CASE("CRC32: failing output stream returns false")
+{
+    Crc32Hasher hasher;
+    MemoryStream in;
+    in.write(reinterpret_cast<const buint8*>("abc"), 3);
+    in.seek(0, SeekOrigin::Begin);
+
+    FailingOutputStream out;
+    BLIB_TEST_CHECK(hasher.hash(in, out) == false);
+}
+
+BLIB_TEST_CASE("CRC32: deterministic across instances and repeated calls")
+{
+    const buint8 data[] = "some deterministic test data";
+
+    Crc32Hasher hasher1;
+    Crc32Hasher hasher2;
+
+    // Эталон из буферного API; оба экземпляра обязаны совпадать
+    const buint32 expected = Crc32Hasher::hashBuffer(data, sizeof(data) - 1);
+
+    BLIB_TEST_CHECK(expectCrc32(hasher1, data, sizeof(data) - 1, expected));
+    BLIB_TEST_CHECK(expectCrc32(hasher2, data, sizeof(data) - 1, expected));
+
+    // Хеширование ДРУГОГО сообщения не меняет результат прежнего:
+    // хешер не хранит состояние между вызовами hash()
+    MemoryStream other;
+    BLIB_TEST_REQUIRE(hashData(hasher1,
+        reinterpret_cast<const buint8*>("different"), 9, other));
+    BLIB_TEST_CHECK(expectCrc32(hasher1, data, sizeof(data) - 1, expected));
+}
+
+BLIB_TEST_CASE("CRC32: boundary lengths vs bitwise reference")
+{
+    // Кросс-проверка табличной реализации с эталонной побитовой
+    // (см. crc32Reference) на длинах вокруг границ буферов hash()
+    Crc32Hasher hasher;
+
+    const size_t lengths[] =
+    {
+        0, 1, 2, 3, 7, 8, 9, 15, 16, 17, 63, 64, 65, 127, 128, 129,
+        255, 256, 257, 511, 512, 513, 1023, 1024, 1025,
+        4095, 4096, 4097, 65536
+    };
+
+    for (size_t len : lengths)
+    {
+        // Детерминированные данные: байт зависит от индекса и длины
+        std::vector<buint8> data(len);
+        for (size_t i = 0; i < len; ++i)
+            data[i] = static_cast<buint8>((i * 37 + len * 11) & 0xFF);
+
+        buint32 expected = crc32Reference(data.data(), data.size());
+        BLIB_TEST_CHECK(expectCrc32(hasher, data.data(), data.size(), expected));
+    }
 }

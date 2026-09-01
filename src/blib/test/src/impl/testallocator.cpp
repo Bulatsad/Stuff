@@ -5,7 +5,7 @@
 #include <blib/system/memory/globalAllocator.h>
 
 // Debug allocator must be included before other allocators if in debug mode
-#ifdef _DEBUG
+#ifdef BLIB_DEBUG
 	#include <blib/system/memory/allocators/debugAllocator.h>
 #endif
 

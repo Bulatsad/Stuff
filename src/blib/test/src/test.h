@@ -16,6 +16,7 @@ namespace blib
 			void		(*func)();
 			const char*	file;
 			int			line;
+			const char*	knownFailureReason; // != nullptr, если падение теста ожидаемо
 		};
 
 		struct Failure
@@ -38,8 +39,24 @@ namespace blib
 			tc.func = func;
 			tc.file = file;
 			tc.line = line;
+			tc.knownFailureReason = nullptr;
 			getRegistry().push_back(tc);
 			return 0;
+		}
+
+		// Текущий исполняемый тестовый кейс. Выставляется main'ом
+		// перед запуском каждого теста; нужен макросу
+		// BLIB_TEST_KNOWN_FAILURE, чтобы пометить кейс изнутри.
+		inline TestCase*& getCurrentTestCase()
+		{
+			static TestCase* current = nullptr;
+			return current;
+		}
+
+		inline void markCurrentTestKnownFailure(const char* reason)
+		{
+			if (getCurrentTestCase())
+				getCurrentTestCase()->knownFailureReason = reason;
 		}
 
 		inline std::vector<Failure>& getFailures()
@@ -97,6 +114,17 @@ namespace blib
 		} \
 	} while(0)
 
+// Пометить текущий тест как "известный падающий" (XFAIL).
+// Тест продолжает исполняться и падать как обычно, но итоговый прогон
+// учитывает это падение как ожидаемое и не валит весь набор.
+// Использование: тесты-документаторы незакрытых багов (см. комментарий
+// внутри теста), чтобы сборка оставалась зелёной, а баг — видимым.
+#define BLIB_TEST_KNOWN_FAILURE(reason) \
+	do \
+	{ \
+		blib::test::markCurrentTestKnownFailure(reason); \
+	} while(0)
+
 #define BLIB_TEST_CHECK_CLOSE(a, b, eps) \
 	do \
 	{ \
@@ -149,10 +177,13 @@ namespace blib
 		auto& registry = blib::test::getRegistry(); \
 		std::cout << "Running " << registry.size() << " test(s)..." << std::endl; \
 		int passed = 0; \
+		int knownFailed = 0; \
 		for (size_t i = 0; i < registry.size(); ++i) \
 		{ \
 			auto& test = registry[i]; \
 			blib::test::getFailures().clear(); \
+			test.knownFailureReason = nullptr; \
+			blib::test::getCurrentTestCase() = &test; \
 			std::cout << "[" << (i + 1) << "/" << registry.size() << "] " << test.name << " ... "; \
 			try \
 			{ \
@@ -168,16 +199,25 @@ namespace blib
 				blib::test::addFailure(test.file, test.line, "unknown exception"); \
 				std::cerr << "EXCEPTION: unknown" << std::endl; \
 			} \
+			blib::test::getCurrentTestCase() = nullptr; \
 			if (blib::test::getFailures().empty()) \
 			{ \
 				std::cout << "PASSED" << std::endl; \
 				++passed; \
+			} \
+			else if (test.knownFailureReason) \
+			{ \
+				std::cout << "FAILED (KNOWN: " << test.knownFailureReason << ")" << std::endl; \
+				++knownFailed; \
 			} \
 			else \
 			{ \
 				std::cout << "FAILED (" << blib::test::getFailures().size() << " check(s))" << std::endl; \
 			} \
 		} \
-		std::cout << "\nResults: " << passed << "/" << registry.size() << " passed" << std::endl; \
-		return (passed == (int)registry.size()) ? 0 : 1; \
+		std::cout << "\nResults: " << passed << "/" << registry.size() << " passed"; \
+		if (knownFailed > 0) \
+			std::cout << " (" << knownFailed << " known failure(s))"; \
+		std::cout << std::endl; \
+		return (passed + knownFailed == (int)registry.size()) ? 0 : 1; \
 	}

@@ -7,6 +7,20 @@
 #define __blib_platform_depended
 
 // ---------------------------------------------------------------
+// BLIB_DEBUG — признак debug-сборки: включает debug-ветки кода
+// и DebugAllocator в аллокаторах (см. defaultAllocator.h и др.).
+// Источник признака:
+//   - MSVC: стандартный макрос _DEBUG (компилятор задаёт его сам
+//     в Debug-конфигурации);
+//   - GCC/Clang: флаг -DBLIB_DEBUG, который добавляется в
+//     CMAKE_CXX_FLAGS_DEBUG в blib/CMakeLists.txt.
+#if defined(_DEBUG) || defined(BLIB_DEBUG)
+#ifndef BLIB_DEBUG
+#define BLIB_DEBUG
+#endif
+#endif // _DEBUG || BLIB_DEBUG
+
+// ---------------------------------------------------------------
 // Платформа. Значение задаёт CMake через дефайн
 // ____blib_configuration_platform_value (числительные значения
 // ____blib_configuration_platform_* тоже приходят из CMake).

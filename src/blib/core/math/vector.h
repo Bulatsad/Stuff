@@ -4,6 +4,8 @@
 
 #include <functional>
 
+#include <cstring>
+
 #include <blib/core/math/utilfuncs.h>
 
 #ifdef COMPILE_ASSIMP_COMPATIBLE

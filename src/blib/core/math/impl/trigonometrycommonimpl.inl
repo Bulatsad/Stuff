@@ -1,5 +1,5 @@
 #include <cmath>
-#include "..\trigonometry.h"
+#include "../trigonometry.h"
 
 template<class Type>
 Type blib::math::sin(const Type& arg)

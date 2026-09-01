@@ -1,5 +1,8 @@
 #include <blib/core/algorithm/compression/huffmanCompressor.h>
 
+// CRC-32 контрольных сумм блоков (формат v2)
+#include <blib/core/algorithm/hash/crc32Hasher.h>
+
 #include <cstring>
 
 namespace blib
@@ -14,6 +17,11 @@ namespace blib
 
             // Magic bytes "BHUF" -- идентификация формата Huffman-сжатия blib
             const buint8 HuffmanCompressor::magic[4] = { 'B', 'H', 'U', 'F' };
+
+            // Текущая версия формата (инициализатор задан в классе).
+            // Определение здесь обязательно: formatVersion берётся по адресу
+            // (&formatVersion при записи/чтении заголовка) и является ODR-used.
+            const buint8 HuffmanCompressor::formatVersion;
 
             // Sentinel-значение: "нет потомка" в дереве
             static const buint16 nullNode = 0xFFFF;
@@ -91,16 +99,16 @@ namespace blib
                 // Заголовок: magic(4) + version(1) + blockCount(4) = 9 байт
                 // На каждый блок: origSize(8) + compSize(8) + symbolCount(2) +
                 //   таблица частот (макс 256 * (1 + 4) = 1280) + paddingBits(1) +
-                //   данные (== inputSize в worst-case)
-                // Для одного блока: 9 + 8 + 8 + 2 + 1280 + 1 + inputSize
-                // Упрощаем: inputSize + 1308
+                //   crc32(4) + данные (== inputSize в worst-case)
+                // Для одного блока: 9 + 8 + 8 + 2 + 1280 + 1 + 4 + inputSize
+                // Упрощаем: inputSize + 1312
 
                 // При blockSize > 0 -- несколько блоков, каждый со своим заголовком
                 buint64 blockSize = this->settings.blockSize;
                 if (blockSize == 0)
                 {
                     // Один блок
-                    return inputSize + 1308;
+                    return inputSize + 1312;
                 }
 
                 // Количество блоков (округление вверх)
@@ -108,8 +116,8 @@ namespace blib
                 if (blockCount == 0)
                     blockCount = 1;
 
-                // Заголовок файла (9) + каждый блок (overhead 1299 + данные блока)
-                return 9 + blockCount * 1299 + inputSize;
+                // Заголовок файла (9) + каждый блок (overhead 1303 + данные блока)
+                return 9 + blockCount * 1303 + inputSize;
             }
 
             bool HuffmanCompressor::validateSettings(_In const CompressionSettings& s) const
@@ -571,6 +579,25 @@ namespace blib
                     return false;
                 }
 
+                // ---- 6a. Контрольная сумма исходных данных блока ----
+                // CRC-32 (IEEE 802.3) по ОРИГИНАЛЬНЫМ данным: позволяет
+                // декодеру детектировать повреждение закодированного payload
+                // (см. описание формата v2 в huffmanCompressor.h).
+                // Пишется little-endian, 4 байта, ДО закодированных данных.
+                // dataSize не превосходит размера блока и помещается в size_t
+                // (при blockSize == 0 блок может быть крупным -- размер
+                // усекается до size_t, что на 64-битных платформах неактуально)
+                buint32 blockCrc = hash::Crc32Hasher::hashBuffer(
+                    data, static_cast<size_t>(dataSize));
+                buint8 crcBytes[4];
+                for (buint32 i = 0; i < 4; ++i)
+                    crcBytes[i] = static_cast<buint8>(blockCrc >> (8 * i));
+                if (!writeAll(out, crcBytes, sizeof(crcBytes)))
+                {
+                    allocator.deallocate(bitBuf, bitBufAllocSize);
+                    return false;
+                }
+
                 // Кодируем каждый байт данных соответствующим битовым кодом
                 for (buint64 i = 0; i < dataSize; ++i)
                 {
@@ -606,7 +633,7 @@ namespace blib
                     buint64 endPos = streamBase->tell();
 
                     // compressedSize = всё что между концом compressedSize-поля и endPos
-                    // (symbolCount + таблица + paddingBits + encoded data)
+                    // (symbolCount + таблица + paddingBits + crc32 + encoded data)
                     buint64 compressedSize = endPos - (compressedSizePos + sizeof(buint64));
 
                     // Перемотка на позицию compressedSize и запись
@@ -644,18 +671,29 @@ namespace blib
                      buint64 dataSize,
                 _Out blib::core::IOutputStream& out)
             {
-                // Формат stored-блока: originalSize(8) + compressedSize(8) +
-                // symbolCount(2) == 0 + сырые данные.
-                // compressedSize = symbolCount(2) + dataSize; paddingBits нет.
+                // Формат stored-блока (v2): originalSize(8) + compressedSize(8) +
+                // symbolCount(2) == 0 + crc32(4) + сырые данные.
+                // compressedSize = symbolCount(2) + crc32(4) + dataSize;
+                // paddingBits нет.
                 if (!writeAll(out, &dataSize, sizeof(buint64)))
                     return false;
 
-                buint64 compSize = sizeof(buint16) + dataSize;
+                buint64 compSize = sizeof(buint16) + sizeof(buint32) + dataSize;
                 if (!writeAll(out, &compSize, sizeof(buint64)))
                     return false;
 
                 buint16 symbolCount = 0;
                 if (!writeAll(out, &symbolCount, sizeof(buint16)))
+                    return false;
+
+                // CRC-32 (IEEE 802.3) сырых данных, little-endian -- для
+                // детектирования повреждения stored-блока при декомпрессии
+                buint32 blockCrc = hash::Crc32Hasher::hashBuffer(
+                    data, static_cast<size_t>(dataSize));
+                buint8 crcBytes[4];
+                for (buint32 i = 0; i < 4; ++i)
+                    crcBytes[i] = static_cast<buint8>(blockCrc >> (8 * i));
+                if (!writeAll(out, crcBytes, sizeof(crcBytes)))
                     return false;
 
                 if (dataSize > 0 && !writeAll(out, data, static_cast<size_t>(dataSize)))
@@ -698,17 +736,27 @@ namespace blib
                 // Данные лежат сырьём, без дерева и padding.
                 if (symbolCount == 0)
                 {
-                    // compressedSize обязан равняться symbolCount(2) + сырые данные
-                    if (compressedSize != sizeof(buint16) + originalSize)
+                    // compressedSize обязан равняться symbolCount(2) + crc32(4) + сырые данные
+                    if (compressedSize != sizeof(buint16) + sizeof(buint32) + originalSize)
                         return false;
 
-                    // Копируем сырые данные в выходной поток чанками
+                    // CRC-32 (IEEE 802.3) сырых данных, little-endian
+                    buint32 expectedCrc = 0;
+                    buint8 crcBytes[4];
+                    if (!readAll(in, crcBytes, sizeof(crcBytes)))
+                        return false;
+                    for (buint32 i = 0; i < 4; ++i)
+                        expectedCrc |= static_cast<buint32>(crcBytes[i]) << (8 * i);
+
+                    // Копируем сырые данные в выходной поток чанками,
+                    // параллельно считая CRC для последующей сверки
                     const buint32 outBufCapacity = 4096;
                     size_t outBufAllocSize = outBufCapacity * sizeof(buint8);
                     buint8* outBuf = static_cast<buint8*>(allocator.allocate(outBufAllocSize));
                     if (!outBuf)
                         return false;
 
+                    buint32 actualState = hash::Crc32Hasher::hashInit();
                     buint64 remaining = originalSize;
                     bool ok = true;
                     while (remaining > 0)
@@ -720,6 +768,11 @@ namespace blib
                             ok = false;
                             break;
                         }
+
+                        // CRC обновляется по прочитанным байтам ДО записи:
+                        // отказ приёмника не влияет на корректность сверки
+                        actualState = hash::Crc32Hasher::update(actualState, outBuf, chunk);
+
                         if (!writeAll(out, outBuf, chunk))
                         {
                             ok = false;
@@ -729,6 +782,12 @@ namespace blib
                     }
 
                     allocator.deallocate(outBuf, outBufAllocSize);
+
+                    // Сверка контрольной суммы: повреждение сырых данных
+                    // (или crc-поля) детектируется здесь
+                    if (ok && hash::Crc32Hasher::hashFinal(actualState) != expectedCrc)
+                        return false;
+
                     return ok;
                 }
 
@@ -791,12 +850,27 @@ namespace blib
                     return false;
                 }
 
+                // ---- 5a. Чтение CRC-32 исходных данных (little-endian) ----
+                buint32 expectedCrc = 0;
+                {
+                    buint8 crcBytes[4];
+                    if (!readAll(in, crcBytes, sizeof(crcBytes)))
+                    {
+                        allocator.deallocate(nodes, nodesSize);
+                        return false;
+                    }
+                    for (buint32 i = 0; i < 4; ++i)
+                        expectedCrc |= static_cast<buint32>(crcBytes[i]) << (8 * i);
+                }
+
                 // ---- 6. Чтение сжатых данных в буфер ----
-                // compressedSize включает symbolCount + таблицу + paddingBits + encoded data.
-                // Уже прочитано: symbolCount(2) + таблица(symbolCount * 5) + paddingBits(1)
+                // compressedSize включает symbolCount + таблицу + paddingBits +
+                // crc32 + encoded data.
+                // Уже прочитано: symbolCount(2) + таблица(symbolCount * 5) +
+                // paddingBits(1) + crc32(4)
                 buint64 headerPartSize = sizeof(buint16) +
                     static_cast<buint64>(symbolCount) * (sizeof(buint8) + sizeof(buint32)) +
-                    sizeof(buint8);
+                    sizeof(buint8) + sizeof(buint32);
 
                 // Защита от underflow: compressedSize обязан покрывать заголовок
                 if (compressedSize < headerPartSize)
@@ -844,6 +918,11 @@ namespace blib
                 buint64 decodedCount = 0;
                 buint16 currentNode = rootIndex;
 
+                // Инкрементальная контрольная сумма декодированных данных --
+                // обновляется по каждому сброшенному чанку и сверяется
+                // с записанной в заголовок в конце декодирования
+                buint32 actualState = hash::Crc32Hasher::hashInit();
+
                 // Общее количество значащих бит
                 buint64 totalBits = encodedDataSize * 8 - paddingBits;
                 buint64 bitIndex = 0;
@@ -881,6 +960,10 @@ namespace blib
                         // Сброс буфера при заполнении
                         if (outBufPos >= outBufCapacity)
                         {
+                            // CRC обновляется по байтам буфера ДО записи:
+                            // отказ приёмника не влияет на корректность сверки
+                            actualState = hash::Crc32Hasher::update(actualState, outBuf, outBufPos);
+
                             if (!writeAll(out, outBuf, outBufPos))
                             {
                                 allocator.deallocate(outBuf, outBufAllocSize);
@@ -899,6 +982,9 @@ namespace blib
                 // Сброс остатка буфера
                 if (outBufPos > 0)
                 {
+                    // Последний чанк также входит в контрольную сумму
+                    actualState = hash::Crc32Hasher::update(actualState, outBuf, outBufPos);
+
                     if (!writeAll(out, outBuf, outBufPos))
                     {
                         allocator.deallocate(outBuf, outBufAllocSize);
@@ -913,8 +999,18 @@ namespace blib
                 allocator.deallocate(encodedData, static_cast<size_t>(encodedDataSize));
                 allocator.deallocate(nodes, nodesSize);
 
-                // Проверка: декодировали ровно столько, сколько ожидали
-                return (decodedCount == originalSize);
+                // Проверка 1: декодировали ровно столько, сколько ожидали
+                if (decodedCount != originalSize)
+                    return false;
+
+                // Проверка 2: контрольная сумма декодированных данных
+                // совпала с записанной при сжатии -- повреждение payload
+                // (в т.ч. "тихое" -- битые биты, декодирующиеся в валидные
+                // символы при полном дереве) детектируется здесь
+                if (hash::Crc32Hasher::hashFinal(actualState) != expectedCrc)
+                    return false;
+
+                return true;
             }
 
             // ================================================================

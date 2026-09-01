@@ -19,9 +19,9 @@ namespace blib
              * - Оптимальный префиксный код (ни один код не является префиксом другого)
              * - Два прохода при сжатии: подсчёт частот, затем кодирование
              *
-             * Бинарный формат сжатого потока:
+             * Бинарный формат сжатого потока (версия 2):
              *   [Magic: 4 байта "BHUF"]
-             *   [Version: 1 байт]
+             *   [Version: 1 байт]                  -- 2 (потоки v1 не поддерживаются)
              *   [Block count: buint32]
              *   Для каждого Huffman-блока (symbolCount > 0):
              *     [Original block size: buint64]     -- размер оригинальных данных блока
@@ -31,12 +31,20 @@ namespace blib
              *       [Byte value: buint8]
              *       [Frequency: buint32]
              *     [Padding bits: buint8]             -- неиспользуемых бит в последнем байте (0-7)
+             *     [CRC-32: 4 байта, little-endian]   -- контрольная сумма ОРИГИНАЛЬНЫХ данных блока
              *     [Encoded data: переменная длина]
              *   Stored-блок (level == noCompression, symbolCount == 0):
              *     [Original block size: buint64]
-             *     [Compressed block size: buint64]   -- == 2 + original size
+             *     [Compressed block size: buint64]   -- == 6 + original size
              *     [Symbol count: buint16]            -- 0
+             *     [CRC-32: 4 байта, little-endian]   -- контрольная сумма сырых данных
              *     [Raw data: original size байт]     -- без сжатия, без padding
+             *
+             * CRC-32 -- IEEE 802.3 (полином 0xEDB88320), реализация --
+             * blib::algorithm::hash::Crc32Hasher. Позволяет декодеру
+             * детектировать повреждение данных блока: decompress возвращает
+             * false при несовпадении контрольной суммы (как и при любом
+             * другом повреждении заголовка).
              *
              * Настройки из CompressionSettings:
              * - blockSize: если > 0, данные разбиваются на блоки, каждый со своим
@@ -54,6 +62,8 @@ namespace blib
              * - Выходной поток должен поддерживать seek (canSeek() == true):
              *   compressedSize/paddingBits патчатся в конце через seek
              * - При несоблюдении требований к потокам compress возвращает false
+             * - Читается только версия 2 формата; потоки версии 1 (без CRC)
+             *   отклоняются decompress (false)
              * - Максимальная длина кода: 255 бит (достаточно для 256 символов)
              * - Не thread-safe
              */
@@ -81,8 +91,9 @@ namespace blib
                 // Magic bytes для идентификации формата ("BHUF")
                 static const buint8 magic[4];
 
-                // Текущая версия формата
-                static const buint8 formatVersion = 1;
+                // Текущая версия формата: 2 (добавлена CRC-32 на блок).
+                // Версия 1 (без CRC) не поддерживается при чтении.
+                static const buint8 formatVersion = 2;
 
                 /**
                  * HuffmanNode - узел дерева Хаффмана.

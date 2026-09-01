@@ -18,6 +18,9 @@ set_target_properties(blib_test_main PROPERTIES FOLDER "blib/tests")
 # Test group list: group name == file suffix test<group>.cpp
 set(blib_test_groups angle matrix pdl quaternion vector allocator iterator stream binary compression hash)
 
+# Список standalone-исполняемых групп (заполняется в цикле ниже)
+set(blib_test_group_exes)
+
 foreach(group ${blib_test_groups})
 	# OBJECT library holding the group's tests
 	set(group_obj blib_test_${group}_obj)
@@ -37,6 +40,7 @@ foreach(group ${blib_test_groups})
 	target_link_libraries(${group_exe} PRIVATE blib-core)
 	set_target_properties(${group_exe} PROPERTIES FOLDER "blib/tests/${group}")
 	add_test(NAME ${group_exe} COMMAND ${group_exe})
+	list(APPEND blib_test_group_exes ${group_exe})
 endforeach()
 
 # Aggregate executable: runs every group in one process
@@ -49,3 +53,8 @@ endforeach()
 target_link_libraries(blib_test_all PRIVATE blib-core)
 set_target_properties(blib_test_all PROPERTIES FOLDER "blib/tests")
 add_test(NAME blib_test_all COMMAND blib_test_all)
+
+# Агрегирующий таргет: собирает все тесты одной командой
+# (удобно для скриптов: cmake --build <dir> --target blib_tests)
+add_custom_target(blib_tests DEPENDS ${blib_test_group_exes} blib_test_all)
+set_target_properties(blib_tests PROPERTIES FOLDER "blib/tests")

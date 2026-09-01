@@ -2,6 +2,8 @@
 
 #include <blib/core/math/vector.h>
 
+#include <cstring>
+
 #include<stdexcept>
 
 namespace blib
