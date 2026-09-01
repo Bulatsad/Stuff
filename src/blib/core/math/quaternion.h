@@ -4,9 +4,20 @@
 #include <blib/core/math/angle.h>
 #include <blib/core/math/trigonometry.h>
 
+#include <cstring>
+
 #ifdef COMPILE_ASSIMP_COMPATIBLE
 #include <assimp/quaternion.h>
 #endif // COMPILE_ASSIMP_COMPATIBLE
+
+// Forward declaration оператора умножения кватернионов: он объявлен
+// в глобальном неймспейсе ниже по файлу, но нужен уже в blib::math::rotate
+// (GCC требует, чтобы qualified-id ::operator* был виден в точке
+// определения шаблона — двухфазный поиск).
+namespace blib { namespace math { template<class Type> class Quaternion; } }
+
+template<class Type>
+blib::math::Quaternion<Type> operator*(const blib::math::Quaternion<Type>& lhs, const blib::math::Quaternion<Type>& rhs);
 
 namespace blib
 {

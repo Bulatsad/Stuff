@@ -4,7 +4,7 @@
 #include <blib/system/memory/globalAllocator.h>
 
 // Опциональное включение DebugAllocator в debug builds
-#if defined(_DEBUG) && !defined(BLIB_DEBUG_ALLOCATOR_DISABLED)
+#if defined(BLIB_DEBUG) && !defined(BLIB_DEBUG_ALLOCATOR_DISABLED)
     #define BLIB_DEBUG_ALLOCATOR_ENABLED
     #include <blib/system/memory/allocators/debugAllocator.h>
 #endif
@@ -75,7 +75,7 @@ namespace memory
      *   alloc.deallocate(ptr, 100);
      * 
      * Управление debug режимом:
-     *   - По умолчанию: _DEBUG определяет поведение
+     *   - По умолчанию: BLIB_DEBUG определяет поведение
      *   - Отключить в debug: #define BLIB_DEBUG_ALLOCATOR_DISABLED
      *   - Включить в release: #define BLIB_DEBUG_ALLOCATOR_ENABLED
      * 

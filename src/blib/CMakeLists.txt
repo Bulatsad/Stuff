@@ -123,6 +123,11 @@ if(MSVC)
     set (CMAKE_CXX_FLAGS_DEBUG "/EHsc /Gd /Gy /GS /Oi /Gm- /MP /Od /W3 /ZI /MDd" )
 
     message(STATUS ${CMAKE_CXX_FLAGS_DEBUG})
+else()
+    # GCC/Clang: компилятор сам _DEBUG не определяет, поэтому признак
+    # debug-сборки задаётся флагом -DBLIB_DEBUG (его читает config.h
+    # и определяет макрос BLIB_DEBUG).
+    string(APPEND CMAKE_CXX_FLAGS_DEBUG " -DBLIB_DEBUG")
 endif()
 
 # ---------------------------------------------------------------

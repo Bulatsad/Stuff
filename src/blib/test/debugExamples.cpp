@@ -277,7 +277,7 @@ void example8_debugAllocatorWithTypeErasure()
 // Пример 9: Conditional debug allocator (debug vs release)
 // ============================================================================
 
-#ifdef _DEBUG
+#ifdef BLIB_DEBUG
     using ProductionAllocator = blib::memory::DebugAllocator<blib::memory::MallocAllocator>;
 #else
     using ProductionAllocator = blib::memory::MallocAllocator;
@@ -287,7 +287,7 @@ void example9_conditionalDebug()
 {
     std::cout << "\n=== Example 9: Conditional Debug Allocator ===" << std::endl;
 
-#ifdef _DEBUG
+#ifdef BLIB_DEBUG
     std::cout << "Debug build: using DebugAllocator (with overhead)" << std::endl;
     ProductionAllocator alloc(blib::memory::MallocAllocator{});
 #else

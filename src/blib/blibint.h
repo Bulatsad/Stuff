@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 #include <climits>
 
 static_assert(sizeof(uint8_t)  == 1, "incorrect base datatype size");

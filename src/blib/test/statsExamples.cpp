@@ -319,7 +319,7 @@ class MemoryProfiler
 public:
     MemoryProfiler(const char* name) : name(name)
     {
-#ifdef _DEBUG
+#ifdef BLIB_DEBUG
         auto& global = blib::memory::GlobalAllocator::instance();
         global.setExtendedStatsEnabled(true);
         startAllocated = global.getCurrentAllocated();
@@ -329,7 +329,7 @@ public:
 
     ~MemoryProfiler()
     {
-#ifdef _DEBUG
+#ifdef BLIB_DEBUG
         auto& global = blib::memory::GlobalAllocator::instance();
         size_t endAllocated = global.getCurrentAllocated();
         size_t diff = endAllocated - startAllocated;
@@ -350,7 +350,7 @@ void example6_conditionalStats()
 {
     std::cout << "\n=== Example 6: Conditional Statistics (Debug only) ===" << std::endl;
 
-#ifdef _DEBUG
+#ifdef BLIB_DEBUG
     std::cout << "Running in DEBUG mode - profiling enabled" << std::endl;
 #else
     std::cout << "Running in RELEASE mode - profiling disabled" << std::endl;

@@ -198,7 +198,8 @@ BLIB_TEST_CASE("Binary: writeBytes/writeU8 with null and zero size")
 BLIB_TEST_CASE("Binary: round trip through std::stringstream")
 {
 	std::stringstream ss;
-	BinaryWriter w{StdOutputStreamAdapter(&ss)};
+	StdOutputStreamAdapter outAdapter(&ss);
+	BinaryWriter w{outAdapter};
 
 	BLIB_TEST_CHECK(w.writeU32BE(0xCAFEBABEu));
 	BLIB_TEST_CHECK(w.writeString("compressed!"));
@@ -212,7 +213,8 @@ BLIB_TEST_CASE("Binary: round trip through std::stringstream")
 
 	// Чтение обратно из stringstream
 	std::stringstream ss2(bytes);
-	BinaryReader r{StdInputStreamAdapter(&ss2)};
+	StdInputStreamAdapter inAdapter(&ss2);
+	BinaryReader r{inAdapter};
 
 	buint32 magic;
 	std::string s;

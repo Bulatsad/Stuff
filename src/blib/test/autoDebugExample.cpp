@@ -131,10 +131,10 @@ void example4_macroControl()
     std::cout << std::endl;
 
     std::cout << "Current configuration:" << std::endl;
-#ifdef _DEBUG
-    std::cout << "  _DEBUG: defined" << std::endl;
+#ifdef BLIB_DEBUG
+    std::cout << "  BLIB_DEBUG: defined" << std::endl;
 #else
-    std::cout << "  _DEBUG: not defined" << std::endl;
+    std::cout << "  BLIB_DEBUG: not defined" << std::endl;
 #endif
 
 #ifdef BLIB_DEBUG_ALLOCATOR_ENABLED

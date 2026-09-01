@@ -1,4 +1,4 @@
-#include "..\sphere.h"
+#include "../sphere.h"
 
 void blib::graphics::Sphere::createSpere(float radius, buint32 pointPerCircle, blib::graphics::Color color)
 {

@@ -110,6 +110,16 @@ namespace
     }
 
     /**
+     * Настроить компрессор с уровнем noCompression (stored-блоки).
+     */
+    void configureNoCompressionCompressor(HuffmanCompressor& compressor)
+    {
+        CompressionSettings settings;
+        settings.level = CompressionSettings::CompressionLevel::noCompression;
+        compressor.setSettings(std::move(settings));
+    }
+
+    /**
      * Non-seekable input stream -- обёртка над MemoryStream,
      * которая возвращает canSeek() == false.
      */
@@ -1158,11 +1168,10 @@ BLIB_TEST_CASE("Huffman: decompress rejects corrupted compressedSize")
 
 BLIB_TEST_CASE("Huffman: decompress detects corrupted payload")
 {
-    // БАГ: у формата нет контрольной суммы, поэтому битые биты в данных
-    // при полном дереве (все 256 символов, коды по 8 бит) декодируются
-    // в НЕВЕРНЫЕ символы, и decompress возвращает true с мусором.
-    // Ожидаемое поведение после фикса (CRC на блок, формат v2):
-    // либо false, либо вывод обязан совпадать с оригиналом.
+    // Формат v2: каждый блок содержит CRC-32 (IEEE 802.3) исходных данных.
+    // Битые биты в payload при полном дереве (все 256 символов, коды по
+    // 8 бит) декодируются в валидные, но НЕВЕРНЫЕ символы -- контрольная
+    // сумма обязана поймать расхождение, и decompress возвращает false.
     HuffmanCompressor compressor;
     configureDefaultCompressor(compressor);
 
@@ -1176,8 +1185,9 @@ BLIB_TEST_CASE("Huffman: decompress detects corrupted payload")
     BLIB_TEST_REQUIRE(ok);
 
     ByteArray corrupted = compressed.getData();
-    // Payload блока начинается после: 9 (global) + 8 + 8 + 2 + 256*5 + 1 = 1308
-    const size_t dataOffset = 9 + 8 + 8 + 2 + 256 * 5 + 1;
+    // Payload блока начинается после: 9 (global) + 8 + 8 + 2 + 256*5 +
+    // 1 (padding) + 4 (crc32) = 1312
+    const size_t dataOffset = 9 + 8 + 8 + 2 + 256 * 5 + 1 + 4;
     BLIB_TEST_REQUIRE(corrupted.size() > dataOffset + 128);
     corrupted[dataOffset + 128] ^= 0xFF; // портим байт в середине payload
 
@@ -1185,7 +1195,11 @@ BLIB_TEST_CASE("Huffman: decompress detects corrupted payload")
     MemoryStream decompressed;
     ok = compressor.decompress(corruptedStream, decompressed);
 
-    // decompress не имеет права вернуть true с данными, отличными от оригинала
+    // CRC-32 обязан детектировать повреждение
+    BLIB_TEST_CHECK(ok == false);
+
+    // Страховка: decompress не имеет права вернуть true с данными,
+    // отличными от оригинала
     if (ok)
     {
         BLIB_TEST_CHECK(decompressed.size() == static_cast<buint64>(sizeof(data)));
@@ -1196,16 +1210,122 @@ BLIB_TEST_CASE("Huffman: decompress detects corrupted payload")
     }
 }
 
+BLIB_TEST_CASE("Huffman: decompress rejects corrupted crc32 field")
+{
+    // Порча самого crc-поля (не данных) обязана давать false:
+    // декодированные данные верны, но сверка с битым crc не сойдётся
+    HuffmanCompressor compressor;
+    configureDefaultCompressor(compressor);
+
+    const char* text = "crc field corruption check";
+    MemoryStream compressed;
+    bool ok = compressData(compressor,
+        reinterpret_cast<const buint8*>(text), std::strlen(text), compressed);
+    BLIB_TEST_REQUIRE(ok);
+
+    ByteArray corrupted = compressed.getData();
+    // symbolCount читаем по смещению 25 (buint16, little-endian)
+    BLIB_TEST_REQUIRE(corrupted.size() >= 27);
+    buint16 symbolCount = static_cast<buint16>(
+        corrupted[25] | (static_cast<buint16>(corrupted[26]) << 8));
+    BLIB_TEST_REQUIRE(symbolCount > 0);
+
+    // crc32 лежит сразу после paddingBits:
+    // 9 + 8 + 8 + 2 + symbolCount*5 + 1
+    size_t crcOffset = 9 + 8 + 8 + 2 + static_cast<size_t>(symbolCount) * 5 + 1;
+    BLIB_TEST_REQUIRE(crcOffset + 4 <= corrupted.size());
+    corrupted[crcOffset] ^= 0xFF; // ломаем первый байт crc32
+
+    MemoryStream corruptedStream(std::move(corrupted));
+    MemoryStream decompressed;
+    ok = compressor.decompress(corruptedStream, decompressed);
+
+    BLIB_TEST_CHECK(ok == false);
+}
+
+BLIB_TEST_CASE("Huffman: noCompression stored block rejects corrupted payload")
+{
+    // Stored-блок (v2) тоже содержит CRC-32: порча сырого байта данных
+    // обязана детектироваться
+    HuffmanCompressor compressor;
+    configureNoCompressionCompressor(compressor);
+
+    const char* text = "stored block payload corruption";
+    MemoryStream compressed;
+    bool ok = compressData(compressor,
+        reinterpret_cast<const buint8*>(text), std::strlen(text), compressed);
+    BLIB_TEST_REQUIRE(ok);
+
+    ByteArray corrupted = compressed.getData();
+    // Layout stored-блока: [global 9][origSize 8][compSize 8][symbolCount 2][crc32 4][raw]
+    const size_t rawDataOffset = 9 + 8 + 8 + 2 + 4;
+    BLIB_TEST_REQUIRE(corrupted.size() > rawDataOffset);
+    corrupted[rawDataOffset] ^= 0xFF; // портим первый байт сырых данных
+
+    MemoryStream corruptedStream(std::move(corrupted));
+    MemoryStream decompressed;
+    ok = compressor.decompress(corruptedStream, decompressed);
+
+    BLIB_TEST_CHECK(ok == false);
+}
+
+BLIB_TEST_CASE("Huffman: noCompression stored block rejects corrupted crc32")
+{
+    // Порча crc-поля stored-блока при корректных сырых данных -- тоже false
+    HuffmanCompressor compressor;
+    configureNoCompressionCompressor(compressor);
+
+    const char* text = "stored block crc corruption";
+    MemoryStream compressed;
+    bool ok = compressData(compressor,
+        reinterpret_cast<const buint8*>(text), std::strlen(text), compressed);
+    BLIB_TEST_REQUIRE(ok);
+
+    ByteArray corrupted = compressed.getData();
+    // crc32 stored-блока лежит по смещению 9 + 8 + 8 + 2 = 27
+    const size_t crcOffset = 9 + 8 + 8 + 2;
+    BLIB_TEST_REQUIRE(crcOffset + 4 <= corrupted.size());
+    corrupted[crcOffset + 3] ^= 0x01; // ломаем старший байт crc32
+
+    MemoryStream corruptedStream(std::move(corrupted));
+    MemoryStream decompressed;
+    ok = compressor.decompress(corruptedStream, decompressed);
+
+    BLIB_TEST_CHECK(ok == false);
+}
+
+BLIB_TEST_CASE("Huffman: decompress rejects old format version 1")
+{
+    // Формат v2 несовместим с v1: потоки версии 1 (без CRC-32)
+    // обязаны отклоняться decompress
+    HuffmanCompressor compressor;
+    configureDefaultCompressor(compressor);
+
+    const char* text = "old format version";
+    MemoryStream compressed;
+    bool ok = compressData(compressor,
+        reinterpret_cast<const buint8*>(text), std::strlen(text), compressed);
+    BLIB_TEST_REQUIRE(ok);
+
+    ByteArray corrupted = compressed.getData();
+    BLIB_TEST_REQUIRE(corrupted.size() >= 5);
+    corrupted[4] = 1; // подменяем version на 1 (смещение 4 -- после magic)
+
+    MemoryStream corruptedStream(std::move(corrupted));
+    MemoryStream decompressed;
+    ok = compressor.decompress(corruptedStream, decompressed);
+
+    BLIB_TEST_CHECK(ok == false);
+}
+
 BLIB_TEST_CASE("Huffman: decompress rejects corrupted paddingBits")
 {
-    // БАГ: decompressBlock не валидирует paddingBits (допустимо 0..7).
+    // БАГ: decompressBlock не валидировал paddingBits (допустимо 0..7).
     // При значении 8..255 totalBits = encodedDataSize*8 - paddingBits
-    // может дать underflow (здесь: 2 байта данных * 8 - 255), после чего
-    // цикл декодирования читает encodedData[] далеко за пределами буфера
-    // -- UB/OOB-чтение. До фикса тест может и упасть крашем, и случайно
-    // пройти: ревью требует явной проверки paddingBits <= 7 до чтения.
-    // Ожидаемое поведение после фикса: стабильный false без OOB.
-    // ВАЖНО: тест намеренно последний -- до фикса он рискует уронить процесс.
+    // мог дать underflow, после чего цикл декодирования читал
+    // encodedData[] далеко за пределами буфера -- UB/OOB-чтение.
+    // Фикс: явная проверка paddingBits <= 7 ДО чтения данных;
+    // тест гарантирует стабильный false без выхода за границы.
     HuffmanCompressor compressor;
     configureDefaultCompressor(compressor);
 
@@ -1218,7 +1338,7 @@ BLIB_TEST_CASE("Huffman: decompress rejects corrupted paddingBits")
     BLIB_TEST_REQUIRE(ok);
 
     ByteArray corrupted = compressed.getData();
-    // Layout: [global 9][origSize 8][compSize 8][symbolCount 2][freq 5][padding 1][data]
+    // Layout: [global 9][origSize 8][compSize 8][symbolCount 2][freq 5][padding 1][crc32 4][data]
     // symbolCount читаем по смещению 25 (buint16, little-endian)
     BLIB_TEST_REQUIRE(corrupted.size() >= 27);
     buint16 symbolCount = static_cast<buint16>(

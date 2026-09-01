@@ -16,6 +16,10 @@
 
 #ifdef WIN32
 #define __blib_align(__a_align) __declspec(align(__a_align))
+#elif defined(__GNUC__) || defined(__clang__)
+// GCC/Clang: выравнивание через атрибут aligned. Аргумент — константа
+// (либо литерал, либо constexpr size_t, например std::hardware_destructive_interference_size)
+#define __blib_align(__a_align) __attribute__((aligned(__a_align)))
 #else
 #error "can not define align command for current compiler"
 #endif // _WIN
