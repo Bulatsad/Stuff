@@ -9,9 +9,9 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api IRenderTarget;
+        class __blib_graphics_api IRenderTarget;
 
-        class __blib_api IDrawable
+        class __blib_graphics_api IDrawable
         {
         public:
             virtual ~IDrawable() {}

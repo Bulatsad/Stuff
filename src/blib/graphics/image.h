@@ -12,7 +12,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api Image
+        class __blib_graphics_api Image
         {
         private:
             std::vector<Color> bitmap;

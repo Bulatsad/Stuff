@@ -1,5 +1,5 @@
 #include <blib/test/src/test.h>
-#include <blib/math/matrix.h>
+#include <blib/core/math/matrix.h>
 
 using namespace blib::math;
 

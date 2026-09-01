@@ -18,7 +18,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api Viewport : public IRenderTarget
+        class __blib_graphics_api Viewport : public IRenderTarget
         {
         private:
             buint8 frameBuffersCount;

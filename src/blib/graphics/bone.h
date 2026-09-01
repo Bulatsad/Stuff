@@ -14,7 +14,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api Bone : public blib::graphics::IHierarchal
+        class __blib_graphics_api Bone : public blib::graphics::IHierarchal
         {
         public:
 

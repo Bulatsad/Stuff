@@ -116,7 +116,7 @@ namespace blib
     {
 
 
-        struct __blib_api oglExt_s
+        struct __blib_graphics_api oglExt_s
         {
             //EXT
             __blib_gl_signature_glGenBuffers __blib_glGenBuffers = nullptr;
@@ -163,7 +163,7 @@ namespace blib
             
         };
 
-        struct __blib_api ogl_s
+        struct __blib_graphics_api ogl_s
         {
             __blib_gl_signature_glBegin        __blib_glBegin = nullptr;
             __blib_gl_signature_glEnd          __blib_glEnd = nullptr;
@@ -182,7 +182,7 @@ namespace blib
             oglExt_s ext;
         };
 
-        struct __blib_api RenderApi
+        struct __blib_graphics_api RenderApi
         {
             void* getprocaddr(const char* fname);
             void InitGraphicsApi();

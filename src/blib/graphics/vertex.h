@@ -7,7 +7,7 @@ namespace blib
 {
     namespace graphics
     {
-        //class __blib_api Vertex
+        //class __blib_graphics_api Vertex
         //{
         //public:
         //    Vector3f vertexPos;

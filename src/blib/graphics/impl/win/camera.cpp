@@ -2,8 +2,8 @@
 #include <blib/graphics/keyboard.h>
 #include <blib/graphics/mouse.h>
 
-#include <blib/math/trigonometry.h> 
-#include <blib/math/consts.h>
+#include <blib/core/math/trigonometry.h> 
+#include <blib/core/math/consts.h>
 
 #include <Windows.h>
 #include <gl/GL.h>
@@ -125,7 +125,7 @@ void blib::graphics::Camera::updateVectors()
 
     this->front = blib::math::normalize(newFront);
 
-    // Ïåðåñ÷èòûâàåì right è up âåêòîðû
+    // ÐŸÐµÑ€ÐµÑÑ‡Ð¸Ñ‚Ñ‹Ð²Ð°ÐµÐ¼ right Ð¸ up Ð²ÐµÐºÑ‚Ð¾Ñ€Ñ‹
     this->right = blib::math::normalize(blib::math::cross(front, worldUp));
     this->up = blib::math::normalize(blib::math::cross(right, front));
 }

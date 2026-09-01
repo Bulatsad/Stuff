@@ -6,7 +6,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api Keyboard
+        class __blib_graphics_api Keyboard
         {
         public:
             enum class Key

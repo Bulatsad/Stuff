@@ -13,7 +13,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api Animator
+        class __blib_graphics_api Animator
         {
         private:
             std::vector<blib::graphics::AnimationClip> animationList;

@@ -11,7 +11,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api Romb
+        class __blib_graphics_api Romb
         {
         private:
             Color color;

@@ -1,5 +1,5 @@
 #include <blib/graphics/transformable.h>
-#include <blib/math/utilfuncs.h>
+#include <blib/core/math/utilfuncs.h>
 
 
 

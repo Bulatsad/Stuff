@@ -11,9 +11,9 @@
 //{
 //    namespace graphics
 //    {
-//        class __blib_api GameObject;
+//        class __blib_graphics_api GameObject;
 //
-//        class __blib_api Scene : public blib::graphics::IDrawable
+//        class __blib_graphics_api Scene : public blib::graphics::IDrawable
 //        {
 //        public:
 //            GameObject* instantiate();

@@ -21,7 +21,7 @@ else()
     message(FATAL_ERROR "Undefined blib link type")
 endif()
 
-target_link_libraries(${BIN} PUBLIC blib)
+target_link_libraries(${BIN} PUBLIC blib-graphics)
 
 if(WIN32)
 	#set_target_properties(${BIN} PROPERTIES VS_DEBUGGER_ENVIRONMENT)

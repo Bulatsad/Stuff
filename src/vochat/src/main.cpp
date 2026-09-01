@@ -2,8 +2,8 @@
 #include <Windows.h>
 
 #include <iostream>
-#include<blib/algorithm/dtfExp.h>
-#include<blib/algorithm/dft.h>
+#include<blib/core/algorithm/dtfExp.h>
+#include<blib/core/algorithm/dft.h>
 
 #include<blib/network/udpSocket.h>
 #include<blib/network/tcpSocket.h>

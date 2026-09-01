@@ -6,7 +6,7 @@
 #include <assimp/scene.h>
 
 #include <blib/graphics/mesh.h>
-#include <blib/math/matrix.h>
+#include <blib/core/math/matrix.h>
 #include <blib/graphics/renderWindow.h>
 #include <blib/graphics/camera.h>
 #include <blib/graphics/vertex.h>

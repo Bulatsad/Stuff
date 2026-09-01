@@ -9,6 +9,8 @@ target_include_directories(${BIN} PRIVATE ${root_dir})
 target_include_directories(${BIN} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(${BIN} 
-	PUBLIC ${BLIB_PROJECT_NAME}
+	PUBLIC blib-core 
+	PUBLIC blib-sound 
+	PUBLIC blib-network
 )
 

@@ -8,7 +8,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api IHierarchal
+        class __blib_graphics_api IHierarchal
         {
         public:
             IHierarchal();

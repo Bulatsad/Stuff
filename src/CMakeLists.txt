@@ -37,4 +37,9 @@ if(BUILD_TESTS)
 endif()
 
 add_subdirectory(${blib_dir})
-add_subdirectory(${beng_dir})
+
+# beng — 3D-вьювер поверх blib-graphics; собирается только если
+# модуль графики доступен (на текущий момент — только Windows)
+if(TARGET blib-graphics)
+	add_subdirectory(${beng_dir})
+endif()

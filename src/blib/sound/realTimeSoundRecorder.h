@@ -4,7 +4,7 @@
 #include <blib/sound/soundDevice.h>
 #include <blib/sound/realTimeSoundFrame.h>
 
-#include <blib/thread/circleQueue.h>
+#include <blib/system/thread/circleQueue.h>
 
 namespace blib
 {

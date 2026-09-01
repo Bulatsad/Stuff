@@ -23,8 +23,8 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api RenderContext;
-        class __blib_api Texture
+        class __blib_graphics_api RenderContext;
+        class __blib_graphics_api Texture
         {
         private:
             TexturePDCtx ctx;

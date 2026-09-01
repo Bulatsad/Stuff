@@ -13,7 +13,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api Skelet 
+        class __blib_graphics_api Skelet 
         {
         public:
             blib::graphics::Bone* root = nullptr;

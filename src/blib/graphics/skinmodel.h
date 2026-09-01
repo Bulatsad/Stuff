@@ -15,7 +15,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api SkinModel : public blib::graphics::IDrawable, public blib::graphics::ITransformable
+        class __blib_graphics_api SkinModel : public blib::graphics::IDrawable, public blib::graphics::ITransformable
         {
         public:
             bool loadFromAssimp(const aiScene* paiscene, const std::string& filename = std::string(), const aiScene* panimationScene = nullptr);

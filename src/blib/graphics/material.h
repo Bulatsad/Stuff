@@ -4,7 +4,7 @@
 
 #include <assimp/material.h>
 
-#include <beng/config.h>
+#include <blib/config.h>
 
 #include <blib/core/folder.h>
 #include <blib/graphics/vector.h>
@@ -16,7 +16,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __beng_api Material 
+        class __blib_graphics_api Material 
         {
         public:
 
