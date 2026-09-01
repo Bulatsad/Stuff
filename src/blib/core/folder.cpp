@@ -1,7 +1,9 @@
 #include <blib/core/folder.h>
 
+#ifdef __blib_compile_platform_windows
 #include <Windows.h>
 #include <fileapi.h>
+#endif // __blib_compile_platform_windows
 
 #include <blib/core/string.h>
 
@@ -22,6 +24,7 @@ std::string blib::core::Folder::getCurrentPath() const
 
 __blib_platform_depended std::vector<std::string> blib::core::Folder::getAllEntries() const
 {
+#ifdef __blib_compile_platform_windows
 	std::string windowsDependedPath = this->currentPath;
 	blib::core::replace(windowsDependedPath, "/", "\\");
 	windowsDependedPath += "*";
@@ -51,13 +54,16 @@ __blib_platform_depended std::vector<std::string> blib::core::Folder::getAllEntr
 	size_t size = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
 		NULL, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&messageBuffer, 0, NULL);
 
-
-
 	return res;
+#else
+	// stub: перечисление каталога для не-Windows платформ пока не реализовано
+	return std::vector<std::string>();
+#endif // __blib_compile_platform_windows
 }
 
 bool blib::core::Folder::isFolder()
 {
+#ifdef __blib_compile_platform_windows
 	std::wstring path = std::wstring(this->currentPath.begin(), this->currentPath.end());
 	WIN32_FIND_DATAW wfd;
 	HANDLE hFind = FindFirstFileW(path.c_str(), &wfd);
@@ -66,6 +72,10 @@ bool blib::core::Folder::isFolder()
 		return wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
 	}
 	return false;
+#else
+	// stub: проверка существования каталога для не-Windows платформ пока не реализована
+	return false;
+#endif // __blib_compile_platform_windows
 }
 
 bool blib::core::Folder::up()

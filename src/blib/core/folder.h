@@ -9,7 +9,7 @@ namespace blib
 {
     namespace core
     {
-        class __blib_api Folder
+        class __blib_core_api Folder
         {
         public:
             Folder(const std::string& path);

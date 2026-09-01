@@ -13,8 +13,8 @@ namespace blib
     {
         typedef std::vector<std::string>StringList;
 
-        StringList __blib_api split(const std::string& str, const std::string& delimeter);
-        buint64 __blib_api replace(_In _Out std::string& str, _In const std::string& from, _In const std::string& to);
+        StringList __blib_core_api split(const std::string& str, const std::string& delimeter);
+        buint64 __blib_core_api replace(_In _Out std::string& str, _In const std::string& from, _In const std::string& to);
         
         template<class T>
         bool contains(const std::vector<T>& arr, const T& elem)
