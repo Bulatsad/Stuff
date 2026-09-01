@@ -5,7 +5,7 @@
 
 #include <blib/sound/impl/win/winSoundUtil.h>
 
-#include <blib/thread/circleQueue.h>
+#include <blib/system/thread/circleQueue.h>
 
 struct OutWinCtx
 {

@@ -9,7 +9,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api Color
+        class __blib_graphics_api Color
         {
         public:
             buint8 red;

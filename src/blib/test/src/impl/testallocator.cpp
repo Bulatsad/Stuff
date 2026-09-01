@@ -1,28 +1,29 @@
 #include <blib/test/src/test.h>
 
 // Core memory system headers
-#include <blib/memory/allocatorTraits.h>
-#include <blib/memory/globalAllocator.h>
+#include <blib/system/memory/allocatorTraits.h>
+#include <blib/system/memory/globalAllocator.h>
 
 // Debug allocator must be included before other allocators if in debug mode
 #ifdef _DEBUG
-	#include <blib/memory/allocators/debugAllocator.h>
+	#include <blib/system/memory/allocators/debugAllocator.h>
 #endif
 
-#include <blib/memory/defaultAllocator.h>
-#include <blib/memory/allocator.h>
+#include <blib/system/memory/defaultAllocator.h>
+#include <blib/system/memory/allocator.h>
 
 // Specific allocators
-#include <blib/memory/allocators/mallocAllocator.h>
-#include <blib/memory/allocators/poolAllocator.h>
+#include <blib/system/memory/allocators/mallocAllocator.h>
+#include <blib/system/memory/allocators/poolAllocator.h>
 
 // Adapters
-#include <blib/memory/stdAllocatorAdapter.h>
+#include <blib/system/memory/stdAllocatorAdapter.h>
 
 // Standard library
 #include <thread>
 #include <atomic>
 #include <vector>
+#include <list>
 #include <string>
 #include <algorithm>
 #include <cstring>
@@ -45,9 +46,8 @@ using namespace blib::memory;
 		} __except(EXCEPTION_EXECUTE_HANDLER) { \
 			__caught = true; \
 		} \
-		if (!__caught) { \
-			std::cerr << "  WARNING: Expected abort/assertion but none occurred" << std::endl; \
-		} \
+		/* Пропущенный abort - это регрессия детекции, тест должен падать */ \
+		BLIB_TEST_CHECK(__caught); \
 	} while(0)
 #else
 // Non-MSVC platforms: skip abort tests (could use signal handlers in future)
@@ -1217,4 +1217,564 @@ BLIB_TEST_CASE("Integration: performance comparison (informational)")
 		auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 		std::cout << "    PoolAllocator: " << duration.count() << " μs" << std::endl;
 	}
+}
+
+// ============================================================
+// 9. Allocator Ownership Tests (copy/move/clone после починки владения)
+// ============================================================
+
+BLIB_TEST_CASE("Allocator: copy ctor allocates impl in heap (GA tracked)")
+{
+#ifndef BLIB_DEBUG_ALLOCATOR_ENABLED
+	auto& ga = GlobalAllocator::instance();
+	size_t countBefore = ga.getAllocationCount();
+	
+	{
+		Allocator alloc1;
+		Allocator alloc2(alloc1);
+		
+		// share() создаёт heap-копию impl через GlobalAllocator
+		size_t countDuring = ga.getAllocationCount();
+		BLIB_TEST_CHECK(countDuring == countBefore + 1);
+		
+		// Обе копии работают (stateless DefaultAllocator)
+		void* ptr = alloc2.allocate(64);
+		BLIB_TEST_CHECK(ptr != nullptr);
+		alloc2.deallocate(ptr, 64);
+	}
+	
+	// destroyImpl должен вернуть heap-копию в GlobalAllocator
+	size_t countAfter = ga.getAllocationCount();
+	BLIB_TEST_CHECK(countAfter == countBefore);
+#else
+	std::cout << "  SKIPPED (copy not supported for stateful allocators in debug mode)" << std::endl;
+#endif
+}
+
+BLIB_TEST_CASE("Allocator: copy of copy keeps GA balanced")
+{
+#ifndef BLIB_DEBUG_ALLOCATOR_ENABLED
+	auto& ga = GlobalAllocator::instance();
+	size_t countBefore = ga.getAllocationCount();
+	
+	{
+		Allocator a1;
+		Allocator a2(a1);
+		Allocator a3(a2);
+		
+		// Две heap-копии impl (по одной на копирование)
+		BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore + 2);
+	}
+	
+	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
+#else
+	std::cout << "  SKIPPED (copy not supported for stateful allocators in debug mode)" << std::endl;
+#endif
+}
+
+BLIB_TEST_CASE("Allocator: clone() creates independent copy (stateless)")
+{
+#ifndef BLIB_DEBUG_ALLOCATOR_ENABLED
+	auto& ga = GlobalAllocator::instance();
+	size_t countBefore = ga.getAllocationCount();
+	
+	{
+		Allocator orig;
+		Allocator copy = orig.clone();
+		
+		// clone() выделяет heap-impl через GlobalAllocator (deepCopy -> share)
+		BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore + 1);
+		
+		void* ptr = copy.allocate(128);
+		BLIB_TEST_CHECK(ptr != nullptr);
+		copy.deallocate(ptr, 128);
+	}
+	
+	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
+#else
+	std::cout << "  SKIPPED (deepCopy not supported for stateful allocators in debug mode)" << std::endl;
+#endif
+}
+
+BLIB_TEST_CASE("Allocator: stateful copy and clone give dead allocator (known defect)")
+{
+	// TODO: Убрать/переписать этот тест после реализации share()/deepCopy()
+	// для stateful аллокаторов (AllocatorImplWrapper сейчас возвращает nullptr).
+	// Тест фиксирует ТЕКУЩЕЕ поведение, чтобы дефект был виден.
+	
+	PoolAllocator pool(64, 128);
+	Allocator orig(std::move(pool));
+	
+	void* ptr = orig.allocate(64);
+	BLIB_TEST_CHECK(ptr != nullptr);
+	
+	// Копия stateful-аллокатора: share() == nullptr -> impl == nullptr
+	Allocator copy(orig);
+	BLIB_TEST_CHECK(copy.allocate(64) == nullptr);
+	
+	// clone() stateful-аллокатора: deepCopy() == nullptr -> impl == nullptr
+	Allocator cloned = orig.clone();
+	BLIB_TEST_CHECK(cloned.allocate(64) == nullptr);
+	
+	orig.deallocate(ptr, 64);
+}
+
+BLIB_TEST_CASE("Allocator: move ctor with stateful PoolAllocator (no leak)")
+{
+	auto& ga = GlobalAllocator::instance();
+	size_t countBefore = ga.getAllocationCount();
+	size_t allocBefore = ga.getCurrentAllocated();
+	
+	{
+		PoolAllocator pool(64, 128);
+		Allocator alloc1(std::move(pool));
+		void* ptr1 = alloc1.allocate(64);
+		BLIB_TEST_CHECK(ptr1 != nullptr);
+		
+		// Move-конструктор переносит stateful impl (SBO bytewise)
+		Allocator alloc2(std::move(alloc1));
+		
+		// Moved-from: impl == nullptr
+		BLIB_TEST_CHECK(alloc1.allocate(64) == nullptr);
+		
+		void* ptr2 = alloc2.allocate(64);
+		BLIB_TEST_CHECK(ptr2 != nullptr);
+		
+		alloc2.deallocate(ptr1, 64);
+		alloc2.deallocate(ptr2, 64);
+	}
+	
+	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
+	BLIB_TEST_CHECK(ga.getCurrentAllocated() == allocBefore);
+}
+
+BLIB_TEST_CASE("Allocator: move assignment destroys old impl and transfers ownership")
+{
+	auto& ga = GlobalAllocator::instance();
+	size_t countBefore = ga.getAllocationCount();
+	size_t allocBefore = ga.getCurrentAllocated();
+	
+	{
+		PoolAllocator pool1(64, 128);
+		PoolAllocator pool2(32, 64);
+		
+		Allocator alloc1(std::move(pool1));
+		void* ptr1 = alloc1.allocate(64);
+		BLIB_TEST_CHECK(ptr1 != nullptr);
+		
+		Allocator alloc2(std::move(pool2));
+		void* ptr2 = alloc2.allocate(32);
+		BLIB_TEST_CHECK(ptr2 != nullptr);
+		
+		// Move assignment: старый impl (пул 32) уничтожается, его чанки
+		// освобождаются автоматически деструктором PoolAllocatorImpl.
+		// ptr2 после этого валиден до конца жизни чанка - не освобождаем его!
+		alloc2 = std::move(alloc1);
+		
+		// alloc2 теперь управляет пулом 64
+		void* ptr3 = alloc2.allocate(64);
+		BLIB_TEST_CHECK(ptr3 != nullptr);
+		
+		alloc2.deallocate(ptr1, 64);
+		alloc2.deallocate(ptr3, 64);
+		
+		// Moved-from alloc1 - мёртвый
+		BLIB_TEST_CHECK(alloc1.allocate(64) == nullptr);
+	}
+	
+	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
+	BLIB_TEST_CHECK(ga.getCurrentAllocated() == allocBefore);
+}
+
+BLIB_TEST_CASE("Allocator: self-copy and self-move are safe")
+{
+	Allocator alloc;
+	
+	// Self-copy: guard (this != &other) - без изменений
+	alloc = *(&alloc);
+	
+	void* ptr = alloc.allocate(64);
+	BLIB_TEST_CHECK(ptr != nullptr);
+	alloc.deallocate(ptr, 64);
+	
+	// Self-move: guard (this != &other) - без изменений
+	alloc = std::move(alloc);
+	
+	ptr = alloc.allocate(64);
+	BLIB_TEST_CHECK(ptr != nullptr);
+	alloc.deallocate(ptr, 64);
+}
+
+// ============================================================
+// 10. Heap-Path SBO Tests (impl больше SBO_SIZE = 56 байт)
+// ============================================================
+
+/**
+ * Тестовый stateful аллокатор, который НЕ влезает в SBO (56 байт),
+ * чтобы проверить heap-путь хранения impl (constructInHeap + destroyImpl путь 2).
+ * 
+ * AllocatorTraits<BigStatefulAllocator> не специализирован -
+ * по умолчанию все аллокаторы считаются stateful (allocatorTraits.h).
+ */
+struct BigStatefulAllocator
+{
+	char padding[128]; // 128 байт > SBO_SIZE = 56 байт
+
+	BigStatefulAllocator()
+	{
+		std::memset(padding, 0, sizeof(padding));
+	}
+
+	void* allocate(size_t size)
+	{
+		return GlobalAllocator::instance().allocate(size);
+	}
+
+	void deallocate(void* ptr, size_t size)
+	{
+		GlobalAllocator::instance().deallocate(ptr, size);
+	}
+};
+
+BLIB_TEST_CASE("Allocator: heap path for impl larger than SBO (BigStatefulAllocator)")
+{
+	auto& ga = GlobalAllocator::instance();
+	size_t countBefore = ga.getAllocationCount();
+	
+	{
+		// BigStatefulAllocator (128 байт) не влезает в SBO (56 байт),
+		// поэтому impl размещается в heap через constructInHeap
+		BigStatefulAllocator big;
+		Allocator alloc(std::move(big));
+		
+		size_t countDuring = ga.getAllocationCount();
+		BLIB_TEST_CHECK(countDuring == countBefore + 1);
+		
+		void* ptr = alloc.allocate(256);
+		BLIB_TEST_CHECK(ptr != nullptr);
+		alloc.deallocate(ptr, 256);
+		
+		// Move heap-объекта: heapPtr переносится без новых аллокаций
+		Allocator moved(std::move(alloc));
+		size_t countAfterMove = ga.getAllocationCount();
+		BLIB_TEST_CHECK(countAfterMove == countDuring);
+		
+		// Moved-from - мёртвый
+		BLIB_TEST_CHECK(alloc.allocate(64) == nullptr);
+		
+		ptr = moved.allocate(128);
+		BLIB_TEST_CHECK(ptr != nullptr);
+		moved.deallocate(ptr, 128);
+	}
+	
+	// destroyImpl (путь 2) должен освободить heap-impl
+	size_t countAfter = ga.getAllocationCount();
+	BLIB_TEST_CHECK(countAfter == countBefore);
+}
+
+// ============================================================
+// 11. Дополнительные тесты GlobalAllocator
+// ============================================================
+
+BLIB_TEST_CASE("GlobalAllocator: dumpStats smoke test")
+{
+	auto& ga = GlobalAllocator::instance();
+	
+	// Включаем расширенную статистику и leak tracking
+	ga.setExtendedStatsEnabled(true);
+	ga.setLeakTrackingEnabled(true);
+	
+	void* ptr = ga.allocate(1024);
+	BLIB_TEST_CHECK(ptr != nullptr);
+	
+	// dumpStats должен отработать без падений (выводит в stderr)
+	ga.dumpStats();
+	
+	ga.deallocate(ptr, 1024);
+	
+	// Возвращаем состояние
+	ga.setLeakTrackingEnabled(false);
+	ga.setExtendedStatsEnabled(false);
+}
+
+BLIB_TEST_CASE("GlobalAllocator: getHistogram with nullptr returns false")
+{
+	auto& ga = GlobalAllocator::instance();
+	
+	ga.setExtendedStatsEnabled(true);
+	
+	bool success = ga.getHistogram(nullptr);
+	BLIB_TEST_CHECK(!success);
+	
+	ga.setExtendedStatsEnabled(false);
+}
+
+BLIB_TEST_CASE("GlobalAllocator: leak tracking re-enable clears data")
+{
+	auto& ga = GlobalAllocator::instance();
+	
+	ga.setLeakTrackingEnabled(true);
+	void* ptr = ga.allocate(64);
+	BLIB_TEST_CHECK(ptr != nullptr);
+	
+	// Выключение очищает накопленные данные
+	ga.setLeakTrackingEnabled(false);
+	
+	// Повторное включение - трекер пуст (прошлые записи удалены)
+	ga.setLeakTrackingEnabled(true);
+	size_t leaks = ga.dumpLeaks();
+	BLIB_TEST_CHECK(leaks == 0);
+	
+	ga.setLeakTrackingEnabled(false);
+	ga.deallocate(ptr, 64);
+}
+
+BLIB_TEST_CASE("GlobalAllocator: deallocate nullptr is no-op")
+{
+	auto& ga = GlobalAllocator::instance();
+	
+	size_t countBefore = ga.getAllocationCount();
+	size_t allocBefore = ga.getCurrentAllocated();
+	
+	ga.deallocate(nullptr, 128);
+	
+	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
+	BLIB_TEST_CHECK(ga.getCurrentAllocated() == allocBefore);
+}
+
+// ============================================================
+// 12. Дополнительные тесты PoolAllocator
+// ============================================================
+
+BLIB_TEST_CASE("PoolAllocator: getApproximateFreeBlocks tracking")
+{
+#ifndef BLIB_DEBUG_ALLOCATOR_ENABLED
+	PoolAllocator pool(64, 8);
+	
+	// Пул пуст - chunks ещё не выделялись
+	BLIB_TEST_CHECK(pool.getApproximateFreeBlocks() == 0);
+	
+	void* ptr1 = pool.allocate(64);
+	BLIB_TEST_CHECK(ptr1 != nullptr);
+	
+	// Выделен 1 блок из 8
+	BLIB_TEST_CHECK(pool.getApproximateFreeBlocks() == 7);
+	
+	void* ptr2 = pool.allocate(64);
+	BLIB_TEST_CHECK(pool.getApproximateFreeBlocks() == 6);
+	
+	pool.deallocate(ptr1, 64);
+	BLIB_TEST_CHECK(pool.getApproximateFreeBlocks() == 7);
+	
+	pool.deallocate(ptr2, 64);
+	BLIB_TEST_CHECK(pool.getApproximateFreeBlocks() == 8);
+#else
+	std::cout << "  SKIPPED (getApproximateFreeBlocks not available in debug mode)" << std::endl;
+#endif
+}
+
+BLIB_TEST_CASE("PoolAllocator: blockSize clamped to sizeof(void*)")
+{
+#ifndef BLIB_DEBUG_ALLOCATOR_ENABLED
+	// blockSize меньше sizeof(void*) непригоден для intrusive free list,
+	// конструктор увеличивает его до минимально допустимого
+	PoolAllocator pool(1, 8);
+	BLIB_TEST_CHECK(pool.getBlockSize() == sizeof(void*));
+	
+	// Пул при этом работает
+	void* ptr = pool.allocate(sizeof(void*));
+	BLIB_TEST_CHECK(ptr != nullptr);
+	pool.deallocate(ptr, sizeof(void*));
+#else
+	std::cout << "  SKIPPED (getBlockSize not available in debug mode)" << std::endl;
+#endif
+}
+
+BLIB_TEST_CASE("PoolAllocator: deallocate with wrong size is silently ignored")
+{
+#ifndef BLIB_DEBUG_ALLOCATOR_ENABLED
+	PoolAllocator pool(64, 8);
+	void* ptr = pool.allocate(64);
+	BLIB_TEST_CHECK(ptr != nullptr);
+	
+	// Неверный размер: блок НЕ возвращается в free list (молча игнорируется)
+	pool.deallocate(ptr, 32);
+	BLIB_TEST_CHECK(pool.getApproximateFreeBlocks() == 7);
+	
+	// Корректный возврат
+	pool.deallocate(ptr, 64);
+	BLIB_TEST_CHECK(pool.getApproximateFreeBlocks() == 8);
+#else
+	// В debug wrong size детектируется DebugAllocator (abort), поэтому skip
+	std::cout << "  SKIPPED (DebugAllocator aborts on size mismatch in debug mode)" << std::endl;
+#endif
+}
+
+BLIB_TEST_CASE("PoolAllocator: moved-from pool does not free moved chunks")
+{
+	auto& ga = GlobalAllocator::instance();
+	size_t countBefore = ga.getAllocationCount();
+	size_t allocBefore = ga.getCurrentAllocated();
+	
+	{
+		PoolAllocator pool1(64, 8);
+		void* ptr = pool1.allocate(64);
+		BLIB_TEST_CHECK(ptr != nullptr);
+		
+		// Move: chunks переходят к pool2, pool1 становится пустым
+		PoolAllocator pool2(std::move(pool1));
+		
+		// ptr из чанка pool1 теперь принадлежит pool2
+		void* ptr2 = pool2.allocate(64);
+		BLIB_TEST_CHECK(ptr2 != nullptr);
+		
+		pool2.deallocate(ptr, 64);
+		pool2.deallocate(ptr2, 64);
+		
+		// pool1 при разрушении НЕ должен освобождать чужие чанки
+		// (у moved-from пула пустой вектор chunks)
+	}
+	
+	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
+	BLIB_TEST_CHECK(ga.getCurrentAllocated() == allocBefore);
+}
+
+// ============================================================
+// 13. Дополнительные тесты DebugAllocator
+// ============================================================
+
+BLIB_TEST_CASE("DebugAllocator: detects invalid pointer")
+{
+#ifdef BLIB_DEBUG_ALLOCATOR_ENABLED
+	DefaultAllocator alloc;
+	
+	// Мусорный указатель (не из DebugAllocator): magic в "header"
+	// не совпадёт с MAGIC_ALLOCATED - должен детектироваться
+	char fakeBuffer[64];
+	void* fakePtr = fakeBuffer;
+	
+	BLIB_TEST_EXPECT_ABORT(alloc.deallocate(fakePtr, 64));
+	
+	// Память fakeBuffer - стек, освобождать не нужно
+#else
+	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+#endif
+}
+
+BLIB_TEST_CASE("DebugAllocator: detects header corruption (magic field)")
+{
+#ifdef BLIB_DEBUG_ALLOCATOR_ENABLED
+	DefaultAllocator alloc;
+	void* ptr = alloc.allocate(64);
+	
+	// Layout блока: Header(24) + FrontGuard(8) + user + BackGuard(8)
+	// Header начинается за 32 байта до user-данных,
+	// поле magic внутри Header - по смещению +8 (size[0..7], magic[8..11])
+	char* raw = static_cast<char*>(ptr) - 32;
+	buint32* magicField = reinterpret_cast<buint32*>(raw + 8);
+	*magicField = 0x12345678; // Портим magic
+	
+	// deallocate должен детектировать невалидный magic
+	BLIB_TEST_EXPECT_ABORT(alloc.deallocate(ptr, 64));
+	
+	// Note: память намеренно не освобождается после abort (как в guard-тестах)
+#else
+	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+#endif
+}
+
+BLIB_TEST_CASE("DebugAllocator: allocate(0) returns nullptr")
+{
+#ifdef BLIB_DEBUG_ALLOCATOR_ENABLED
+	DefaultAllocator alloc;
+	
+	void* ptr = alloc.allocate(0);
+	BLIB_TEST_CHECK(ptr == nullptr);
+#else
+	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+#endif
+}
+
+// ============================================================
+// 14. Дополнительные тесты StdAllocatorAdapter
+// ============================================================
+
+BLIB_TEST_CASE("StdAllocatorAdapter: comparison operators")
+{
+	Allocator allocA;
+	Allocator allocB;
+	
+	StdAllocatorAdapter<int> adapterA1(&allocA);
+	StdAllocatorAdapter<int> adapterA2(&allocA);
+	StdAllocatorAdapter<int> adapterB(&allocB);
+	
+	// Равенство по указателю на Allocator
+	BLIB_TEST_CHECK(adapterA1 == adapterA2);
+	BLIB_TEST_CHECK(!(adapterA1 == adapterB));
+	BLIB_TEST_CHECK(adapterA1 != adapterB);
+	BLIB_TEST_CHECK(!(adapterA1 != adapterA2));
+}
+
+BLIB_TEST_CASE("StdAllocatorAdapter: rebind with node-based container (std::list)")
+{
+	auto& ga = GlobalAllocator::instance();
+	size_t countBefore = ga.getAllocationCount();
+	size_t allocBefore = ga.getCurrentAllocated();
+	
+	{
+		Allocator alloc;
+		StdAllocatorAdapter<int> adapter(&alloc);
+		
+		// std::list - узловой контейнер: внутри rebind<node> + allocate(1)
+		std::list<int, StdAllocatorAdapter<int>> list(adapter);
+		
+		for (int i = 0; i < 100; ++i) {
+			list.push_back(i);
+		}
+		
+		BLIB_TEST_CHECK(list.size() == 100);
+		
+		// Проверяем содержимое
+		int expected = 0;
+		for (int value : list) {
+			BLIB_TEST_CHECK(value == expected);
+			++expected;
+		}
+	}
+	
+	// Все узлы списка освобождены
+	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
+	BLIB_TEST_CHECK(ga.getCurrentAllocated() == allocBefore);
+}
+
+BLIB_TEST_CASE("StdAllocatorAdapter: construct/destroy with non-trivial type")
+{
+	// Нетривиальный тип с std::string
+	struct Complex
+	{
+		std::string name;
+		int value;
+		
+		Complex(const std::string& n, int v)
+			: name(n)
+			, value(v)
+		{
+		}
+	};
+	
+	Allocator alloc;
+	StdAllocatorAdapter<Complex> adapter(&alloc);
+	
+	Complex* obj = adapter.allocate(1);
+	BLIB_TEST_CHECK(obj != nullptr);
+	
+	// construct: placement new с аргументами
+	adapter.construct(obj, "test", 42);
+	BLIB_TEST_CHECK(obj->name == "test");
+	BLIB_TEST_CHECK(obj->value == 42);
+	
+	// destroy: явный вызов деструктора (освобождает std::string)
+	adapter.destroy(obj);
+	
+	adapter.deallocate(obj, 1);
 }

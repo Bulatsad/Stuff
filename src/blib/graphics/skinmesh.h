@@ -10,7 +10,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api SkinMesh
+        class __blib_graphics_api SkinMesh
         {
         public:
             bool loadFromAssimpMesh(const aiMesh* paimesh, const blib::graphics::Skelet& skelet);

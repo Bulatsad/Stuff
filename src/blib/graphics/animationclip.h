@@ -3,8 +3,8 @@
 #include <blib/config.h>
 
 #include <blib/graphics/vector.h>
-#include <blib/math/quaternion.h>
-#include <blib/math/vector.h>
+#include <blib/core/math/quaternion.h>
+#include <blib/core/math/vector.h>
 
 #include <assimp/anim.h>
 
@@ -15,7 +15,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api AnimationChannel
+        class __blib_graphics_api AnimationChannel
         {
         public:
             template<class KeyT, class ValT>
@@ -139,7 +139,7 @@ namespace blib
             }
         };
 
-        class __blib_api AnimationClip
+        class __blib_graphics_api AnimationClip
         {
         public:
             std::string name;

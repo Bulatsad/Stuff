@@ -8,7 +8,7 @@
 #include <blib/graphics/transformable.h>
 #include <blib/graphics/renderWindow.h>
 
-#include <blib/math/angle.h>
+#include <blib/core/math/angle.h>
 
 namespace blib
 {
@@ -19,7 +19,7 @@ namespace blib
         * 
         * implement Transormable
         */
-        class __blib_api Camera : public Transform
+        class __blib_graphics_api Camera : public Transform
         {
         private:
             blib::graphics::TransformMatrix projectionMatrix;

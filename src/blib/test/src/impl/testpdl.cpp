@@ -1,5 +1,5 @@
 #include <blib/test/src/test.h>
-#include <blib/pdl/pdl.h>
+#include <blib/core/pdl/pdl.h>
 
 #include <string>
 #include <vector>
@@ -13,7 +13,7 @@ namespace
 			name += std::to_string(num);
 		name += ".pdl";
 
-		std::string path = std::string(TEST_SOURCE_DIR) + "/blib/pdl/" + name;
+		std::string path = std::string(TEST_SOURCE_DIR) + "/blib/core/pdl/" + name;
 		bool ok = p.load(path);
 		if (!ok)
 			std::cerr << path << " load failed: " << p.getLastError() << std::endl;

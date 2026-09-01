@@ -2,7 +2,7 @@
 
 #include <blib/inline.h>
 
-#include <blib/math/vector.h>
+#include <blib/core/math/vector.h>
 
 namespace blib
 {

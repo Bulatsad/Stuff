@@ -11,7 +11,7 @@ namespace blib
 {
     namespace graphics
     {
-        //class __blib_api Rectangle : public Transformable
+        //class __blib_graphics_api Rectangle : public Transformable
         //{
         //private:
         //    Color color;

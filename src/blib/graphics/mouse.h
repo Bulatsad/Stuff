@@ -10,7 +10,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api Mouse
+        class __blib_graphics_api Mouse
         {
         public:
             enum class Button

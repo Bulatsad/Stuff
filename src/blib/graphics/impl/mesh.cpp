@@ -192,7 +192,7 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderContext& ctx) const
 
     // TODO : Triangulate and rewrite renderer
     ctx.api.ogl.ext.__blib_glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, __blib_this_context(this)->faces);
-    auto tmp = beng::graphics::compileFaces(this->faces);
+        auto tmp = blib::graphics::compileFaces(this->faces);
     ctx.api.ogl.ext.__blib_glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(this->faces[0].indices[0]) * this->faces[0].indices.size() * this->faces.size(), &(tmp[0]), GL_STATIC_DRAW);
 
 

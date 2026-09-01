@@ -1,34 +1,24 @@
-#blib
-
-#function(filter s)
-# foreach(FILE ${s})
-#   get_filename_component(PARENT_DIR "${FILE}" DIRECTORY)
-#   get_filename_component(FEXT "${FILE}" EXT)
-#   get_filename_component(FNAME "${FILE}" NAME)
-#   string(REPLACE "${CMAKE_CURRENT_SOURCE_DIR}" "" GROUP "${PARENT_DIR}")
-#   if ("${FEXT}" MATCHES "cpp")
-#     set(GROUP "Source Files${GROUP}")
-#   elseif ("${FEXT}" MATCHES "h")
-#     set(GROUP "Header Files${GROUP}")
-#   endif()
-#   #message(STATUS ${GROUP})
-#   source_group(${GROUP} FILES "${FILE}")
-# endforeach()
-#endfunction()
-#filter("${src}")
+#blib — хаб модулей: общие опции, общая конфигурация и подключение модулей
+#Модули:
+#  blib-system   — платформенные примитивы (thread, memory) и базовые заголовки
+#  blib-core     — переносимое ядро (потоки, строки, algorithm, math, pdl)
+#  blib-graphics — рендер OpenGL + Dear ImGui (только Windows)
+#  blib-sound    — звук (WinMM, только Windows)
+#  blib-network  — сеть (winsock, только Windows)
 
 set (BIN blib)
 
 project(${BIN})
 
 set(blib_build_type_enum blib_build_static blib_build_dynamic)
-set(blib_build_type STATIC CACHE STRING "Library build type")
+set(blib_build_type blib_build_static CACHE STRING "Library build type")
 set_property(CACHE blib_build_type PROPERTY STRINGS ${blib_build_type_enum})
 
 set(blib_inline_mode_enum __blib_inline_always __blib_inline_never __blib_inline_compiler)
-set(blib_inline_mode STATIC CACHE STRING "Inline mode")
+set(blib_inline_mode __blib_inline_compiler CACHE STRING "Inline mode")
 set_property(CACHE blib_inline_mode PROPERTY STRINGS ${blib_inline_mode_enum})
 
+# Числительные значения конфигурации (читаются из blib/config.h)
 set(____blib_configuration_platform_undefined 0)
 set(____blib_configuration_platform_windows 1)
 set(____blib_configuration_platform_linux 2)
@@ -38,217 +28,130 @@ set(____blib_configuration_library_type_undefined 0)
 set(____blib_configuration_library_type_static 1)
 set(____blib_configuration_library_type_shared 2)
 
+# Выбор платформы
+if(WIN32)
+    set(____blib_configuration_platform_value ${____blib_configuration_platform_windows})
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(____blib_configuration_platform_value ${____blib_configuration_platform_linux})
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(____blib_configuration_platform_value ${____blib_configuration_platform_macos})
+else()
+    message(FATAL_ERROR "Unsupported platform: ${CMAKE_SYSTEM_NAME}")
+endif()
+
+# Выбор типа библиотеки
+if(blib_build_type STREQUAL "blib_build_static")
+    set(____blib_configuration_library_type_value ${____blib_configuration_library_type_static})
+elseif(blib_build_type STREQUAL "blib_build_dynamic")
+    set(____blib_configuration_library_type_value ${____blib_configuration_library_type_shared})
+else()
+    message(FATAL_ERROR "Undefined build type")
+endif()
+
 option(COMPILE_ASSIMP_COMPATIBLE "Enable Assimp compatibility (loadFromAssimp, Assimp headers)" ON)
 
-file (GLOB blibGloabal "CmakeLists.txt" "*.h")
-
-file (GLOB sound_header_src "*sound/*.h")
-
-file (GLOB thread_header_src "*thread/*.h")
-
-file (GLOB core_header_src "*core/*.h")
-file (GLOB core_impl_src "*core/*.cpp")
-
-file (GLOB memory_header_src "*memory/*.h" "*memory/allocators/*.h")
-file (GLOB memory_impl_src "*memory/impl/*.cpp" "*memory/impl/*.inl")
-
-file (GLOB algorithm_header_src "*algorithm/*.h")
-file (GLOB algorithm_impl_src "*algorithm/impl/*.cpp")
-
-file (GLOB compression_header_src "*algorithm/compression/*.h")
-file (GLOB compression_impl_src "*algorithm/compression/impl/*.cpp")
-
-file (GLOB network_header_src "*network/*.h")
-file (GLOB network_impl_src "*network/impl/*.cpp")
-
-file (GLOB graphics_header_src "*graphics/*.h")
-
-file (GLOB math_header_src "*math/*.h")
-file (GLOB math_impl_src "*math/impl/*.inl" "*math/impl/*.cpp")
-
-file (GLOB pdl_header_src "*pdl/*.h")
-file (GLOB pdl_impl_src "*pdl/impl/*.cpp")
-
-#dear imgui
-file (GLOB imgui_sources_src "${imgui_dir}/imgui/*.h" "${imgui_dir}/imgui/*.cpp")
-
+# Модули, у которых реализация есть только под Windows, по умолчанию
+# собираются только на Windows (на остальных платформах — опционально выключены)
 if(WIN32)
-    file (GLOB sound_platform_impl_src "*sound/impl/win/*.cpp" "*sound/impl/*.cpp" "*sound/impl/win/*.h")
-    file (GLOB sound_platform_impl_header "*sound/impl/win/*.h")
-
-    file (GLOB thread_platform_impl_src "*thread/impl/win/*.cpp")
-    # Явно добавляем rwlock.cpp на случай если glob не работает
-    list(APPEND thread_platform_impl_src "${CMAKE_CURRENT_SOURCE_DIR}/thread/impl/win/rwlock.cpp")
-    
-    file (GLOB network_platform_impl_src "*network/impl/win/*.cpp")
-    file (GLOB network_platform_impl_header "*network/impl/win/*.h")
-
-    file (GLOB graphics_platform_impl_header "*graphics/impl/win/*.h")
-    file (GLOB graphics_platform_impl_src "*graphics/impl/win/*.cpp")
-    file (GLOB graphics_impl_src "*graphics/impl/*.cpp")
-
+    option(BLIB_BUILD_GRAPHICS "Build blib-graphics module" ON)
+    option(BLIB_BUILD_SOUND "Build blib-sound module" ON)
+    option(BLIB_BUILD_NETWORK "Build blib-network module" ON)
 else()
+    option(BLIB_BUILD_GRAPHICS "Build blib-graphics module" OFF)
+    option(BLIB_BUILD_SOUND "Build blib-sound module" OFF)
+    option(BLIB_BUILD_NETWORK "Build blib-network module" OFF)
 endif()
 
-GroupSoureces("" "${blibGloabal}")   
+# Корень инклюдов: все инклюды в проекте имеют вид <blib/...>, корень — src/
+set(blib_include_root "${CMAKE_CURRENT_SOURCE_DIR}/../")
 
-GroupSoureces("${HeaderGroupPrefix}/sound" "${sound_header_src}")
-GroupSoureces("${HeaderGroupPrefix}/sound" "${sound_platform_impl_header}")
-GroupSoureces("${SourceGroupPrefix}/sound" "${sound_platform_impl_src}")  
+# ---------------------------------------------------------------
+# Хелперы
 
-GroupSoureces("${HeaderGroupPrefix}/thread" "${thread_header_src}")
-GroupSoureces("${SourceGroupPrefix}/thread" "${thread_platform_impl_src}")  
+# Создаёт модульный таргет в соответствии с blib_build_type.
+# Все модули кладутся в папку "blib" Solution Explorer.
+function(blib_add_module target_name)
+    if(blib_build_type STREQUAL "blib_build_static")
+        add_library(${target_name} STATIC ${ARGN})
+    elseif(blib_build_type STREQUAL "blib_build_dynamic")
+        add_library(${target_name} SHARED ${ARGN})
+    else()
+        message(FATAL_ERROR "Undefined build type")
+    endif()
 
-GroupSoureces("${HeaderGroupPrefix}/core" "${core_header_src}")  
-GroupSoureces("${SourceGroupPrefix}/core" "${core_impl_src}")  
+    set_target_properties(${target_name} PROPERTIES FOLDER "blib" LINKER_LANGUAGE CXX)
+endfunction()
 
-GroupSoureces("${HeaderGroupPrefix}/memory" "${memory_header_src}")  
-GroupSoureces("${SourceGroupPrefix}/memory" "${memory_impl_src}")  
+# Общая конфигурация модульного таргета: дефайны конфигурации (PUBLIC —
+# они нужны и потребителям, т.к. blib/config.h читает их в каждом TU),
+# inline-режим, export-макрос модуля и корень инклюдов <blib/...>.
+function(blib_configure_module target_name export_define)
+    target_compile_definitions(${target_name} PUBLIC
+        ____blib_configuration_platform_undefined=${____blib_configuration_platform_undefined}
+        ____blib_configuration_platform_windows=${____blib_configuration_platform_windows}
+        ____blib_configuration_platform_linux=${____blib_configuration_platform_linux}
+        ____blib_configuration_platform_macos=${____blib_configuration_platform_macos}
+        ____blib_configuration_platform_value=${____blib_configuration_platform_value}
 
-GroupSoureces("${HeaderGroupPrefix}/algorithm" "${algorithm_header_src}")  
-GroupSoureces("${SourceGroupPrefix}/algorithm" "${algorithm_impl_src}")  
+        ____blib_configuration_library_type_undefined=${____blib_configuration_library_type_undefined}
+        ____blib_configuration_library_type_static=${____blib_configuration_library_type_static}
+        ____blib_configuration_library_type_shared=${____blib_configuration_library_type_shared}
+        ____blib_configuration_library_type_value=${____blib_configuration_library_type_value}
 
-GroupSoureces("${HeaderGroupPrefix}/algorithm/compression" "${compression_header_src}")  
-GroupSoureces("${SourceGroupPrefix}/algorithm/compression/impl" "${compression_impl_src}")  
+        ${export_define}
+    )
 
-GroupSoureces("${HeaderGroupPrefix}/network" "${network_header_src}")  
-GroupSoureces("${HeaderGroupPrefix}/network" "${network_platform_impl_header}")  
-GroupSoureces("${SourceGroupPrefix}/network" "${network_impl_src}")  
-GroupSoureces("${SourceGroupPrefix}/network" "${network_platform_impl_src}")  
+    if(blib_inline_mode STREQUAL "__blib_inline_always")
+        target_compile_definitions(${target_name} PRIVATE __blib_inline_always)
+    elseif(blib_inline_mode STREQUAL "__blib_inline_never")
+        target_compile_definitions(${target_name} PRIVATE __blib_inline_never)
+    elseif(blib_inline_mode STREQUAL "__blib_inline_compiler")
+        target_compile_definitions(${target_name} PRIVATE __blib_inline_compiler)
+    else()
+        message(FATAL_ERROR "Undefined inline mode")
+    endif()
 
-GroupSoureces("${HeaderGroupPrefix}/graphics" "${graphics_header_src}")  
-GroupSoureces("${HeaderGroupPrefix}/graphics" "${graphics_platform_impl_header}")  
-GroupSoureces("${SourceGroupPrefix}/graphics" "${graphics_platform_impl_src}")  
-GroupSoureces("${SourceGroupPrefix}/graphics" "${graphics_impl_src}")  
+    # Все инклюды в проекте имеют вид <blib/...>, корень — src/
+    target_include_directories(${target_name} PUBLIC "${blib_include_root}")
+endfunction()
 
-GroupSoureces("${HeaderGroupPrefix}/math" "${math_header_src}")
-GroupSoureces("${SourceGroupPrefix}/math/impl" "${math_impl_src}")  
-
-GroupSoureces("${HeaderGroupPrefix}/pdl" "${pdl_header_src}")  
-GroupSoureces("${SourceGroupPrefix}/pdl/impl" "${pdl_impl_src}")  
-
-#dear imgui
-GroupSoureces("imgui" "${imgui_sources_src}")  
-
-
-set(blib_sources 
-    ${blibGloabal} 
-
-    ${sound_header_src}
-    ${sound_platform_impl_header}
-    ${sound_platform_impl_src} 
-
-    ${thread_header_src}
-    ${thread_platform_impl_src} 
-
-    ${core_header_src} 
-    ${core_impl_src}
-
-    ${memory_header_src}
-    ${memory_impl_src}
-
-    ${algorithm_header_src}
-    ${algorithm_impl_src}
-
-    ${compression_header_src}
-    ${compression_impl_src}
-
-    ${network_header_src}
-    ${network_impl_src}
-    ${network_platform_impl_src}
-    ${network_platform_impl_header}
-
-    ${graphics_header_src}
-    ${graphics_platform_impl_header}
-    ${graphics_platform_impl_src}
-    ${graphics_impl_src}
-
-    ${math_header_src} 
-    ${math_impl_src}
-
-    ${pdl_header_src}
-    ${pdl_impl_src}
-    
-#dear imgui
-    ${imgui_sources_src}
-)
-
-if(blib_build_type STREQUAL "blib_build_static")
-	add_library(${BIN} STATIC ${blib_sources})
-    target_compile_definitions(${BIN} PRIVATE ____blib_configuration_library_type_value=${____blib_configuration_library_type_static})
-elseif(blib_build_type STREQUAL "blib_build_dynamic")
-	add_library(${BIN} SHARED ${blib_sources})
-    target_compile_definitions(${BIN} PRIVATE ____blib_configuration_library_type_value=${____blib_configuration_library_type_shared})
-else()
-	message(FATAL_ERROR "Undefined build type")
-    message(FATAL_ERROR "blib_build_type is not defined")
-endif()
-
-set_target_properties(${BIN} PROPERTIES FOLDER "blib")
-
-if(blib_inline_mode STREQUAL "__blib_inline_always")
-    target_compile_definitions(${BIN} PRIVATE __blib_inline_always)
-elseif(blib_inline_mode STREQUAL "__blib_inline_never")
-    target_compile_definitions(${BIN} PRIVATE __blib_inline_never)
-elseif(blib_inline_mode STREQUAL "__blib_inline_compiler")
-    target_compile_definitions(${BIN} PRIVATE __blib_inline_compiler)
-else()
-    message(FATAL_ERROR "Undefined inline mode")
-endif()
-
-target_compile_definitions(${BIN} PRIVATE ____blib_configuration_platform_undefined=${____blib_configuration_platform_undefined})
-target_compile_definitions(${BIN} PRIVATE ____blib_configuration_platform_windows=${____blib_configuration_platform_windows})
-target_compile_definitions(${BIN} PRIVATE ____blib_configuration_platform_linux=${____blib_configuration_platform_linux})
-target_compile_definitions(${BIN} PRIVATE ____blib_configuration_platform_macos=${____blib_configuration_platform_macos})
-
-if(COMPILE_ASSIMP_COMPATIBLE)
-    target_compile_definitions(${BIN} PUBLIC COMPILE_ASSIMP_COMPATIBLE)
-endif()
-
-target_compile_definitions(${BIN} PRIVATE ____blib_configuration_library_type_undefined=${____blib_configuration_library_type_undefined})
-target_compile_definitions(${BIN} PRIVATE ____blib_configuration_library_type_shared=${____blib_configuration_library_type_shared})
-target_compile_definitions(${BIN} PRIVATE ____blib_configuration_library_type_static=${____blib_configuration_library_type_static})
-
-target_compile_definitions(${BIN} PRIVATE blib_export)
-
-target_include_directories(${BIN} PUBLIC  "${CMAKE_CURRENT_SOURCE_DIR}/../")
-
-#TODO: delete
-target_include_directories(${BIN} PUBLIC ${assimp_include})
-target_include_directories(${BIN} PUBLIC ${openglapi})
-
-target_include_directories(${BIN} PRIVATE ${stb_include})
-
-#target_include_directories(${BIN} PRIVATE  "${CMAKE_CURRENT_SOURCE_DIR}/sound")
-#target_include_directories(${BIN} PRIVATE  "${CMAKE_CURRENT_SOURCE_DIR}/thread")
-#target_include_directories(${BIN} PRIVATE  "${CMAKE_CURRENT_SOURCE_DIR}/core")
-
-#dear imgui
-target_include_directories(${BIN} PUBLIC ${imgui_dir})
-
-set_target_properties(${BIN} PROPERTIES LINKER_LANGUAGE CXX)
-
-if(WIN32)
-	target_link_libraries(${BIN} PRIVATE Winmm)
-	target_link_libraries(${BIN} PRIVATE Ws2_32)
-    target_link_libraries(${BIN} PUBLIC Opengl32)
-    #target_link_libraries(${BIN} PUBLIC Glu32)
-
-	set_target_properties(${BIN} PROPERTIES VS_DEBUGGER_ENVIRONMENT "${MY_PATH}" LINKER_LANGUAGE CXX)
+# MSVC-флаги проекта (действуют на blib и его подкаталоги, включая test)
+if(MSVC)
     set (CMAKE_CXX_FLAGS_RELEASE "/EHsc /Gd /Gy /Oi /Gm- /MP /O2 /W3 /ZI /MD" )
     set (CMAKE_CXX_FLAGS_RELWITHDEBINFO "/EHsc /Gd /Gy /Oi /Gm- /MP /O2 /W3 /ZI /MD" )
     set (CMAKE_CXX_FLAGS_MINSIZEREL "/EHsc /Gd /Gy /Oi /Gm- /MP /O2 /W3 /ZI /MD" )
     set (CMAKE_CXX_FLAGS_DEBUG "/EHsc /Gd /Gy /GS /Oi /Gm- /MP /Od /W3 /ZI /MDd" )
-	
 
-    target_compile_definitions(${BIN} PRIVATE ____blib_configuration_platform_value=${____blib_configuration_platform_windows})
+    message(STATUS ${CMAKE_CXX_FLAGS_DEBUG})
+endif()
 
-	message(STATUS ${CMAKE_CXX_FLAGS_DEBUG})
-else()
+# ---------------------------------------------------------------
+# Модули
+add_subdirectory(system)
+add_subdirectory(core)
+
+if(BLIB_BUILD_GRAPHICS)
+    if(NOT WIN32)
+        message(FATAL_ERROR "blib-graphics has no non-Windows implementation yet")
+    endif()
+    add_subdirectory(graphics)
+endif()
+
+if(BLIB_BUILD_SOUND)
+    if(NOT WIN32)
+        message(FATAL_ERROR "blib-sound has no non-Windows implementation yet")
+    endif()
+    add_subdirectory(sound)
+endif()
+
+if(BLIB_BUILD_NETWORK)
+    if(NOT WIN32)
+        message(FATAL_ERROR "blib-network has no non-Windows implementation yet")
+    endif()
+    add_subdirectory(network)
 endif()
 
 #tests
 if(BUILD_TESTS)
 	add_subdirectory(test)
 endif()
-

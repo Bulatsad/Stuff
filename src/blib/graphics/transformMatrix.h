@@ -2,8 +2,8 @@
 
 #include <blib/config.h>
 
-#include <blib/math/matrix.h>
-#include <blib/math/quaternion.h>
+#include <blib/core/math/matrix.h>
+#include <blib/core/math/quaternion.h>
 #include <blib/graphics/vector.h>
 #include <blib/graphics/transform.h>
 

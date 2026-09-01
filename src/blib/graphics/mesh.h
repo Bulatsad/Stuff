@@ -4,6 +4,7 @@
 
 #include <assimp/scene.h>
 
+#include <blib/config.h>
 #include <blib/blibint.h>
 #include <blib/graphics/vertex.h>
 #include <blib/graphics/renderWindow.h>
@@ -12,8 +13,7 @@
 #include <blib/graphics/shader.h>
 #include <blib/graphics/material.h>
 
-#include <beng/config.h>
-#include <beng/graphics/face.h>
+#include <blib/graphics/face.h>
 
 
 namespace blib
@@ -30,7 +30,7 @@ namespace blib
             TriangleStrip = 0x10
         };
 
-        class __blib_api Mesh : public blib::graphics::IDrawable, public blib::graphics::ITransformable
+        class __blib_graphics_api Mesh : public blib::graphics::IDrawable, public blib::graphics::ITransformable
         {
         private:
             void* ctx;
@@ -51,7 +51,7 @@ namespace blib
             std::vector<blib::graphics::Color>colors;
             std::vector<blib::graphics::Vector4i>boneIds;
             std::vector<blib::graphics::Vector4f>boneWeights;
-            std::vector<beng::graphics::Face>faces;
+            std::vector<blib::graphics::Face>faces;
             mutable blib::graphics::Material material;
 
             void loadFromAssimpMesh(const aiMesh* paimesh);

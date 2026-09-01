@@ -54,10 +54,10 @@ endif()
 set(debug_library_list debug  )
 
 target_link_libraries(${BIN} 
-	PUBLIC debug blib 
+	PUBLIC debug blib-graphics 
 	PUBLIC debug assimpd 
 	PUBLIC debug zlibstaticd 
-	PUBLIC optimized blib 
+	PUBLIC optimized blib-graphics 
 	PUBLIC optimized assimp  
 	PUBLIC optimized zlibstatic
 )

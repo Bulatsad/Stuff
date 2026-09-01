@@ -5,16 +5,16 @@
 #include <blib/config.h>
 #include <blib/graphics/opengl.h>
 
-#include <blib/math/matrix.h>
+#include <blib/core/math/matrix.h>
 #include <blib/graphics/transformable.h>
 
 namespace blib
 {
     namespace graphics
     {
-        class __blib_api Camera;
-        class __blib_api ShaderProgram;
-        class __blib_api RenderContext
+        class __blib_graphics_api Camera;
+        class __blib_graphics_api ShaderProgram;
+        class __blib_graphics_api RenderContext
         {
         public:
             TransformMatrix transform;

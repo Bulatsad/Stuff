@@ -8,7 +8,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api Transform
+        class __blib_graphics_api Transform
         {
         private:
             Vector3f          origin;

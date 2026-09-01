@@ -13,7 +13,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api Sprite : public ITransformable, public IDrawable
+        class __blib_graphics_api Sprite : public ITransformable, public IDrawable
         {
         private:
             blib::graphics::Mesh mesh;
@@ -23,7 +23,7 @@ namespace blib
 
             void setTexture(const Texture& texture);
 
-            // Унаследовано через IDrawable
+            // РЈРЅР°СЃР»РµРґРѕРІР°РЅРѕ С‡РµСЂРµР· IDrawable
             virtual void draw(RenderContext& ctx) const __blib_override;
 
         };

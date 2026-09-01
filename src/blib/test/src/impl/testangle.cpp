@@ -1,6 +1,6 @@
 #include <blib/test/src/test.h>
-#include <blib/math/angle.h>
-#include <blib/math/consts.h>
+#include <blib/core/math/angle.h>
+#include <blib/core/math/consts.h>
 
 using namespace blib::math;
 

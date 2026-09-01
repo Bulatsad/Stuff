@@ -2,7 +2,7 @@
 
 #include <blib/inline.h>
 
-#include <blib/math/trigonometry.h>
+#include <blib/core/math/trigonometry.h>
 
 
 //blib::graphics::Vector2f blib::graphics::Transform::transformPoint(float x, float y) const

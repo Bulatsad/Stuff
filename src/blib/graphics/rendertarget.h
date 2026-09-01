@@ -25,9 +25,9 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api IDrawable;
+        class __blib_graphics_api IDrawable;
 
-        class __blib_api RenderTargetSettings
+        class __blib_graphics_api RenderTargetSettings
         {
         public:
             enum class Test
@@ -36,7 +36,7 @@ namespace blib
             };
         };
 
-        class __blib_api IRenderTarget
+        class __blib_graphics_api IRenderTarget
         {
         private:
             struct RenderTargetCtx

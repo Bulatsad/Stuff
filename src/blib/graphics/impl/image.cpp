@@ -4,9 +4,7 @@
 #include <blib/blibint.h>
 #include <blib/inline.h>
 
-#include <blib/core/file.h>
-
-#include <fstream>
+#include <blib/core/fileStream.h>
 
 #define TGX_TOKEN_TYPE_PIXELSTREAM            0x00
 #define TGX_TOKEN_TYPE_REPEATINGPIXELS        0x02
@@ -170,7 +168,7 @@ blib::graphics::Image::~Image()
 {
 }
 
-__blib_api std::vector<blib::graphics::Color>& blib::graphics::Image::data()
+__blib_graphics_api std::vector<blib::graphics::Color>& blib::graphics::Image::data()
 {
     return this->bitmap;
 }
@@ -184,17 +182,24 @@ void blib::graphics::Image::create(buint16 a_width, buint16 a_height, blib::grap
 
 bool blib::graphics::Image::loadFromTgx(const char* path)
 {
-    std::ifstream tempfin;
-    tempfin.open(path, std::ifstream::in | std::ifstream::binary);
+    // Читаем файл целиком через FileStream (единый файловый поток blib)
+    blib::core::FileStream fin;
+    blib::core::FileStream::OpenModeFlags mode;
+    mode.storage |= static_cast<buint8>(blib::core::OpenMode::Read);
+    mode.storage |= static_cast<buint8>(blib::core::OpenMode::Binary);
 
-    if (!tempfin.is_open())
+    if (fin.open(path, mode) != blib::core::FileStatus::OK)
     {
         // TODO : Logging
         return false;
     }
 
-    blib::core::File fin(std::move(tempfin));
     blib::core::ByteArray filedata = fin.readAll();
+    if (filedata.empty())
+    {
+        // TODO : Logging
+        return false;
+    }
 
     tgx_header_t header;
     if (!tgx_header_parse_from_memory(&filedata[0], filedata.size(), &header))

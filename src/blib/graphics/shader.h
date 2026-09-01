@@ -10,16 +10,16 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api Shader;
-        class __blib_api ShaderProgram;
+        class __blib_graphics_api Shader;
+        class __blib_graphics_api ShaderProgram;
 
-        class __blib_api Shader
+        class __blib_graphics_api Shader
         {
         private:
             void* ctx;
             std::string shaderPath;
         public:
-            friend class __blib_api ShaderProgram;
+            friend class __blib_graphics_api ShaderProgram;
 
             enum class Type
             {
@@ -36,7 +36,7 @@ namespace blib
             int compile();
         };
 
-        class __blib_api ShaderProgram
+        class __blib_graphics_api ShaderProgram
         {
             void* ctx;
         public:

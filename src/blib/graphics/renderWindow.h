@@ -24,7 +24,7 @@ namespace blib
             END_OF_ENUM
         };
 
-        class __blib_api RenderWindow
+        class __blib_graphics_api RenderWindow
         {
         private:
             void* ctx;

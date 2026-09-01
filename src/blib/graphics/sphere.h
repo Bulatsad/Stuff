@@ -13,7 +13,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api Sphere : public ITransformable, public IDrawable
+        class __blib_graphics_api Sphere : public ITransformable, public IDrawable
         {
         private:
             blib::graphics::Mesh sphereMesh;

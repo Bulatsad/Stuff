@@ -11,7 +11,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api VertexBuffer : public blib::graphics::IDrawable
+        class __blib_graphics_api VertexBuffer : public blib::graphics::IDrawable
         {
             void* ctx;
         public:

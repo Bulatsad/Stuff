@@ -11,7 +11,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api ITransformable
+        class __blib_graphics_api ITransformable
         {
         private:
             blib::graphics::Transform transformData;

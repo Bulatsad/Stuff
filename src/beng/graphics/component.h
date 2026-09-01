@@ -9,7 +9,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_api IComponent
+        class __blib_graphics_api IComponent
         {
         public:
             IComponent();
