@@ -74,6 +74,22 @@ namespace blib
             // Потокобезопасно (любой поток)
             void log(ConsoleMessageType type, _In const std::string& text);
 
+            // Удобные обёртки над log() по уровням (потокобезопасно).
+            // logDebug/logDebugFormat в release-сборке ничего не делают.
+            void logInfo(_In const std::string& text);
+            void logWarning(_In const std::string& text);
+            void logError(_In const std::string& text);
+            void logDebug(_In const std::string& text);
+
+            // printf-стиль: logInfoFormat("value %d", 42). Форматирование
+            // идёт в стековый буфер (512), длинные строки обрезаются
+            // (vsnprintf гарантирует завершающий нуль). В "..." допустимы
+            // только printf-совместимые типы (std::string — UB).
+            void logInfoFormat(_In const char* fmt, ...);
+            void logWarningFormat(_In const char* fmt, ...);
+            void logErrorFormat(_In const char* fmt, ...);
+            void logDebugFormat(_In const char* fmt, ...);
+
             ConsoleOutput& getOutput();
 
             // Исполнение строки как команды консоли:
@@ -98,3 +114,18 @@ namespace blib
         };
     }
 }
+
+// Удобные логирование-макросы (Qt-стиль: qInfo/qWarning/qError/qDebug).
+// Принимают printf-формат:
+//   __blib_log_error("failed to load %s: %d", name.c_str(), code);
+// Строка без спецификаторов выводится как есть.
+#define __blib_log_info(...)    blib::console::Console::instance().logInfoFormat(__VA_ARGS__)
+#define __blib_log_warning(...) blib::console::Console::instance().logWarningFormat(__VA_ARGS__)
+#define __blib_log_error(...)   blib::console::Console::instance().logErrorFormat(__VA_ARGS__)
+
+#ifdef BLIB_DEBUG
+#define __blib_log_debug(...)   blib::console::Console::instance().logDebugFormat(__VA_ARGS__)
+#else
+// В release debug-логирование полностью вырезается на этапе компиляции
+#define __blib_log_debug(...)   ((void)0)
+#endif

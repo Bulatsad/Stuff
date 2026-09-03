@@ -1,7 +1,16 @@
 #include <blib/core/console/console.h>
 
 #include <algorithm>
+#include <cstdarg>
+#include <cstdio>
 #include <utility>
+
+namespace
+{
+    // Стек-буфер printf-форматирования. Длинные строки обрезаются
+    // (vsnprintf гарантирует завершающий нуль).
+    const size_t logFormatBufferSize = 512;
+}
 
 std::vector<std::string> blib::console::tokenizeLine(const std::string& line)
 {
@@ -129,6 +138,75 @@ void blib::console::Console::registerCommand(
 void blib::console::Console::log(blib::console::ConsoleMessageType type, const std::string& text)
 {
     this->output.add(type, text);
+}
+
+void blib::console::Console::logInfo(const std::string& text)
+{
+    this->log(blib::console::ConsoleMessageType::Info, text);
+}
+
+void blib::console::Console::logWarning(const std::string& text)
+{
+    this->log(blib::console::ConsoleMessageType::Warning, text);
+}
+
+void blib::console::Console::logError(const std::string& text)
+{
+    this->log(blib::console::ConsoleMessageType::Error, text);
+}
+
+void blib::console::Console::logDebug(const std::string& text)
+{
+#ifdef BLIB_DEBUG
+    // Отдельного уровня Debug пока нет — пишем как Info
+    this->log(blib::console::ConsoleMessageType::Info, text);
+#else
+    (void)text; // в release debug-логи полностью пустые
+#endif
+}
+
+void blib::console::Console::logInfoFormat(const char* fmt, ...)
+{
+    char buffer[logFormatBufferSize];
+    va_list args;
+    va_start(args, fmt);
+    std::vsnprintf(buffer, logFormatBufferSize, fmt, args);
+    va_end(args);
+    this->log(blib::console::ConsoleMessageType::Info, std::string(buffer));
+}
+
+void blib::console::Console::logWarningFormat(const char* fmt, ...)
+{
+    char buffer[logFormatBufferSize];
+    va_list args;
+    va_start(args, fmt);
+    std::vsnprintf(buffer, logFormatBufferSize, fmt, args);
+    va_end(args);
+    this->log(blib::console::ConsoleMessageType::Warning, std::string(buffer));
+}
+
+void blib::console::Console::logErrorFormat(const char* fmt, ...)
+{
+    char buffer[logFormatBufferSize];
+    va_list args;
+    va_start(args, fmt);
+    std::vsnprintf(buffer, logFormatBufferSize, fmt, args);
+    va_end(args);
+    this->log(blib::console::ConsoleMessageType::Error, std::string(buffer));
+}
+
+void blib::console::Console::logDebugFormat(const char* fmt, ...)
+{
+#ifdef BLIB_DEBUG
+    char buffer[logFormatBufferSize];
+    va_list args;
+    va_start(args, fmt);
+    std::vsnprintf(buffer, logFormatBufferSize, fmt, args);
+    va_end(args);
+    this->log(blib::console::ConsoleMessageType::Info, std::string(buffer));
+#else
+    (void)fmt; // в release debug-логи полностью пустые
+#endif
 }
 
 blib::console::ConsoleOutput& blib::console::Console::getOutput()
