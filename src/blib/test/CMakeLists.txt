@@ -16,7 +16,7 @@ target_link_libraries(blib_test_main PRIVATE blib-core)
 set_target_properties(blib_test_main PROPERTIES FOLDER "blib/tests")
 
 # Test group list: group name == file suffix test<group>.cpp
-set(blib_test_groups angle matrix pdl quaternion vector allocator iterator stream binary compression hash)
+set(blib_test_groups angle matrix pdl quaternion vector allocator iterator stream binary compression hash circlequeue)
 
 # Список standalone-исполняемых групп (заполняется в цикле ниже)
 set(blib_test_group_exes)

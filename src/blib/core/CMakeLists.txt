@@ -19,6 +19,9 @@ file (GLOB math_impl_src "math/impl/*.inl" "math/impl/*.cpp")
 file (GLOB pdl_header_src "pdl/*.h")
 file (GLOB pdl_impl_src "pdl/impl/*.cpp")
 
+file (GLOB console_header_src "console/*.h")
+file (GLOB console_impl_src "console/impl/*.cpp")
+
 GroupSoureces("${HeaderGroupPrefix}/core" "${core_header_src}")
 GroupSoureces("${SourceGroupPrefix}/core" "${core_impl_src}")
 
@@ -36,6 +39,9 @@ GroupSoureces("${SourceGroupPrefix}/core/math" "${math_impl_src}")
 
 GroupSoureces("${HeaderGroupPrefix}/core/pdl" "${pdl_header_src}")
 GroupSoureces("${SourceGroupPrefix}/core/pdl" "${pdl_impl_src}")
+
+GroupSoureces("${HeaderGroupPrefix}/core/console" "${console_header_src}")
+GroupSoureces("${SourceGroupPrefix}/core/console" "${console_impl_src}")
 
 blib_add_module(blib-core
     ${core_header_src}
@@ -55,6 +61,9 @@ blib_add_module(blib-core
 
     ${pdl_header_src}
     ${pdl_impl_src}
+
+    ${console_header_src}
+    ${console_impl_src}
 )
 
 blib_configure_module(blib-core blib_core_export)

@@ -16,6 +16,9 @@
 #include <blib/graphics/mouse.h>
 
 #include <blib/graphics/skinmodel.h>
+
+#include <blib/core/console/console.h>
+#include <blib/graphics/console/consoleWindow.h>
 //int main()
 //{
 //    Assimp::Importer importer;
@@ -116,6 +119,18 @@ int main()
     camera.setPerpective(60, static_cast<float>(wnd.getWight()) / static_cast<float>(wnd.getHeight()), 0.1, 1000);
     camera.setPosition(0, 0, 0);
 
+    // Демо console-переменной: fov управляет FOV камеры на лету.
+    // Коллбэк пересчитывает перспективу при каждом изменении значения.
+    blib::console::Console::instance().registerVariable(
+        "fov", "60", blib::console::ConsoleVariableFlags::None,
+        [&camera, &wnd](const blib::console::ConsoleVariable& var)
+        {
+            camera.setPerpective(
+                var.getFloat(),
+                static_cast<float>(wnd.getWight()) / static_cast<float>(wnd.getHeight()),
+                0.1f, 1000.0f);
+        });
+
     blib::graphics::Mesh mesh;
 
     //mesh.vertices.push_back({ -0.5f, -0.5f, 0.0f });
@@ -180,16 +195,51 @@ int main()
     bool isFocused = false;
     blib::graphics::Mouse::setVisible(isFocused);
 
+    // Консоль: ImGui-окно поверх blib::console::Console (ядро в blib-core).
+    // Видимостью управляет горячая клавиша `~` (Quake-стиль).
+    blib::graphics::console::ConsoleWindow consoleWindow;
+    bool showConsole = false;
+
+    // Команда clear: чистит и буфер ядра, и скроллбэк окна.
+    // Каллбэк захватывает consoleWindow по ссылке — вызовы происходят
+    // только внутри главного цикла, пока объект жив.
+    blib::console::Console::instance().registerCommand(
+        "clear", "clears the console output",
+        [&consoleWindow](const std::vector<std::string>&)
+        {
+            consoleWindow.clearDisplay();
+        });
+
     while (wnd.isOpen())
     {
         float deltatime = static_cast<float>(clock() - endframe);
         endframe = clock();
         blib::graphics::Keyboard::update();
+        if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::Grave))
+        {
+            // `~` открывает/закрывает консоль; при открытии входим в UI-режим
+            // и отдаём фокус полю ввода
+            showConsole = !showConsole;
+            if (showConsole)
+            {
+                isFocused = true;
+                blib::graphics::Mouse::setVisible(isFocused);
+                consoleWindow.requestFocus();
+            }
+        }
         if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::Escape))
         {
             //wnd.close();
-            isFocused = !isFocused;
-            blib::graphics::Mouse::setVisible(isFocused);
+            if (showConsole)
+            {
+                // Escape при открытой консоли закрывает только её (как в Quake)
+                showConsole = false;
+            }
+            else
+            {
+                isFocused = !isFocused;
+                blib::graphics::Mouse::setVisible(isFocused);
+            }
         }
 
         rt.clear();
@@ -241,6 +291,9 @@ int main()
                 }
 
                 ImGui::End();
+
+                if (showConsole)
+                    consoleWindow.draw();
 
                 // 4. ��-��-��-��-��-��-��-��-��- ��-��-��-��-
                 ImGui::Render();

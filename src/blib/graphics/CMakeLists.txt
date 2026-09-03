@@ -7,6 +7,9 @@ file (GLOB graphics_impl_src "impl/*.cpp")
 file (GLOB graphics_platform_impl_header "impl/win/*.h")
 file (GLOB graphics_platform_impl_src "impl/win/*.cpp")
 
+file (GLOB graphics_console_header_src "console/*.h")
+file (GLOB graphics_console_impl_src "console/impl/*.cpp")
+
 #dear imgui
 file (GLOB imgui_sources_src "${imgui_dir}/imgui/*.h" "${imgui_dir}/imgui/*.cpp")
 
@@ -14,6 +17,9 @@ GroupSoureces("${HeaderGroupPrefix}/graphics" "${graphics_header_src}")
 GroupSoureces("${HeaderGroupPrefix}/graphics" "${graphics_platform_impl_header}")
 GroupSoureces("${SourceGroupPrefix}/graphics" "${graphics_impl_src}")
 GroupSoureces("${SourceGroupPrefix}/graphics" "${graphics_platform_impl_src}")
+
+GroupSoureces("${HeaderGroupPrefix}/graphics/console" "${graphics_console_header_src}")
+GroupSoureces("${SourceGroupPrefix}/graphics/console" "${graphics_console_impl_src}")
 
 #dear imgui
 GroupSoureces("imgui" "${imgui_sources_src}")
@@ -23,6 +29,9 @@ blib_add_module(blib-graphics
     ${graphics_platform_impl_header}
     ${graphics_impl_src}
     ${graphics_platform_impl_src}
+
+    ${graphics_console_header_src}
+    ${graphics_console_impl_src}
 
     ${imgui_sources_src}
 )
