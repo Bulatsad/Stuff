@@ -1,5 +1,9 @@
 #include <blib/graphics/rendertarget.h>
 
+#include <cstdlib>
+
+#include <blib/core/console/console.h>
+
 #include <Windows.h>
 #include <gl/GL.h>
 
@@ -32,9 +36,11 @@ blib::graphics::IRenderTarget::IRenderTarget(buint32 a_viewportWidth, buint32 a_
     this->ctx.viewportWidth = a_viewportWidth;
     this->ctx.viewportHeight = a_viewportHeight;
 
-    if (this->ctx.frameBuffersCount == 0)
+    if (__blib_unlikely(this->ctx.frameBuffersCount == 0))
     {
-        throw std::runtime_error("Invalid frame buffers count");
+        // Конструктор не может вернуть код ошибки, а рендер-таргет
+        // без буферов бессмыслен — это программистская (fatal) ошибка
+        __blib_fatal("invalid frame buffers count: 0");
     }
 
     this->ctx.pdctx.frameBufferIds.resize(this->ctx.frameBuffersCount);
@@ -51,7 +57,13 @@ blib::graphics::IRenderTarget::IRenderTarget(buint32 a_viewportWidth, buint32 a_
         for(size_t i = 0; i < this->ctx.frameBuffersCount; ++i)
         {
             // Creating
-            this->ctx.frameTextures[i].create(nullptr, a_viewportWidth, a_viewportHeight, blib::graphics::Color::bytesPerPixel(), this->rc);
+            // Цвет текстуры всегда 4 байта на пиксель — ошибка формата
+            // тут невозможна, но проверяем по правилам проекта
+            blib::graphics::TextureError terr = this->ctx.frameTextures[i].create(nullptr, a_viewportWidth, a_viewportHeight, blib::graphics::Color::bytesPerPixel(), this->rc);
+            if (__blib_unlikely(terr != blib::graphics::TextureError::None))
+            {
+                __blib_log_warning("failed to create fbo texture #%zu (error %u)", i, static_cast<buint32>(terr));
+            }
             
             // Binding
 

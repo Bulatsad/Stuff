@@ -4,8 +4,6 @@
 
 #include <cstring>
 
-#include<stdexcept>
-
 namespace blib
 {
     namespace math
@@ -25,11 +23,11 @@ namespace blib
             }
             Matrix(std::initializer_list<Type> args)
             {
-                //check
-                if (args.size() != tmplWidth * tmplHeight)
-                {
-                    throw std::runtime_error("Invalid matrix argument count");
-                }
+                // Базово — единичная матрица: недостающие элементы остаются
+                // identity, а лишние аргументы игнорируются (обрезаются
+                // циклом ниже). Раньше тут было исключение, но правило
+                // проекта запрещает throw (см. AGENTS.md).
+                this->loadIdentity();
 
                 //construct
                 matrixSizeT i = 0;
@@ -43,7 +41,8 @@ namespace blib
                     }
                     if (j >= tmplHeight)
                     {
-                        j = 0;
+                        // лишние аргументы — игнорируем
+                        break;
                     }
 
                     this->data[i][j] = arg;
@@ -100,10 +99,10 @@ namespace blib
             template<class TypeRhs, matrixSizeT tmplWidthRhs, matrixSizeT tmplHeightRhs>
             Matrix<Type, tmplWidthRhs, tmplHeight> operator*(const Matrix<TypeRhs, tmplWidthRhs, tmplHeightRhs>& rhs) const
             {
-                if (tmplWidth != tmplHeightRhs)
-                {
-                    throw std::runtime_error("The number of columns in matrix A must match the number of rows in matrix B for matrix multiplying");
-                }
+                // Размерности известны на этапе компиляции — ловим
+                // несовместимость статически (раньше тут было throw)
+                static_assert(tmplWidth == tmplHeightRhs,
+                    "Matrix dimensions must match: columns of A must equal rows of B");
 
                 Matrix<Type, tmplWidthRhs, tmplHeight> res;
                 for (matrixSizeT i = 0; i < tmplWidthRhs; ++i)

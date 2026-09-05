@@ -116,24 +116,40 @@ BLIB_TEST_CASE("Matrix3x3 from initializer_list")
 	BLIB_TEST_CHECK(m.data[2][2] == 9.0f);
 }
 
-BLIB_TEST_CASE("Matrix4x4 initializer_list throws on wrong count")
+// После отказа от исключений (см. AGENTS.md) конструктор из
+// initializer_list НЕ бросает: недостающие элементы остаются
+// identity, лишние игнорируются.
+BLIB_TEST_CASE("Matrix4x4 initializer_list fills missing elements with identity")
 {
-	BLIB_TEST_REQUIRE_THROWS(
-		Mat4({ 1.0f, 2.0f, 3.0f }),
-		std::runtime_error
-	);
+	Mat4 m({ 1.0f, 2.0f, 3.0f });
+	// заданные элементы на месте
+	BLIB_TEST_CHECK(m.data[0][0] == 1.0f);
+	BLIB_TEST_CHECK(m.data[1][0] == 2.0f);
+	BLIB_TEST_CHECK(m.data[2][0] == 3.0f);
+	// недостающие — из identity
+	BLIB_TEST_CHECK(m.data[3][0] == 0.0f);
+	BLIB_TEST_CHECK(m.data[0][1] == 0.0f);
+	BLIB_TEST_CHECK(m.data[1][1] == 1.0f);
+	BLIB_TEST_CHECK(m.data[2][2] == 1.0f);
+	BLIB_TEST_CHECK(m.data[3][3] == 1.0f);
 }
 
-BLIB_TEST_CASE("Matrix4x4 initializer_list throws on too many")
+BLIB_TEST_CASE("Matrix4x4 initializer_list ignores extra elements")
 {
-	BLIB_TEST_REQUIRE_THROWS(
-		Mat4({
-			1,2,3,4, 5,6,7,8,
-			9,10,11,12, 13,14,15,16,
-			17
-		}),
-		std::runtime_error
-	);
+	Mat4 m({
+		1,2,3,4, 5,6,7,8,
+		9,10,11,12, 13,14,15,16,
+		17 // лишний — игнорируется
+	});
+	// первые 16 заполнены по порядку
+	BLIB_TEST_CHECK(m.data[0][0] == 1.0f);
+	BLIB_TEST_CHECK(m.data[3][0] == 4.0f);
+	BLIB_TEST_CHECK(m.data[0][1] == 5.0f);
+	BLIB_TEST_CHECK(m.data[3][1] == 8.0f);
+	BLIB_TEST_CHECK(m.data[0][2] == 9.0f);
+	BLIB_TEST_CHECK(m.data[3][2] == 12.0f);
+	BLIB_TEST_CHECK(m.data[0][3] == 13.0f);
+	BLIB_TEST_CHECK(m.data[3][3] == 16.0f);
 }
 
 // ============================================================

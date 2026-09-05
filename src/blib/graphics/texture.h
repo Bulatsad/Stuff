@@ -24,10 +24,20 @@ namespace blib
     namespace graphics
     {
         class __blib_graphics_api RenderContext;
+
+        // Коды ошибок работы с текстурами (см. AGENTS.md,
+        // раздел "Обработка ошибок": None = 0 — всегда успех)
+        enum class TextureError : buint32
+        {
+            None = 0,
+            UnsupportedFormat,
+            AtlasTooLarge
+        };
+
         class __blib_graphics_api Texture
         {
         private:
-            TexturePDCtx ctx;
+            TextureCtx ctx;
 
         public:
 
@@ -42,8 +52,8 @@ namespace blib
 
             Texture();
             ~Texture();
-            void create(const Image& image, blib::graphics::RenderContext& ctx, genFlags flags = genFlags::none);
-            int create(const void* pdata, bint16 width, bint16 height, buint8 bytesPerPixel, blib::graphics::RenderContext& ctx, genFlags flags = genFlags::none);
+            TextureError create(const Image& image, blib::graphics::RenderContext& ctx, genFlags flags = genFlags::none);
+            TextureError create(const void* pdata, bint16 width, bint16 height, buint8 bytesPerPixel, blib::graphics::RenderContext& ctx, genFlags flags = genFlags::none);
             void free(blib::graphics::RenderContext& ctx);
 
             TextureCtx getContext() const;

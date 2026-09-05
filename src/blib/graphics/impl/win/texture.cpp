@@ -1,13 +1,12 @@
 #include <blib/graphics/texture.h>
 
-#include <iostream>
-#include <stdexcept>
+#include <blib/core/console/console.h>
 
 #include <Windows.h>
 #include <gl/GL.h>
 
-#define __blib_this_context(_this) (this->ctx.textureID)
-#define __blib_get_gl_texture_id(_this) __blib_this_context(_this)
+#define __blib_this_context(_this) static_cast<win_gl_TexturePDCtx*>(&(_this->ctx))
+#define __blib_get_gl_texture_id(_this) __blib_this_context(_this)->textureID
 
 #define GL_CLAMP_TO_EDGE 0x812F
 
@@ -19,16 +18,19 @@ blib::graphics::Texture::~Texture()
 {
     if (__blib_get_gl_texture_id(this))
     {
-        std::cerr << "Memory leak detected" << std::endl;
+        // Текстура уничтожена без free() — GL-ресурс остался висеть в контексте
+        __blib_log_warning("memory leak detected: texture destroyed without free()");
     }
 }
 
-void blib::graphics::Texture::create(const blib::graphics::Image& image, blib::graphics::RenderContext& ctx, genFlags flags)
+blib::graphics::TextureError blib::graphics::Texture::create(const blib::graphics::Image& image, blib::graphics::RenderContext& ctx, genFlags flags)
 {
-    this->create(reinterpret_cast<const void*>(image.getData()), image.width, image.height, 4, ctx, flags);
+    // Image всегда 4 канала (RGBA) — формат гарантирован типом Color,
+    // поэтому код ошибки отсюда не ожидается
+    return this->create(reinterpret_cast<const void*>(image.getData()), image.width, image.height, 4, ctx, flags);
 }
 
-int blib::graphics::Texture::create(const void* pdata, bint16 width, bint16 height, buint8 bytesPerPixel, blib::graphics::RenderContext& ctx, genFlags flags)
+blib::graphics::TextureError blib::graphics::Texture::create(const void* pdata, bint16 width, bint16 height, buint8 bytesPerPixel, blib::graphics::RenderContext& ctx, genFlags flags)
 {
     this->width = width;
     this->height = height;
@@ -49,8 +51,7 @@ int blib::graphics::Texture::create(const void* pdata, bint16 width, bint16 heig
         ctx.api.ogl.ext.__blib_gl_glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, this->width, this->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pdata);
         break;
     default:
-        throw new std::runtime_error("not implemented");
-        break;
+        __blib_return_error(blib::graphics::TextureError::UnsupportedFormat, "unsupported bytes per pixel: %u", static_cast<buint32>(bytesPerPixel));
     }
 
     // TODO : rewrite normaly
@@ -67,7 +68,7 @@ int blib::graphics::Texture::create(const void* pdata, bint16 width, bint16 heig
     // Unbind texture
     ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, 0);
 
-    return 0;
+    return blib::graphics::TextureError::None;
 }
 
 void blib::graphics::Texture::free(blib::graphics::RenderContext& ctx)
@@ -97,13 +98,18 @@ blib::graphics::Texture blib::graphics::Texture::makeTextureAtlas(const std::vec
 
     for (const blib::graphics::Texture& t : textures)
     {
-        if (resWidth + t.width >= buint16Max)
+        if (__blib_unlikely(resWidth + t.width >= buint16Max))
         {
-            throw std::runtime_error("texture atlas is to large");
+            // Атлас не помещается в 16-битную текстуру — возвращаем
+            // пустую текстуру (сигнатура возвращает значение, код
+            // ошибки передать нельзя)
+            __blib_log_error("texture atlas is to large: width overflow (%u + %d)", resWidth, t.width);
+            return blib::graphics::Texture();
         }
-        if (resHeight + t.height >= buint16Max)
+        if (__blib_unlikely(resHeight + t.height >= buint16Max))
         {
-            throw std::runtime_error("texture atlas is to large");
+            __blib_log_error("texture atlas is to large: height overflow (%u + %d)", resHeight, t.height);
+            return blib::graphics::Texture();
         }
 
         resWidth += t.width;
@@ -114,4 +120,6 @@ blib::graphics::Texture blib::graphics::Texture::makeTextureAtlas(const std::vec
     blib::graphics::Image img(resHeight,resHeight);
     //img.update();
 
+    // TODO : недописано — упаковка текстур в атлас (как и раньше)
+    return blib::graphics::Texture();
 }

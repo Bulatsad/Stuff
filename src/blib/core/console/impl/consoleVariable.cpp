@@ -1,5 +1,8 @@
 #include <blib/core/console/consoleVariable.h>
 
+#include <cerrno>
+#include <cstdlib>
+
 #include <utility>
 
 blib::console::ConsoleVariable::ConsoleVariable(
@@ -36,27 +39,28 @@ bool blib::console::ConsoleVariable::getBool() const
 
 bint32 blib::console::ConsoleVariable::getInt() const
 {
-    // Невалидное число трактуем как 0 (геттеры не бросают)
-    try
-    {
-        return std::stoi(this->value);
-    }
-    catch (...)
-    {
+    // strtol не бросает исключений (в отличие от std::stoi), поэтому
+    // try/catch не нужен: невалидное число трактуем как 0.
+    // errno сбрасываем вручную — предыдущий код мог оставить там мусор.
+    const char* begin = this->value.c_str();
+    char* end = nullptr;
+    errno = 0;
+    long parsed = strtol(begin, &end, 10);
+    if (begin == end || errno != 0)
         return 0;
-    }
+    return static_cast<bint32>(parsed);
 }
 
 float blib::console::ConsoleVariable::getFloat() const
 {
-    try
-    {
-        return std::stof(this->value);
-    }
-    catch (...)
-    {
+    // strtof не бросает исключений (в отличие от std::stof):
+    // невалидное число трактуем как 0.0f
+    const char* begin = this->value.c_str();
+    char* end = nullptr;
+    float parsed = strtof(begin, &end);
+    if (begin == end)
         return 0.0f;
-    }
+    return parsed;
 }
 
 const std::string& blib::console::ConsoleVariable::getDefaultValue() const

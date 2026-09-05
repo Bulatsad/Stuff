@@ -1,7 +1,8 @@
 #include <blib/graphics/skelet.h>
 
 #include <stack>
-#include <stdexcept>
+
+#include <blib/core/console/console.h>
 
 blib::graphics::Bone* blib::graphics::Skelet::find(const std::string& name)
 {
@@ -59,9 +60,9 @@ bool blib::graphics::Skelet::makeBoneTree(const aiNode* pbone)
         for (unsigned int i = 0; i < ctx.pnode->mNumChildren; ++i)
         {
             blib::graphics::Bone* storedBone = this->find(ctx.pnode->mChildren[i]->mName.C_Str());
-            if (!storedBone)
+            if (__blib_unlikely(!storedBone))
             {
-                throw std::runtime_error("Bone name not finded");
+                __blib_log_error("bone '%s' not found while building bone tree", ctx.pnode->mChildren[i]->mName.C_Str());
                 return false;
             }
             
@@ -74,9 +75,9 @@ bool blib::graphics::Skelet::makeBoneTree(const aiNode* pbone)
             st.push(newCtx);
         }
 
-        if (ctx.bone->getParent() != ctx.prev)
+        if (__blib_unlikely(ctx.bone->getParent() != ctx.prev))
         {
-            throw std::runtime_error("Reset bone parent");
+            __blib_log_error("inconsistent bone parent while building bone tree (bone '%s')", ctx.bone->name.c_str());
             return false;
         }
     }
@@ -158,23 +159,23 @@ bool blib::graphics::Skelet::finishFromArmature(const aiNode* armature)
 
 bool blib::graphics::Skelet::loadFromAssimp(const aiMesh* paimesh)
 {
-    if (paimesh->mNumBones == 0)
+    if (__blib_unlikely(paimesh->mNumBones == 0))
     {
-        throw std::runtime_error("No bones to load");
+        __blib_log_error("no bones to load from mesh");
         return false;
     }
 
-    if (!(paimesh->mBones[0]->mArmature))
+    if (__blib_unlikely(!(paimesh->mBones[0]->mArmature)))
     {
-        throw std::runtime_error("Armature field not populated");
+        __blib_log_error("armature field not populated in mesh bones");
         return false;
     }
 
     for (unsigned int i = 0; i < paimesh->mNumBones; ++i)
     {
-        if (paimesh->mBones[0]->mArmature != paimesh->mBones[i]->mArmature)
+        if (__blib_unlikely(paimesh->mBones[0]->mArmature != paimesh->mBones[i]->mArmature))
         {
-            throw std::runtime_error("Meshes have different armatures");
+            __blib_log_error("mesh bones belong to different armatures");
             return false;
         }
     }
@@ -183,9 +184,9 @@ bool blib::graphics::Skelet::loadFromAssimp(const aiMesh* paimesh)
 
     for (unsigned int i = 0; i < paimesh->mNumBones; ++i)
     {
-        if(!(this->boneStorage[i].loadFromAssimp(paimesh->mBones[i])))
+        if (__blib_unlikely(!(this->boneStorage[i].loadFromAssimp(paimesh->mBones[i]))))
         {
-            throw std::runtime_error("Error on loading bone");
+            __blib_log_error("error on loading bone #%u", i);
             return false;
         }
     }
@@ -210,24 +211,24 @@ bool blib::graphics::Skelet::loadFromAssimp(const aiScene* paiscene)
             if (!(this->find(paimesh->mBones[b]->mName.C_Str())))
             {
                 this->boneStorage.emplace_back();
-                if (!(this->boneStorage.back().loadFromAssimp(paimesh->mBones[b])))
+                if (__blib_unlikely(!(this->boneStorage.back().loadFromAssimp(paimesh->mBones[b]))))
                 {
-                    throw std::runtime_error("Error on loading bone");
+                    __blib_log_error("error on loading bone '%s'", paimesh->mBones[b]->mName.C_Str());
                     return false;
                 }
             }
         }
     }
 
-    if (this->boneStorage.empty())
+    if (__blib_unlikely(this->boneStorage.empty()))
     {
-        throw std::runtime_error("No bones to load");
+        __blib_log_error("no bones to load from scene");
         return false;
     }
 
-    if (!armature)
+    if (__blib_unlikely(!armature))
     {
-        throw std::runtime_error("Armature field not populated");
+        __blib_log_error("armature field not populated in scene bones");
         return false;
     }
 

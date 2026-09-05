@@ -1,6 +1,6 @@
 #include <blib/graphics/face.h>
 
-#include <stdexcept>
+#include <blib/core/console/console.h>
 
 void blib::graphics::Face::loadFromAssimpFace(const aiFace* paiface)
 {
@@ -17,20 +17,31 @@ void blib::graphics::Face::loadFromAssimpFace(const aiFace* paiface)
 std::vector<buint32> blib::graphics::compileFaces(const blib::graphics::Faces& faces)
 {
     std::vector<buint32> res;
-    
-    if (faces.size() == 0)
-        throw std::runtime_error("Incorrect faces size");
+
+    // Все ошибки возвращают пустой вектор (сигнатура отдаёт значение,
+    // код ошибки передать нельзя) + лог через Console
+    if (__blib_unlikely(faces.size() == 0))
+    {
+        __blib_log_error("compileFaces: empty faces array");
+        return res;
+    }
 
     size_t fsz = faces[0].indices.size();
 
-    if(fsz == 0)
-        throw std::runtime_error("Incorrect faces size");
+    if (__blib_unlikely(fsz == 0))
+    {
+        __blib_log_error("compileFaces: first face has no indices");
+        return res;
+    }
 
     // Check that all faces have same sizes
     for (const blib::graphics::Face& f : faces)
     {
-        if(f.indices.size() != fsz)
-            throw std::runtime_error("Incorrect faces size");
+        if (__blib_unlikely(f.indices.size() != fsz))
+        {
+            __blib_log_error("compileFaces: faces have different index counts (%zu vs %zu)", f.indices.size(), fsz);
+            return res;
+        }
     }
 
     res.resize(faces.size() * fsz);

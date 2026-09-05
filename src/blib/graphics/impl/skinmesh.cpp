@@ -1,6 +1,6 @@
 #include <blib/graphics/skinmesh.h>
 
-#include <stdexcept>
+#include <blib/core/console/console.h>
 
 bool blib::graphics::SkinMesh::loadFromAssimpMesh(const aiMesh* paimesh, const blib::graphics::Skelet& skelet)
 {
@@ -20,14 +20,14 @@ bool blib::graphics::SkinMesh::loadFromAssimpMesh(const aiMesh* paimesh, const b
         const aiBone* paibone = paimesh->mBones[b];
 
         size_t boneIndex = skelet.findBoneIndex(paibone->mName.C_Str());
-        if (boneIndex >= skelet.getBoneStorage().size())
+        if (__blib_unlikely(boneIndex >= skelet.getBoneStorage().size()))
         {
-            throw std::runtime_error("Bone not found in skelet while loading mesh weights");
+            __blib_log_error("bone '%s' not found in skelet while loading mesh weights", paibone->mName.C_Str());
             return false;
         }
-        if (boneIndex >= __blib_max_bones)
+        if (__blib_unlikely(boneIndex >= __blib_max_bones))
         {
-            throw std::runtime_error("Too many bones for skinning shader");
+            __blib_log_error("too many bones for skinning shader (bone '%s' at index %zu, max %d)", paibone->mName.C_Str(), boneIndex, __blib_max_bones);
             return false;
         }
 
@@ -39,7 +39,10 @@ bool blib::graphics::SkinMesh::loadFromAssimpMesh(const aiMesh* paimesh, const b
             size_t slot = weightCount[vertexId];
             if (slot >= 4)
             {
-                // TODO : Logging
+                // Шейдер держит максимум 4 веса на вершину — лишние
+                // отбрасываем, но предупреждаем о потере данных
+                __blib_log_warning("vertex %zu of mesh has more than 4 bone weights, extra weights skipped (bone '%s')",
+                    vertexId, paibone->mName.C_Str());
                 continue;
             }
 

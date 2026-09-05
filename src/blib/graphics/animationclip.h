@@ -2,13 +2,13 @@
 
 #include <blib/config.h>
 
+#include <blib/core/console/console.h>
 #include <blib/graphics/vector.h>
 #include <blib/core/math/quaternion.h>
 #include <blib/core/math/vector.h>
 
 #include <assimp/anim.h>
 
-#include <stdexcept>
 #include <vector>
 
 namespace blib
@@ -23,7 +23,10 @@ namespace blib
             {
                 if (vec.size() == 0)
                 {
-                    throw std::runtime_error("Cannot find borders in empty key vector");
+                    // Пустой канал анимации — валидная ситуация (канал
+                    // без ключей), возвращаем вырожденный диапазон
+                    __blib_log_debug("findBorders: empty key vector for bone '%s'", this->boneName.c_str());
+                    return std::make_pair(0, 0);
                 }
                 if (vec.size() == 1)
                 {
@@ -111,7 +114,7 @@ namespace blib
                 {
                     if (!(this->positionKeys[i].second.loadFromAssimp(&(panimationChannel->mPositionKeys[i].mValue))))
                     {
-                        // TODO : Logging
+                        __blib_log_error("animation channel '%s': failed to load position key #%zu", this->boneName.c_str(), i);
                         return false;
                     }
                     this->positionKeys[i].first = panimationChannel->mPositionKeys[i].mTime;
@@ -120,7 +123,7 @@ namespace blib
                 {
                     if (!(this->scaleKeys[i].second.loadFromAssimp(&(panimationChannel->mScalingKeys[i].mValue))))
                     {
-                        // TODO : Logging
+                        __blib_log_error("animation channel '%s': failed to load scale key #%zu", this->boneName.c_str(), i);
                         return false;
                     }
                     this->scaleKeys[i].first = panimationChannel->mScalingKeys[i].mTime;
@@ -129,7 +132,7 @@ namespace blib
                 {
                     if (!(this->rotaionKeys[i].second.loadFromAssimp(&(panimationChannel->mRotationKeys[i].mValue))))
                     {
-                        // TODO : Logging
+                        __blib_log_error("animation channel '%s': failed to load rotation key #%zu", this->boneName.c_str(), i);
                         return false;
                     }
                     this->rotaionKeys[i].first = panimationChannel->mRotationKeys[i].mTime;
@@ -163,7 +166,7 @@ namespace blib
                 {
                     if (!(this->channels[i].loadFromAssimp(panim->mChannels[i])))
                     {
-                        // TODO : Logging
+                        __blib_log_error("animation '%s': failed to load channel #%zu", this->name.c_str(), i);
                         return false;
                     }
                 }

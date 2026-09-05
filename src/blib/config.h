@@ -99,3 +99,54 @@
 
 //Current render api
 #define __blib_render_api_opengl
+
+// ---------------------------------------------------------------
+// Branch prediction hints для обработки ошибок.
+// Помогают компилятору оптимизировать hot path, вынося холодные
+// ветки (обработка ошибок) в конец функции.
+// 
+// Использование:
+//   if (__blib_expect_false(error_condition)) {
+//       // обработка ошибки (cold path)
+//   }
+//   // hot path продолжается
+//
+// Поддержка:
+//   - GCC/Clang: __builtin_expect (работает с C++11+)
+//   - MSVC: компилятор игнорирует, но код компилируется
+//   - Другие: fallback без оптимизации
+#if defined(__GNUC__) || defined(__clang__)
+    #define __blib_expect_true(x)  __builtin_expect(!!(x), 1)
+    #define __blib_expect_false(x) __builtin_expect(!!(x), 0)
+#else
+    // MSVC и другие компиляторы — без оптимизации
+    #define __blib_expect_true(x)  (x)
+    #define __blib_expect_false(x) (x)
+#endif
+
+// Краткие алиасы для удобства
+#define __blib_likely(x)   __blib_expect_true(x)
+#define __blib_unlikely(x) __blib_expect_false(x)
+
+// ---------------------------------------------------------------
+// Обработка ошибок: макросы возврата и фатальных ошибок
+// (архитектура: ERROR_HANDLING_ARCHITECTURE.md в корне репозитория).
+//
+// __blib_return_error(code, ...) — логирует ошибку в Console и
+// возвращает код из функции. Требует включённый
+// <blib/core/console/console.h> в месте использования.
+//
+// __blib_fatal(...) — логирует фатальную ошибку и аварийно
+// завершает процесс через std::abort(). Требует <cstdlib>
+// и <blib/core/console/console.h> в месте использования.
+#define __blib_return_error(code, ...) \
+    do { \
+        __blib_log_error(__VA_ARGS__); \
+        return code; \
+    } while(0)
+
+#define __blib_fatal(...) \
+    do { \
+        __blib_log_error(__VA_ARGS__); \
+        std::abort(); \
+    } while(0)

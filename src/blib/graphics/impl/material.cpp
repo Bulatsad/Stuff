@@ -1,22 +1,24 @@
 #include <blib/graphics/material.h>
 
-#include<stdexcept>
+#include <blib/core/console/console.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
-int blib::graphics::Material::loadDiffuseTextureFromAssimp(const aiMaterial* pmaterial, const blib::core::Folder& folder)
+blib::graphics::MaterialError blib::graphics::Material::loadDiffuseTextureFromAssimp(const aiMaterial* pmaterial, const blib::core::Folder& folder)
 {
     aiString path(folder.getCurrentPath());
 
-    unsigned int textureCount = pmaterial->GetTextureCount(aiTextureType::aiTextureType_DIFFUSE) != 0;
+    // BUG-FIX: раньше стояло `... != 0`, что превращало количество
+    // текстур в bool и проверка `> 1` никогда не срабатывала
+    unsigned int textureCount = pmaterial->GetTextureCount(aiTextureType::aiTextureType_DIFFUSE);
 
-    if (textureCount > 1)
+    if (__blib_unlikely(textureCount > 1))
     {
-        throw new std::runtime_error("not implemented");
+        __blib_return_error(blib::graphics::MaterialError::NotImplemented, "multiple diffuse textures are not implemented (%u found)", textureCount);
     }
 
-    //for (decltype(textureCount) i = 0; i < textureCount; +i)
+    if (__blib_likely(textureCount == 1))
     {
         if (pmaterial->GetTexture(aiTextureType_DIFFUSE, 0, &path) == aiReturn_SUCCESS)
         {
@@ -30,12 +32,11 @@ int blib::graphics::Material::loadDiffuseTextureFromAssimp(const aiMaterial* pma
 
                 stbi_set_flip_vertically_on_load(1);
                 stbi_uc* pPixelData = stbi_load(tmpfolder.getCurrentPath().c_str(), &width, &height, &channels, 0);
-                if (!pPixelData)
+                if (__blib_unlikely(!pPixelData))
                 {
-                    throw new std::runtime_error(stbi_failure_reason());
+                    __blib_return_error(blib::graphics::MaterialError::TextureLoadFailed, "stbi_load failed: %s", stbi_failure_reason());
                 }
 
-                //this->diffuse.create(reinterpret_cast<void*>(pPixelData), width, height, channels);
                 switch (channels)
                 {
                 case 3:
@@ -50,43 +51,45 @@ int blib::graphics::Material::loadDiffuseTextureFromAssimp(const aiMaterial* pma
                             this->diffuseImage[i][j].alpha = 0;
                         }
                     }
-                    //ctx.api.ogl.ext.__blib_gl_glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, this->width, this->height, 0, GL_RGB, GL_UNSIGNED_BYTE, pdata);
                     break;
                 case 4:
                     this->diffuseImage = blib::graphics::Image(width, height, reinterpret_cast<blib::graphics::Color*>(pPixelData));
-                    //ctx.api.ogl.ext.__blib_gl_glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, this->width, this->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pdata);
                     break;
                 default:
-                    throw new std::runtime_error("not implemented");
-                    break;
+                    stbi_image_free(pPixelData);
+                    __blib_return_error(blib::graphics::MaterialError::UnsupportedFormat, "unsupported texture channel count: %d", channels);
                 }
-                
-
 
                 stbi_image_free(pPixelData);
             }
             else
             {
-                throw new std::runtime_error("error texture");
+                __blib_return_error(blib::graphics::MaterialError::TextureLoadFailed, "can not resolve texture path '%s'", texturePath.c_str());
             }
         }
         else
         {
-            throw new std::runtime_error("error texture");
-
+            __blib_return_error(blib::graphics::MaterialError::TextureLoadFailed, "assimp failed to get diffuse texture");
         }
-
     }
 
+    return blib::graphics::MaterialError::None;
 }
 
 bool blib::graphics::Material::bake(blib::graphics::RenderContext& ctx)
 {
-    this->diffuse.create(this->diffuseImage, ctx);
+    blib::graphics::TextureError err = this->diffuse.create(this->diffuseImage, ctx);
+    if (__blib_unlikely(err != blib::graphics::TextureError::None))
+    {
+        __blib_log_warning("material bake: failed to create diffuse texture (error %u)", static_cast<buint32>(err));
+        return false;
+    }
     return true;
 }
 
 void blib::graphics::Material::loadFromAssimpMaterial(const aiMaterial* pmaterial, const blib::core::Folder& folder)
 {
+    // Детали ошибки уже залогированы внутри loadDiffuseTextureFromAssimp
+    // через __blib_return_error, дублировать тут незачем
     this->loadDiffuseTextureFromAssimp(pmaterial, folder);
 }

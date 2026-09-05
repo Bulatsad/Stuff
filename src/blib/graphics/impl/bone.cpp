@@ -1,14 +1,14 @@
 #include <blib/graphics/bone.h>
 
-#include <stdexcept>
+#include <blib/core/console/console.h>
 
 bool blib::graphics::Bone::loadFromAssimp(const aiBone* pbone)
 {
     this->name = std::string(pbone->mName.C_Str());
 
-    if (this->name.empty())
+    if (__blib_unlikely(this->name.empty()))
     {
-        throw std::runtime_error("Empty bone name");
+        __blib_log_error("empty bone name while loading from assimp");
         return false;
     }
 

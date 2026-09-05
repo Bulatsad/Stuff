@@ -1,6 +1,8 @@
 #include <blib/graphics/opengl.h>
 
-#include <iostream>
+#include <cstdlib>
+
+#include <blib/core/console/console.h>
 
 #include <Windows.h>
 
@@ -25,12 +27,8 @@ void* blib::graphics::RenderApi::getprocaddr(const char* fname)
         //Free the Win32's string's buffer.
         LocalFree(messageBuffer);
 
-
-        std::cerr << "Error on loading opengl function. Function name: " << fname << std::endl;
-        std::cerr << "Cause : " << message << std::endl;
-        throw new std::runtime_error("Error on loading opengl function");
-
-
+        // Без GL-функции движок работать не может — фатальная ошибка
+        __blib_fatal("error on loading opengl function '%s': %s", fname, message.c_str());
     }
 
     return addr;

@@ -1,7 +1,5 @@
 #include <blib/graphics/rendercontext.h>
 
-#include<stdexcept>
-
 #include <blib/graphics/camera.h>
 #include <blib/graphics/shader.h>
 
@@ -36,8 +34,10 @@ void blib::graphics::RenderContext::sendVievMatrixToShaderProgram()
 
     const void* pViewMatrix = static_cast<const void*>(&(this->pCamera->getViewMatrix().data));
     
+    // Uniform нет в шейдере — пропускаем отправку (hot path,
+    // как и sendBoneMatricesToShaderProgram ниже — без логов)
     if (location == -1)
-        throw std::runtime_error("no location for view matrix uniform");
+        return;
     this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_TRUE, reinterpret_cast<const GLfloat*>(pViewMatrix));
 }
 
@@ -52,8 +52,9 @@ void blib::graphics::RenderContext::sendProjectionMatrixToShaderProgram()
 
     const void* pProjectionMatrix = static_cast<const void*>(&(this->pCamera->getProjectionMatrix().data));
 
+    // Uniform нет в шейдере — пропускаем отправку
     if (location == -1)
-        throw std::runtime_error("no location for projection matrix uniform");
+        return;
     this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_TRUE, reinterpret_cast<const GLfloat*>(pProjectionMatrix));
 }
 
@@ -63,8 +64,9 @@ void blib::graphics::RenderContext::sendModelMatrixToShaderProgram(const blib::g
 
     const void* pModelMatrix = static_cast<const void*>(&(modelMatix.data));
 
+    // Uniform нет в шейдере — пропускаем отправку
     if (location == -1)
-        throw std::runtime_error("no location for projection matrix uniform");
+        return;
     this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_TRUE, reinterpret_cast<const GLfloat*>(pModelMatrix));
 }
 

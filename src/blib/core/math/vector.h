@@ -61,8 +61,10 @@
     template<class rhsType, VectorSizeT rhsSize>                           \
     Vector(const Vector<rhsType, rhsSize>& rhs)                            \
     {                                                                      \
-        if (size > rhsSize)                                                \
-            throw std::runtime_error("Rhs vector size must be more or equal"); \
+        /* размеры известны на этапе компиляции — ловим                 */ \
+        /* несовместимость статически (раньше тут был throw)            */ \
+        static_assert(size <= rhsSize,                                     \
+            "Rhs vector size must be more or equal");                      \
                                                                            \
         for (VectorSizeT i = 0; i < size; ++i)                             \
         {                                                                  \

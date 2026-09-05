@@ -1,23 +1,10 @@
 #include <blib/graphics/shader.h>
 
-#include <iostream>
 #include <fstream>
 
 #include <blib/inline.h>
+#include <blib/core/console/console.h>
 #include <blib/graphics/opengl.h>
-
-static GLenum blibShaderTypeToOpenGLShaderType(const blib::graphics::Shader::Type& type)
-{
-    switch (type)
-    {
-        case blib::graphics::Shader::Type::fragment:
-            return GL_FRAGMENT_SHADER;
-        case blib::graphics::Shader::Type::vertex:
-            return GL_VERTEX_SHADER;
-    default:
-        throw new std::runtime_error("");
-    }
-}
 
 static struct oglShaderContext
 {
@@ -73,24 +60,21 @@ void blib::graphics::Shader::setRenderApi(RenderApi* pRenderApi)
     __blib_this_context(this)->pRenderApi = pRenderApi;
 }
 
-int blib::graphics::Shader::compile()
+blib::graphics::ShaderError blib::graphics::Shader::compile()
 {
     __blib_this_context(this)->shaderType = blibShaderTypeToOGL(this->type);
 
-    if (__blib_this_context(this)->shaderType == GL_NONE_SHADER)
+    if (__blib_unlikely(__blib_this_context(this)->shaderType == GL_NONE_SHADER))
     {
-        std::cerr << "Invalid shader type";
-        throw new std::runtime_error("Invalid shader type");
-        return EXIT_FAILURE;
+        __blib_return_error(blib::graphics::ShaderError::InvalidType, "invalid shader type");
     }
 
     std::ifstream fin;
     fin.open(this->shaderPath, std::ios::in);
 
-    if (!fin.is_open())
+    if (__blib_unlikely(!fin.is_open()))
     {
-        std::cerr << "Can not open shader file";
-        throw new std::runtime_error("Can not open shader file");
+        __blib_return_error(blib::graphics::ShaderError::FileNotFound, "can not open shader file '%s'", this->shaderPath.c_str());
     }
 
     fin.seekg(0, std::ios::end);
@@ -99,30 +83,24 @@ int blib::graphics::Shader::compile()
 
     std::string shaderText(size, '\0');
     fin.read(&shaderText[0], size);
-    //if (!fin.read(&shaderText[0], size)) {
-    //    std::cerr << "Error at reading shader sources by path:" << this->shaderPath;
-    //    throw std::runtime_error("Error at reading shader sources by path:: " + this->shaderPath);
-    //}
 
     const char* pSource = shaderText.c_str();
 
-    __blib_this_context(this)->glShader = __blib_this_context(this)->pRenderApi->ogl.ext.__blib_gl_glCreateShader(blibShaderTypeToOpenGLShaderType(this->type));
+    __blib_this_context(this)->glShader = __blib_this_context(this)->pRenderApi->ogl.ext.__blib_gl_glCreateShader(blibShaderTypeToOGL(this->type));
     __blib_this_context(this)->pRenderApi->ogl.ext.__blib_gl_glShaderSource(__blib_this_context(this)->glShader, 1, static_cast<const GLchar**>(&pSource), NULL);
     __blib_this_context(this)->pRenderApi->ogl.ext.__blib_gl_glCompileShader(__blib_this_context(this)->glShader);
 
     GLint ok = false;
     __blib_this_context(this)->pRenderApi->ogl.ext.__blib_gl_glGetShaderiv(__blib_this_context(this)->glShader, GL_COMPILE_STATUS, &ok);
-    if (!ok)
+    if (__blib_unlikely(!ok))
     {
         std::string errstr;
         errstr.resize(5000);
         __blib_this_context(this)->pRenderApi->ogl.ext.__blib_gl_glGetShaderInfoLog(__blib_this_context(this)->glShader, errstr.size(), NULL, &(errstr[0]));
-        std::cerr << "Error on shader compilation: " << errstr;
-        throw std::runtime_error("Error on shader compilation: " + errstr);
-        return EXIT_FAILURE;
+        __blib_return_error(blib::graphics::ShaderError::CompilationFailed, "error on shader compilation: %s", errstr.c_str());
     }
 
-    return EXIT_SUCCESS;
+    return blib::graphics::ShaderError::None;
 }
 
 #undef __blib_this_context
@@ -146,23 +124,21 @@ int blib::graphics::ShaderProgram::create()
     return __blib_this_context(this)->glProgram;
 }
 
-int blib::graphics::ShaderProgram::compile()
+blib::graphics::ShaderError blib::graphics::ShaderProgram::compile()
 {
     __blib_this_context(this)->pRenderApi->ogl.ext.__blib_gl_glLinkProgram(__blib_this_context(this)->glProgram);
 
     GLint ok = false;
     __blib_this_context(this)->pRenderApi->ogl.ext.__blib_gl_glGetProgramiv(__blib_this_context(this)->glProgram, GL_LINK_STATUS, &ok);
-    if (!ok)
+    if (__blib_unlikely(!ok))
     {
         std::string errstr;
         errstr.resize(5000);
         __blib_this_context(this)->pRenderApi->ogl.ext.__blib_gl_glGetProgramInfoLog(__blib_this_context(this)->glProgram, errstr.size(), NULL, &(errstr[0]));
-        std::cerr << "Error on shader compilation: " << errstr;
-        throw std::runtime_error("Error on shader compilation: " + errstr);
-        return EXIT_FAILURE;
+        __blib_return_error(blib::graphics::ShaderError::LinkFailed, "error on shader program linking: %s", errstr.c_str());
     }
 
-    return EXIT_SUCCESS;
+    return blib::graphics::ShaderError::None;
 }
 
 GLuint blib::graphics::ShaderProgram::getContext()

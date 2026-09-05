@@ -16,6 +16,16 @@ namespace blib
 {
     namespace graphics
     {
+        // Коды ошибок загрузки материалов (см. AGENTS.md,
+        // раздел "Обработка ошибок": None = 0 — всегда успех)
+        enum class MaterialError : buint32
+        {
+            None = 0,
+            TextureLoadFailed,
+            UnsupportedFormat,
+            NotImplemented
+        };
+
         class __blib_graphics_api Material 
         {
         public:
@@ -37,7 +47,7 @@ namespace blib
             float m_alphaTest = 0.0f;
 
             void loadFromAssimpMaterial(const aiMaterial* pmaterial, const blib::core::Folder& folder);
-            int loadDiffuseTextureFromAssimp(const aiMaterial* pmaterial, const blib::core::Folder& folder);
+            MaterialError loadDiffuseTextureFromAssimp(const aiMaterial* pmaterial, const blib::core::Folder& folder);
             bool bake(blib::graphics::RenderContext& ctx);
 
             ~Material()

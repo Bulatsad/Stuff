@@ -1,6 +1,6 @@
 #include <blib/graphics/mesh.h>
 
-#include<stdexcept>
+#include <blib/core/console/console.h>
 
 #include <Windows.h>
 #include <gl/GL.h>
@@ -35,8 +35,9 @@ __blib_private_func inline GLenum primitiveTypeToOGL(const blib::graphics::Primi
     case blib::graphics::PrimitiveType::TriangleStrip:
         return GL_TRIANGLE_STRIP;
     default:
-        throw std::runtime_error("Unknown primitive type");
-        break;
+        // Неизвестный тип примитива: 0 — невалидный GL-режим,
+        // GL просто ничего не отрисует (это hot path — без логов)
+        return 0;
     }
 }
 
@@ -100,8 +101,8 @@ void blib::graphics::Mesh::loadFromAssimpMesh(const aiMesh* paimesh)
         break;
 
     default:
-        throw std::runtime_error("unknown primitive type");
-        break;
+        __blib_log_error("unknown assimp primitive type: 0x%X", tmptype);
+        return;
     }
 
     loadVertexFromAssimp(*this, paimesh);
@@ -200,18 +201,39 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderContext& ctx) const
     this->vertexShader.setPath(vertexShaderPath);
     this->vertexShader.setType(blib::graphics::Shader::Type::vertex);
     this->vertexShader.setRenderApi(&(ctx.api));
-    this->vertexShader.compile();
+    // Ошибка компиляции шейдера не фатальна для процесса: логируем
+    // предупреждение и продолжаем — меш "запечётся" с битым шейдером
+    // и просто не отрисуется (baked выставится, повторных попыток не будет)
+    {
+        blib::graphics::ShaderError err = this->vertexShader.compile();
+        if (__blib_unlikely(err != blib::graphics::ShaderError::None))
+        {
+            __blib_log_warning("mesh bake: vertex shader compile failed (error %u)", static_cast<buint32>(err));
+        }
+    }
 
     this->fragmentShader.setPath("M:\\Stuff\\src\\shaders\\mesh\\MeshFragmentShader.glsl");
     this->fragmentShader.setType(blib::graphics::Shader::Type::fragment);
     this->fragmentShader.setRenderApi(&(ctx.api));
-    this->fragmentShader.compile();
+    {
+        blib::graphics::ShaderError err = this->fragmentShader.compile();
+        if (__blib_unlikely(err != blib::graphics::ShaderError::None))
+        {
+            __blib_log_warning("mesh bake: fragment shader compile failed (error %u)", static_cast<buint32>(err));
+        }
+    }
 
     this->drawer.setRenderApi(&(ctx.api));
     this->drawer.create();
     this->drawer.AttachShader(this->vertexShader);
     this->drawer.AttachShader(this->fragmentShader);
-    this->drawer.compile();
+    {
+        blib::graphics::ShaderError err = this->drawer.compile();
+        if (__blib_unlikely(err != blib::graphics::ShaderError::None))
+        {
+            __blib_log_warning("mesh bake: shader program link failed (error %u)", static_cast<buint32>(err));
+        }
+    }
 
     this->material.bake(ctx);
 
