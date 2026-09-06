@@ -1,4 +1,4 @@
-#include <iostream>
+#include <ctime>
 
 #include <assimp/config.h>
 #include <assimp/Importer.hpp>
@@ -163,7 +163,7 @@ int main()
     );
     if (!pscene)
     {
-        std::cerr << "error on loading object file" << std::endl;
+        __blib_log_error("error on loading object file '%s': %s", objectfilename.c_str(), importer.GetErrorString());
         return EXIT_FAILURE;
     }
 

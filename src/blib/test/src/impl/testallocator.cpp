@@ -53,7 +53,7 @@ using namespace blib::memory;
 // Non-MSVC platforms: skip abort tests (could use signal handlers in future)
 #define BLIB_TEST_EXPECT_ABORT(expr) \
 	do { \
-		std::cerr << "  SKIPPED: BLIB_TEST_EXPECT_ABORT not supported on this platform" << std::endl; \
+		__blib_log_info("  SKIPPED: BLIB_TEST_EXPECT_ABORT not supported on this platform"); \
 	} while(0)
 #endif
 
@@ -399,7 +399,7 @@ BLIB_TEST_CASE("DefaultAllocator: auto-wrapped in debug mode")
 	
 	alloc.deallocate(ptr, 64);
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -529,7 +529,7 @@ BLIB_TEST_CASE("PoolAllocator: getBlockSize returns correct value")
 	BLIB_TEST_CHECK(pool1.getBlockSize() == 32);
 	BLIB_TEST_CHECK(pool2.getBlockSize() == 128);
 #else
-	std::cout << "  SKIPPED (getBlockSize not available in debug mode)" << std::endl;
+	__blib_log_info("  SKIPPED (getBlockSize not available in debug mode)");
 #endif
 }
 
@@ -635,7 +635,7 @@ BLIB_TEST_CASE("PoolAllocator: getTotalBlocks tracking")
 	
 	pool.deallocate(ptr, 64);
 #else
-	std::cout << "  SKIPPED (getTotalBlocks not available in debug mode)" << std::endl;
+	__blib_log_info("  SKIPPED (getTotalBlocks not available in debug mode)");
 #endif
 }
 
@@ -689,7 +689,7 @@ BLIB_TEST_CASE("DebugAllocator: detects front guard corruption (underflow)")
 	
 	// Note: Can't cleanup after abort, memory will leak in this test
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -705,7 +705,7 @@ BLIB_TEST_CASE("DebugAllocator: detects back guard corruption (overflow)")
 	// deallocate should detect and abort
 	BLIB_TEST_EXPECT_ABORT(alloc.deallocate(ptr, 64));
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -728,7 +728,7 @@ BLIB_TEST_CASE("DebugAllocator: poisons memory after deallocate")
 	// Test passes if deallocate succeeded without crashing
 	BLIB_TEST_CHECK(true);
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -743,7 +743,7 @@ BLIB_TEST_CASE("DebugAllocator: detects double-free")
 	// Second free should detect (magic == MAGIC_FREED)
 	BLIB_TEST_EXPECT_ABORT(alloc.deallocate(ptr, 64));
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -759,7 +759,7 @@ BLIB_TEST_CASE("DebugAllocator: detects size mismatch")
 	// Cleanup with correct size (if abort didn't kill process)
 	// alloc.deallocate(ptr, 64);
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -781,7 +781,7 @@ BLIB_TEST_CASE("DebugAllocator: overhead is 40 bytes per allocation")
 	
 	alloc.deallocate(ptr, 64);
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -794,7 +794,7 @@ BLIB_TEST_CASE("DebugAllocator: wraps MallocAllocator correctly")
 	
 	alloc.deallocate(ptr, 128);
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -807,7 +807,7 @@ BLIB_TEST_CASE("DebugAllocator: wraps PoolAllocator correctly")
 	
 	pool.deallocate(ptr, 64);
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -820,7 +820,7 @@ BLIB_TEST_CASE("DebugAllocator: handles minimum size allocation (1 byte)")
 	
 	alloc.deallocate(ptr, 1);
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -834,7 +834,7 @@ BLIB_TEST_CASE("DebugAllocator: handles large allocations (1MB+)")
 	
 	alloc.deallocate(ptr, largeSize);
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -855,7 +855,7 @@ BLIB_TEST_CASE("DebugAllocator: stress test (1000 allocations)")
 		alloc.deallocate(ptr, 64);
 	}
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -924,7 +924,7 @@ BLIB_TEST_CASE("Allocator: copy constructor")
 	alloc1.deallocate(ptr1, 64);
 	alloc2.deallocate(ptr2, 64);
 #else
-	std::cout << "  SKIPPED (copy not supported for stateful allocators in debug mode)" << std::endl;
+	__blib_log_info("  SKIPPED (copy not supported for stateful allocators in debug mode)");
 #endif
 }
 
@@ -1078,7 +1078,7 @@ BLIB_TEST_CASE("Integration: all allocators auto-wrapped in debug mode")
 	mal.deallocate(ptr2, 64);
 	pool.deallocate(ptr3, 64);
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -1186,7 +1186,7 @@ BLIB_TEST_CASE("Integration: performance comparison (informational)")
 {
 	constexpr int iterations = 10000;
 	
-	std::cout << "  Performance comparison (" << iterations << " allocations):" << std::endl;
+	__blib_log_info("  Performance comparison (%d allocations):", iterations);
 	
 	// DefaultAllocator
 	{
@@ -1200,7 +1200,7 @@ BLIB_TEST_CASE("Integration: performance comparison (informational)")
 		
 		auto end = std::chrono::high_resolution_clock::now();
 		auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-		std::cout << "    DefaultAllocator: " << duration.count() << " μs" << std::endl;
+		__blib_log_info("    DefaultAllocator: %lld μs", static_cast<long long>(duration.count()));
 	}
 	
 	// PoolAllocator
@@ -1215,7 +1215,7 @@ BLIB_TEST_CASE("Integration: performance comparison (informational)")
 		
 		auto end = std::chrono::high_resolution_clock::now();
 		auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-		std::cout << "    PoolAllocator: " << duration.count() << " μs" << std::endl;
+		__blib_log_info("    PoolAllocator: %lld μs", static_cast<long long>(duration.count()));
 	}
 }
 
@@ -1247,7 +1247,7 @@ BLIB_TEST_CASE("Allocator: copy ctor allocates impl in heap (GA tracked)")
 	size_t countAfter = ga.getAllocationCount();
 	BLIB_TEST_CHECK(countAfter == countBefore);
 #else
-	std::cout << "  SKIPPED (copy not supported for stateful allocators in debug mode)" << std::endl;
+	__blib_log_info("  SKIPPED (copy not supported for stateful allocators in debug mode)");
 #endif
 }
 
@@ -1268,7 +1268,7 @@ BLIB_TEST_CASE("Allocator: copy of copy keeps GA balanced")
 	
 	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
 #else
-	std::cout << "  SKIPPED (copy not supported for stateful allocators in debug mode)" << std::endl;
+	__blib_log_info("  SKIPPED (copy not supported for stateful allocators in debug mode)");
 #endif
 }
 
@@ -1292,7 +1292,7 @@ BLIB_TEST_CASE("Allocator: clone() creates independent copy (stateless)")
 	
 	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
 #else
-	std::cout << "  SKIPPED (deepCopy not supported for stateful allocators in debug mode)" << std::endl;
+	__blib_log_info("  SKIPPED (deepCopy not supported for stateful allocators in debug mode)");
 #endif
 }
 
@@ -1569,7 +1569,7 @@ BLIB_TEST_CASE("PoolAllocator: getApproximateFreeBlocks tracking")
 	pool.deallocate(ptr2, 64);
 	BLIB_TEST_CHECK(pool.getApproximateFreeBlocks() == 8);
 #else
-	std::cout << "  SKIPPED (getApproximateFreeBlocks not available in debug mode)" << std::endl;
+	__blib_log_info("  SKIPPED (getApproximateFreeBlocks not available in debug mode)");
 #endif
 }
 
@@ -1586,7 +1586,7 @@ BLIB_TEST_CASE("PoolAllocator: blockSize clamped to sizeof(void*)")
 	BLIB_TEST_CHECK(ptr != nullptr);
 	pool.deallocate(ptr, sizeof(void*));
 #else
-	std::cout << "  SKIPPED (getBlockSize not available in debug mode)" << std::endl;
+	__blib_log_info("  SKIPPED (getBlockSize not available in debug mode)");
 #endif
 }
 
@@ -1606,7 +1606,7 @@ BLIB_TEST_CASE("PoolAllocator: deallocate with wrong size is silently ignored")
 	BLIB_TEST_CHECK(pool.getApproximateFreeBlocks() == 8);
 #else
 	// В debug wrong size детектируется DebugAllocator (abort), поэтому skip
-	std::cout << "  SKIPPED (DebugAllocator aborts on size mismatch in debug mode)" << std::endl;
+	__blib_log_info("  SKIPPED (DebugAllocator aborts on size mismatch in debug mode)");
 #endif
 }
 
@@ -1657,7 +1657,7 @@ BLIB_TEST_CASE("DebugAllocator: detects invalid pointer")
 	
 	// Память fakeBuffer - стек, освобождать не нужно
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -1679,7 +1679,7 @@ BLIB_TEST_CASE("DebugAllocator: detects header corruption (magic field)")
 	
 	// Note: память намеренно не освобождается после abort (как в guard-тестах)
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 
@@ -1691,7 +1691,7 @@ BLIB_TEST_CASE("DebugAllocator: allocate(0) returns nullptr")
 	void* ptr = alloc.allocate(0);
 	BLIB_TEST_CHECK(ptr == nullptr);
 #else
-	std::cout << "  SKIPPED (debug mode only)" << std::endl;
+	__blib_log_info("  SKIPPED (debug mode only)");
 #endif
 }
 

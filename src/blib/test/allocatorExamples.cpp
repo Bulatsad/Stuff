@@ -20,9 +20,10 @@
 #include <blib/system/memory/allocators/mallocAllocator.h>
 #include <blib/system/memory/allocators/poolAllocator.h>
 
-#include <iostream>
+#include <blib/core/console/console.h>
 #include <vector>
 #include <memory>
+#include <string>
 
 // ============================================================================
 // Пример 0: Автоматический Debug Mode (NEW!)
@@ -30,25 +31,25 @@
 
 void example0_autoDebugMode()
 {
-    std::cout << "=== Example 0: Automatic Debug Mode ===" << std::endl;
+    __blib_log_info("=== Example 0: Automatic Debug Mode ===");
 
 #ifdef BLIB_DEBUG_ALLOCATOR_ENABLED
-    std::cout << "Running in DEBUG mode - all allocators are wrapped in DebugAllocator!" << std::endl;
-    std::cout << "  - DefaultAllocator = DebugAllocator<DefaultAllocatorImpl>" << std::endl;
-    std::cout << "  - MallocAllocator = DebugAllocator<MallocAllocatorImpl>" << std::endl;
-    std::cout << "  - PoolAllocator = DebugAllocator<PoolAllocatorImpl>" << std::endl;
-    std::cout << "  - Guard bytes active" << std::endl;
-    std::cout << "  - Poison memory active" << std::endl;
-    std::cout << "  - Double-free detection active" << std::endl;
+    __blib_log_info("Running in DEBUG mode - all allocators are wrapped in DebugAllocator!");
+    __blib_log_info("  - DefaultAllocator = DebugAllocator<DefaultAllocatorImpl>");
+    __blib_log_info("  - MallocAllocator = DebugAllocator<MallocAllocatorImpl>");
+    __blib_log_info("  - PoolAllocator = DebugAllocator<PoolAllocatorImpl>");
+    __blib_log_info("  - Guard bytes active");
+    __blib_log_info("  - Poison memory active");
+    __blib_log_info("  - Double-free detection active");
 #else
-    std::cout << "Running in RELEASE mode - no debug overhead" << std::endl;
-    std::cout << "  - DefaultAllocator = DefaultAllocatorImpl" << std::endl;
-    std::cout << "  - MallocAllocator = MallocAllocatorImpl" << std::endl;
-    std::cout << "  - PoolAllocator = PoolAllocatorImpl" << std::endl;
-    std::cout << "  - Maximum performance" << std::endl;
+    __blib_log_info("Running in RELEASE mode - no debug overhead");
+    __blib_log_info("  - DefaultAllocator = DefaultAllocatorImpl");
+    __blib_log_info("  - MallocAllocator = MallocAllocatorImpl");
+    __blib_log_info("  - PoolAllocator = PoolAllocatorImpl");
+    __blib_log_info("  - Maximum performance");
 #endif
 
-    std::cout << "\nAll examples below benefit from automatic debug checks!" << std::endl;
+    __blib_log_info("\nAll examples below benefit from automatic debug checks!");
 }
 
 // ============================================================================
@@ -57,7 +58,7 @@ void example0_autoDebugMode()
 
 void example1_basicUsage()
 {
-    std::cout << "=== Example 1: Basic Usage ===" << std::endl;
+    __blib_log_info("=== Example 1: Basic Usage ===");
 
     // Создаём дефолтный аллокатор
     blib::memory::Allocator alloc;
@@ -67,18 +68,18 @@ void example1_basicUsage()
     
     if (ptr)
     {
-        std::cout << "Allocated 1024 bytes at " << ptr << std::endl;
+        __blib_log_info("Allocated 1024 bytes at %p", ptr);
         
         // Используем память (например, placement new)
         int* intPtr = new (ptr) int(42);
-        std::cout << "Value: " << *intPtr << std::endl;
+        __blib_log_info("Value: %d", *intPtr);
         
         // Явно вызываем деструктор
         intPtr->~int();
         
         // Освобождаем память
         alloc.deallocate(ptr, 1024);
-        std::cout << "Deallocated" << std::endl;
+        __blib_log_info("Deallocated");
     }
 }
 
@@ -88,20 +89,20 @@ void example1_basicUsage()
 
 void example2_mallocAllocator()
 {
-    std::cout << "\n=== Example 2: MallocAllocator ===" << std::endl;
+    __blib_log_info("\n=== Example 2: MallocAllocator ===");
 
     // Прямое использование MallocAllocator (stateless)
     blib::memory::MallocAllocator mallocAlloc;
     void* ptr = mallocAlloc.allocate(512);
     
-    std::cout << "MallocAllocator: allocated 512 bytes at " << ptr << std::endl;
+    __blib_log_info("MallocAllocator: allocated 512 bytes at %p", ptr);
     
     mallocAlloc.deallocate(ptr, 512);
 
     // Или через type-erased Allocator
     blib::memory::Allocator alloc(blib::memory::MallocAllocator{});
     void* ptr2 = alloc.allocate(256);
-    std::cout << "Through Allocator: allocated 256 bytes at " << ptr2 << std::endl;
+    __blib_log_info("Through Allocator: allocated 256 bytes at %p", ptr2);
     alloc.deallocate(ptr2, 256);
 }
 
@@ -120,13 +121,13 @@ struct Entity
 
 void example3_poolAllocator()
 {
-    std::cout << "\n=== Example 3: PoolAllocator ===" << std::endl;
+    __blib_log_info("\n=== Example 3: PoolAllocator ===");
 
     // Создаём пул для объектов Entity
     blib::memory::PoolAllocator pool(sizeof(Entity), 128);
     
-    std::cout << "Created pool with block size: " << pool.getBlockSize() << std::endl;
-    std::cout << "Total blocks: " << pool.getTotalBlocks() << std::endl;
+    __blib_log_info("Created pool with block size: %zu", pool.getBlockSize());
+    __blib_log_info("Total blocks: %zu", pool.getTotalBlocks());
 
     // Выделяем объекты
     Entity* entities[10];
@@ -135,10 +136,10 @@ void example3_poolAllocator()
     {
         void* memory = pool.allocate(sizeof(Entity));
         entities[i] = new (memory) Entity(i);
-        std::cout << "Entity " << i << " created at " << entities[i] << std::endl;
+        __blib_log_info("Entity %d created at %p", i, entities[i]);
     }
 
-    std::cout << "Free blocks: " << pool.getApproximateFreeBlocks() << std::endl;
+    __blib_log_info("Free blocks: %zu", pool.getApproximateFreeBlocks());
 
     // Освобождаем некоторые объекты
     for (int i = 0; i < 5; ++i)
@@ -147,12 +148,12 @@ void example3_poolAllocator()
         pool.deallocate(entities[i], sizeof(Entity));
     }
 
-    std::cout << "After deallocation, free blocks: " << pool.getApproximateFreeBlocks() << std::endl;
+    __blib_log_info("After deallocation, free blocks: %zu", pool.getApproximateFreeBlocks());
 
     // Переиспользование памяти
     void* memory = pool.allocate(sizeof(Entity));
     Entity* reusedEntity = new (memory) Entity(100);
-    std::cout << "Reused entity at " << reusedEntity << std::endl;
+    __blib_log_info("Reused entity at %p", reusedEntity);
 
     // Cleanup остальных объектов
     reusedEntity->~Entity();
@@ -171,7 +172,7 @@ void example3_poolAllocator()
 
 void example4_stlIntegration()
 {
-    std::cout << "\n=== Example 4: STL Integration ===" << std::endl;
+    __blib_log_info("\n=== Example 4: STL Integration ===");
 
     // Создаём аллокатор
     blib::memory::Allocator alloc;
@@ -184,12 +185,13 @@ void example4_stlIntegration()
         vec.push_back(i * 10);
     }
 
-    std::cout << "Vector contents: ";
+    // Собираем содержимое вектора в одну строку (консоль печатает построчно)
+    std::string contents = "Vector contents:";
     for (int val : vec)
     {
-        std::cout << val << " ";
+        contents += " " + std::to_string(val);
     }
-    std::cout << std::endl;
+    __blib_log_info("%s", contents.c_str());
 
     // Можно использовать с любым STL контейнером
     // std::list, std::map, std::set и т.д.
@@ -201,14 +203,14 @@ void example4_stlIntegration()
 
 void example5_statistics()
 {
-    std::cout << "\n=== Example 5: Memory Statistics ===" << std::endl;
+    __blib_log_info("\n=== Example 5: Memory Statistics ===");
 
     auto& global = blib::memory::GlobalAllocator::instance();
 
-    std::cout << "Initial stats:" << std::endl;
-    std::cout << "  Current: " << global.getCurrentAllocated() << " bytes" << std::endl;
-    std::cout << "  Peak: " << global.getPeakAllocated() << " bytes" << std::endl;
-    std::cout << "  Count: " << global.getAllocationCount() << std::endl;
+    __blib_log_info("Initial stats:");
+    __blib_log_info("  Current: %zu bytes", global.getCurrentAllocated());
+    __blib_log_info("  Peak: %zu bytes", global.getPeakAllocated());
+    __blib_log_info("  Count: %zu", global.getAllocationCount());
 
     // Выделяем память через DefaultAllocator (который использует GlobalAllocator)
     blib::memory::Allocator alloc;
@@ -217,17 +219,17 @@ void example5_statistics()
     void* ptr2 = alloc.allocate(2048);
     void* ptr3 = alloc.allocate(4096);
 
-    std::cout << "\nAfter allocations:" << std::endl;
-    std::cout << "  Current: " << global.getCurrentAllocated() << " bytes" << std::endl;
-    std::cout << "  Peak: " << global.getPeakAllocated() << " bytes" << std::endl;
-    std::cout << "  Count: " << global.getAllocationCount() << std::endl;
+    __blib_log_info("\nAfter allocations:");
+    __blib_log_info("  Current: %zu bytes", global.getCurrentAllocated());
+    __blib_log_info("  Peak: %zu bytes", global.getPeakAllocated());
+    __blib_log_info("  Count: %zu", global.getAllocationCount());
 
     alloc.deallocate(ptr2, 2048);
 
-    std::cout << "\nAfter one deallocation:" << std::endl;
-    std::cout << "  Current: " << global.getCurrentAllocated() << " bytes" << std::endl;
-    std::cout << "  Peak: " << global.getPeakAllocated() << " bytes" << std::endl;
-    std::cout << "  Count: " << global.getAllocationCount() << std::endl;
+    __blib_log_info("\nAfter one deallocation:");
+    __blib_log_info("  Current: %zu bytes", global.getCurrentAllocated());
+    __blib_log_info("  Peak: %zu bytes", global.getPeakAllocated());
+    __blib_log_info("  Count: %zu", global.getAllocationCount());
 
     alloc.deallocate(ptr1, 1024);
     alloc.deallocate(ptr3, 4096);
@@ -239,24 +241,24 @@ void example5_statistics()
 
 void example6_copyAndMove()
 {
-    std::cout << "\n=== Example 6: Copy and Move ===" << std::endl;
+    __blib_log_info("\n=== Example 6: Copy and Move ===");
 
     // Создаём аллокатор с PoolAllocator
     blib::memory::PoolAllocator pool(64, 128);
     blib::memory::Allocator alloc1(std::move(pool));
 
     void* ptr1 = alloc1.allocate(64);
-    std::cout << "Allocated through alloc1: " << ptr1 << std::endl;
+    __blib_log_info("Allocated through alloc1: %p", ptr1);
 
     // Копирование - создаёт shared копию (для stateful - делит состояние)
     blib::memory::Allocator alloc2 = alloc1;
     void* ptr2 = alloc2.allocate(64);
-    std::cout << "Allocated through alloc2 (shared): " << ptr2 << std::endl;
+    __blib_log_info("Allocated through alloc2 (shared): %p", ptr2);
 
     // Глубокое копирование - независимая копия
     blib::memory::Allocator alloc3 = alloc1.clone();
     void* ptr3 = alloc3.allocate(64);
-    std::cout << "Allocated through alloc3 (cloned): " << ptr3 << std::endl;
+    __blib_log_info("Allocated through alloc3 (cloned): %p", ptr3);
 
     // Cleanup
     alloc1.deallocate(ptr1, 64);
@@ -303,7 +305,7 @@ private:
 
 void example7_entityManager()
 {
-    std::cout << "\n=== Example 7: Entity Manager ===" << std::endl;
+    __blib_log_info("\n=== Example 7: Entity Manager ===");
 
     EntityManager manager(256);
 
@@ -312,7 +314,7 @@ void example7_entityManager()
     for (int i = 0; i < 20; ++i)
     {
         entities[i] = manager.createEntity(i);
-        std::cout << "Created entity " << i << " at " << entities[i] << std::endl;
+        __blib_log_info("Created entity %d at %p", i, entities[i]);
     }
 
     // Уничтожаем entities
@@ -328,8 +330,11 @@ void example7_entityManager()
 
 int main()
 {
-    std::cout << "blib::memory Allocator Examples" << std::endl;
-    std::cout << "================================\n" << std::endl;
+    // CLI-пример: включаем stdout-эхо консоли, чтобы вывод был виден в терминале
+    blib::console::Console::instance().getOutput().setStdoutEcho(true);
+
+    __blib_log_info("blib::memory Allocator Examples");
+    __blib_log_info("================================\n");
 
     example0_autoDebugMode();  // NEW: показываем режим сборки
     example1_basicUsage();
@@ -340,12 +345,12 @@ int main()
     example6_copyAndMove();
     example7_entityManager();
 
-    std::cout << "\n=== All examples completed ===" << std::endl;
+    __blib_log_info("\n=== All examples completed ===");
     
 #ifdef BLIB_DEBUG_ALLOCATOR_ENABLED
-    std::cout << "\nNote: All allocations were automatically validated in debug mode!" << std::endl;
+    __blib_log_info("\nNote: All allocations were automatically validated in debug mode!");
 #else
-    std::cout << "\nNote: Running in release mode - maximum performance!" << std::endl;
+    __blib_log_info("\nNote: Running in release mode - maximum performance!");
 #endif
     
     return 0;

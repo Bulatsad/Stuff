@@ -1,5 +1,6 @@
 #include <blib/graphics/image.h>
 
+#include <blib/core/console/console.h>
 #include <blib/utilmacro.h>
 #include <blib/blibint.h>
 #include <blib/inline.h>
@@ -123,7 +124,9 @@ bool blib::graphics::Image::loadTGXPixelData(
             x = 0;
             if (y == 0x0000)
             {
-                // TODO : Logging
+                // В данных больше строк развёртки, чем заявлено высотой
+                // картинки — лишние строки игнорируем
+                __blib_log_warning("TGX: image has more scanlines than its declared height, extra rows skipped");
                 //goto exit_failure;
                 //return true;
             }
@@ -133,7 +136,7 @@ bool blib::graphics::Image::loadTGXPixelData(
         break;
 
         default:
-            // TODO : Logging
+            __blib_log_error("TGX: unknown token type %u", static_cast<unsigned int>(type));
             return false;
         }
     }
@@ -190,14 +193,14 @@ bool blib::graphics::Image::loadFromTgx(const char* path)
 
     if (fin.open(path, mode) != blib::core::FileStatus::OK)
     {
-        // TODO : Logging
+        __blib_log_error("failed to open TGX file '%s'", path);
         return false;
     }
 
     blib::core::ByteArray filedata = fin.readAll();
     if (filedata.empty())
     {
-        // TODO : Logging
+        __blib_log_error("TGX file '%s' is empty", path);
         return false;
     }
 

@@ -1,4 +1,4 @@
-#include <iostream>
+#include <blib/core/console/console.h>
 #include "LinkedList.h"
 #include "ObjectPool.h"
 
@@ -11,12 +11,16 @@ struct MyStruct
     MyStruct(int as) { a = as; }
     ~MyStruct()
     {
-        std::cout << "destructor" << std::endl;
+        __blib_log_info("destructor");
     }
 };
 
 int main()
 {
+    // CLI-приложение: у буфера консоли нет UI-потребителя, поэтому
+    // включаем дублирование строк в stdout/stderr
+    blib::console::Console::instance().getOutput().setStdoutEcho(true);
+
     blib::LinkedList<int> ll;
 
     ll.pushBack(1);
@@ -34,7 +38,7 @@ int main()
     std::vector<int>v;
 
     for (size_t i = 0; i < ll.size(); ++i)
-        std::cout << ll[i] << std::endl;
+        __blib_log_info("ll[%zu] = %d", i, ll[i]);
 
     blib::StaticObjectPool<MyStruct, 1>pool;
 

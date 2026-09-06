@@ -2,9 +2,11 @@
 
 #include <vector>
 #include <string>
-#include <iostream>
 #include <cmath>
 #include <exception>
+#include <stdexcept>
+
+#include <blib/core/console/console.h>
 
 namespace blib
 {
@@ -99,7 +101,7 @@ namespace blib
 		if (!(expr)) \
 		{ \
 			blib::test::addFailure(__FILE__, __LINE__, #expr); \
-			std::cerr << "  FAIL [" << __FILE__ << ":" << __LINE__ << "] " << #expr << std::endl; \
+			__blib_log_error("  FAIL [%s:%d] %s", __FILE__, __LINE__, #expr); \
 		} \
 	} while(0)
 
@@ -109,7 +111,7 @@ namespace blib
 		if (!(expr)) \
 		{ \
 			blib::test::addFailure(__FILE__, __LINE__, #expr); \
-			std::cerr << "  FAIL [" << __FILE__ << ":" << __LINE__ << "] " << #expr << std::endl; \
+			__blib_log_error("  FAIL [%s:%d] %s", __FILE__, __LINE__, #expr); \
 			return; \
 		} \
 	} while(0)
@@ -134,8 +136,9 @@ namespace blib
 		if (std::abs(__blib_a - __blib_b) > __blib_e) \
 		{ \
 			blib::test::addFailure(__FILE__, __LINE__, #a " ~= " #b); \
-			std::cerr << "  FAIL [" << __FILE__ << ":" << __LINE__ << "] " \
-				<< #a " (" << __blib_a << ") != " #b " (" << __blib_b << ")" << std::endl; \
+			__blib_log_error("  FAIL [%s:%d] %s (%s) != %s (%s)", \
+				__FILE__, __LINE__, #a, std::to_string(__blib_a).c_str(), \
+				#b, std::to_string(__blib_b).c_str()); \
 		} \
 	} while(0)
 
@@ -148,7 +151,7 @@ namespace blib
 		if (!__blib_caught) \
 		{ \
 			blib::test::addFailure(__FILE__, __LINE__, #expr " did not throw " #ex_type); \
-			std::cerr << "  FAIL [" << __FILE__ << ":" << __LINE__ << "] expected throw of " << #ex_type << std::endl; \
+			__blib_log_error("  FAIL [%s:%d] expected throw of %s", __FILE__, __LINE__, #ex_type); \
 			return; \
 		} \
 	} while(0)
@@ -160,13 +163,13 @@ namespace blib
 		catch (const std::exception& __blib_ex) \
 		{ \
 			blib::test::addFailure(__FILE__, __LINE__, #expr " threw: " __blib_ex.what()); \
-			std::cerr << "  FAIL [" << __FILE__ << ":" << __LINE__ << "] unexpected throw: " << __blib_ex.what() << std::endl; \
+			__blib_log_error("  FAIL [%s:%d] unexpected throw: %s", __FILE__, __LINE__, __blib_ex.what()); \
 			return; \
 		} \
 		catch (...) \
 		{ \
 			blib::test::addFailure(__FILE__, __LINE__, #expr " threw unknown exception"); \
-			std::cerr << "  FAIL [" << __FILE__ << ":" << __LINE__ << "] unexpected throw" << std::endl; \
+			__blib_log_error("  FAIL [%s:%d] unexpected throw", __FILE__, __LINE__); \
 			return; \
 		} \
 	} while(0)
@@ -174,8 +177,10 @@ namespace blib
 #define BLIB_TEST_MAIN \
 	int main() \
 	{ \
+		/* Тесты — CLI: включаем stdout-эхо консоли, чтобы вывод был виден в терминале */ \
+		blib::console::Console::instance().getOutput().setStdoutEcho(true); \
 		auto& registry = blib::test::getRegistry(); \
-		std::cout << "Running " << registry.size() << " test(s)..." << std::endl; \
+		__blib_log_info("Running %zu test(s)...", registry.size()); \
 		int passed = 0; \
 		int knownFailed = 0; \
 		for (size_t i = 0; i < registry.size(); ++i) \
@@ -184,7 +189,7 @@ namespace blib
 			blib::test::getFailures().clear(); \
 			test.knownFailureReason = nullptr; \
 			blib::test::getCurrentTestCase() = &test; \
-			std::cout << "[" << (i + 1) << "/" << registry.size() << "] " << test.name << " ... "; \
+			__blib_log_info("[%zu/%zu] %s ...", i + 1, registry.size(), test.name); \
 			try \
 			{ \
 				test.func(); \
@@ -192,32 +197,32 @@ namespace blib
 			catch (const std::exception& __blib_ex) \
 			{ \
 				blib::test::addFailure(test.file, test.line, __blib_ex.what()); \
-				std::cerr << "EXCEPTION: " << __blib_ex.what() << std::endl; \
+				__blib_log_error("EXCEPTION: %s", __blib_ex.what()); \
 			} \
 			catch (...) \
 			{ \
 				blib::test::addFailure(test.file, test.line, "unknown exception"); \
-				std::cerr << "EXCEPTION: unknown" << std::endl; \
+				__blib_log_error("EXCEPTION: unknown"); \
 			} \
 			blib::test::getCurrentTestCase() = nullptr; \
 			if (blib::test::getFailures().empty()) \
 			{ \
-				std::cout << "PASSED" << std::endl; \
+				__blib_log_info("PASSED"); \
 				++passed; \
 			} \
 			else if (test.knownFailureReason) \
 			{ \
-				std::cout << "FAILED (KNOWN: " << test.knownFailureReason << ")" << std::endl; \
+				__blib_log_warning("FAILED (KNOWN: %s)", test.knownFailureReason); \
 				++knownFailed; \
 			} \
 			else \
 			{ \
-				std::cout << "FAILED (" << blib::test::getFailures().size() << " check(s))" << std::endl; \
+				__blib_log_error("FAILED (%zu check(s))", blib::test::getFailures().size()); \
 			} \
 		} \
-		std::cout << "\nResults: " << passed << "/" << registry.size() << " passed"; \
 		if (knownFailed > 0) \
-			std::cout << " (" << knownFailed << " known failure(s))"; \
-		std::cout << std::endl; \
+			__blib_log_info("Results: %d/%zu passed (%d known failure(s))", passed, registry.size(), knownFailed); \
+		else \
+			__blib_log_info("Results: %d/%zu passed", passed, registry.size()); \
 		return (passed + knownFailed == (int)registry.size()) ? 0 : 1; \
 	}

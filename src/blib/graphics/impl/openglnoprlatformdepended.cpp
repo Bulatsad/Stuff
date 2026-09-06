@@ -111,5 +111,5 @@ void blib::graphics::RenderApi::InitGraphicsApi()
     this->ogl.ext.__blib_gl_glFramebufferRenderbuffer = static_cast<__blib_gl_signature_glFramebufferRenderbuffer>(getprocaddr("glFramebufferRenderbuffer"));
     this->ogl.ext.__blib_gl_glFramebufferTexture2D = static_cast<__blib_gl_signature_glFramebufferTexture2D>(getprocaddr("glFramebufferTexture2D"));
     this->ogl.ext.__blib_gl_glBlitFramebuffer = static_cast<__blib_gl_signature_glBlitFramebuffer>(getprocaddr("glBlitFramebuffer"));
-
+    
 }

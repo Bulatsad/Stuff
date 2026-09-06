@@ -1,7 +1,7 @@
 
 #include <Windows.h>
 
-#include <iostream>
+#include <blib/core/console/console.h>
 #include<blib/core/algorithm/dtfExp.h>
 #include<blib/core/algorithm/dft.h>
 
@@ -15,15 +15,19 @@
 
 int main()
 {
+    // CLI-приложение: у буфера консоли нет UI-потребителя, поэтому
+    // включаем дублирование строк в stdout/stderr
+    blib::console::Console::instance().getOutput().setStdoutEcho(true);
+
     {
-        std::cout << sizeof(blib::LocklessProducerConcumerCircleQueue<int>) << std::endl;
+        __blib_log_info("queue size: %zu", sizeof(blib::LocklessProducerConcumerCircleQueue<int>));
         blib::SoundRecorder recorder;
         recorder.setFormat(blib::SoundFormat(1, 44100, 16));
         bool isopened = recorder.open();
 
         if (isopened)
         {
-            std::cout << "opened!" << std::endl;
+            __blib_log_info("recorder opened");
         }
 
         recorder.start();
@@ -43,13 +47,13 @@ int main()
 
         clock_t end = clock() - start;
 
-        std::cout << "ft : " << end << std::endl;
+        __blib_log_info("ft : %ld", static_cast<long>(end));
 
         auto data = blib::inverseFourierTransform<short>(&spectre);
 
         clock_t iftend = clock() - end;
 
-        std::cout << "ift : " << end << std::endl;
+        __blib_log_info("ift : %ld", static_cast<long>(iftend));
 
         blib::SoundBuffer iftbuffer(blib::SoundFormat(1, 44100, 16),data.size() / 2,data.size() / 2,data.data());
 
@@ -60,7 +64,7 @@ int main()
 
         if (isopened)
         {
-            std::cout << "opened!" << std::endl;
+            __blib_log_info("player opened");
             player.play();
 
             Sleep(5000);

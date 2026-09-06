@@ -13,7 +13,7 @@
 #include <blib/system/memory/allocator.h>
 #include <blib/system/memory/globalAllocator.h>
 
-#include <iostream>
+#include <blib/core/console/console.h>
 #include <vector>
 #include <thread>
 #include <chrono>
@@ -24,19 +24,19 @@
 
 void example1_basicExtendedStats()
 {
-    std::cout << "=== Example 1: Basic Extended Statistics ===" << std::endl;
+    __blib_log_info("=== Example 1: Basic Extended Statistics ===");
 
     auto& global = blib::memory::GlobalAllocator::instance();
 
     // Включаем расширенную статистику
-    std::cout << "Enabling extended statistics..." << std::endl;
+    __blib_log_info("Enabling extended statistics...");
     global.setExtendedStatsEnabled(true);
 
     // Создаём аллокатор
     blib::memory::Allocator alloc;
 
     // Выделяем память различных размеров для заполнения histogram
-    std::cout << "Allocating memory of various sizes..." << std::endl;
+    __blib_log_info("Allocating memory of various sizes...");
 
     void* small1 = alloc.allocate(32);      // bucket 0: 0-64 bytes
     void* small2 = alloc.allocate(64);      // bucket 0
@@ -46,13 +46,13 @@ void example1_basicExtendedStats()
     void* large2 = alloc.allocate(2048);    // bucket 3: 1KB-4KB
     void* huge = alloc.allocate(100000);    // bucket 5: 16KB-64KB
 
-    std::cout << "Allocated 7 blocks of varying sizes" << std::endl;
+    __blib_log_info("Allocated 7 blocks of varying sizes");
 
     // Получаем histogram
     size_t histogram[9];
     if (global.getHistogram(histogram))
     {
-        std::cout << "\nHistogram:" << std::endl;
+        __blib_log_info("\nHistogram:");
         const char* labels[] = {
             "0-64 bytes", "65-256 bytes", "257-1KB", "1KB-4KB",
             "4KB-16KB", "16KB-64KB", "64KB-256KB", "256KB-1MB", "1MB+"
@@ -62,7 +62,7 @@ void example1_basicExtendedStats()
         {
             if (histogram[i] > 0)
             {
-                std::cout << "  " << labels[i] << ": " << histogram[i] << std::endl;
+                __blib_log_info("  %s: %zu", labels[i], histogram[i]);
             }
         }
     }
@@ -78,7 +78,7 @@ void example1_basicExtendedStats()
 
     // Выключаем статистику
     global.setExtendedStatsEnabled(false);
-    std::cout << "Extended statistics disabled" << std::endl;
+    __blib_log_info("Extended statistics disabled");
 }
 
 // ============================================================================
@@ -89,7 +89,7 @@ void workerThread(int threadId, int allocCount)
 {
     blib::memory::Allocator alloc;
 
-    std::cout << "Thread " << threadId << " starting..." << std::endl;
+    __blib_log_info("Thread %d starting...", threadId);
 
     // Каждый поток выделяет различные размеры
     for (int i = 0; i < allocCount; ++i)
@@ -103,21 +103,21 @@ void workerThread(int threadId, int allocCount)
         alloc.deallocate(ptr, size);
     }
 
-    std::cout << "Thread " << threadId << " finished" << std::endl;
+    __blib_log_info("Thread %d finished", threadId);
 }
 
 void example2_perThreadStats()
 {
-    std::cout << "\n=== Example 2: Per-Thread Statistics ===" << std::endl;
+    __blib_log_info("\n=== Example 2: Per-Thread Statistics ===");
 
     auto& global = blib::memory::GlobalAllocator::instance();
 
     // Включаем расширенную статистику
     global.setExtendedStatsEnabled(true);
-    std::cout << "Extended statistics enabled" << std::endl;
+    __blib_log_info("Extended statistics enabled");
 
     // Запускаем несколько потоков
-    std::cout << "Starting 4 worker threads..." << std::endl;
+    __blib_log_info("Starting 4 worker threads...");
     
     std::vector<std::thread> threads;
     for (int i = 0; i < 4; ++i)
@@ -131,7 +131,7 @@ void example2_perThreadStats()
         t.join();
     }
 
-    std::cout << "\nAll threads finished. Statistics:" << std::endl;
+    __blib_log_info("\nAll threads finished. Statistics:");
 
     // Выводим полную статистику (включая per-thread)
     global.dumpStats();
@@ -146,12 +146,12 @@ void example2_perThreadStats()
 
 void example3_fullDump()
 {
-    std::cout << "\n=== Example 3: Full Statistics Dump ===" << std::endl;
+    __blib_log_info("\n=== Example 3: Full Statistics Dump ===");
 
     auto& global = blib::memory::GlobalAllocator::instance();
 
     // Включаем всё: leak tracking + extended stats
-    std::cout << "Enabling all statistics..." << std::endl;
+    __blib_log_info("Enabling all statistics...");
     global.setLeakTrackingEnabled(true);
     global.setExtendedStatsEnabled(true);
 
@@ -167,7 +167,7 @@ void example3_fullDump()
         ptrs.push_back(ptr);
     }
 
-    std::cout << "Allocated " << ptrs.size() << " blocks" << std::endl;
+    __blib_log_info("Allocated %zu blocks", ptrs.size());
 
     // Освобождаем половину
     for (size_t i = 0; i < ptrs.size() / 2; ++i)
@@ -175,10 +175,10 @@ void example3_fullDump()
         alloc.deallocate(ptrs[i], sizes[i]);
     }
 
-    std::cout << "Deallocated half of the blocks" << std::endl;
+    __blib_log_info("Deallocated half of the blocks");
 
     // Выводим полную статистику
-    std::cout << "\nFull statistics dump:" << std::endl;
+    __blib_log_info("\nFull statistics dump:");
     global.dumpStats();
 
     // Cleanup оставшихся
@@ -198,18 +198,18 @@ void example3_fullDump()
 
 void example4_realtimeMonitoring()
 {
-    std::cout << "\n=== Example 4: Realtime Monitoring ===" << std::endl;
+    __blib_log_info("\n=== Example 4: Realtime Monitoring ===");
 
     auto& global = blib::memory::GlobalAllocator::instance();
     global.setExtendedStatsEnabled(true);
 
     blib::memory::Allocator alloc;
 
-    std::cout << "Simulating allocation patterns..." << std::endl;
+    __blib_log_info("Simulating allocation patterns...");
 
     for (int iteration = 0; iteration < 5; ++iteration)
     {
-        std::cout << "\n--- Iteration " << (iteration + 1) << " ---" << std::endl;
+        __blib_log_info("\n--- Iteration %d ---", iteration + 1);
 
         // Выделяем память
         std::vector<void*> tempAllocs;
@@ -220,9 +220,9 @@ void example4_realtimeMonitoring()
         }
 
         // Показываем текущую статистику
-        std::cout << "Current allocated: " << global.getCurrentAllocated() << " bytes" << std::endl;
-        std::cout << "Peak allocated: " << global.getPeakAllocated() << " bytes" << std::endl;
-        std::cout << "Active allocations: " << global.getAllocationCount() << std::endl;
+        __blib_log_info("Current allocated: %zu bytes", global.getCurrentAllocated());
+        __blib_log_info("Peak allocated: %zu bytes", global.getPeakAllocated());
+        __blib_log_info("Active allocations: %zu", global.getAllocationCount());
 
         // Освобождаем
         size_t size = 100;
@@ -235,7 +235,7 @@ void example4_realtimeMonitoring()
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    std::cout << "\nFinal histogram:" << std::endl;
+    __blib_log_info("\nFinal histogram:");
     size_t histogram[9];
     if (global.getHistogram(histogram))
     {
@@ -246,7 +246,7 @@ void example4_realtimeMonitoring()
 
         for (int i = 0; i < 9; ++i)
         {
-            std::cout << "  " << labels[i] << ": " << histogram[i] << std::endl;
+            __blib_log_info("  %s: %zu", labels[i], histogram[i]);
         }
     }
 
@@ -259,7 +259,7 @@ void example4_realtimeMonitoring()
 
 void example5_allocationPatterns()
 {
-    std::cout << "\n=== Example 5: Allocation Pattern Analysis ===" << std::endl;
+    __blib_log_info("\n=== Example 5: Allocation Pattern Analysis ===");
 
     auto& global = blib::memory::GlobalAllocator::instance();
     global.setExtendedStatsEnabled(true);
@@ -267,7 +267,7 @@ void example5_allocationPatterns()
     blib::memory::Allocator alloc;
 
     // Паттерн 1: Множество маленьких аллокаций
-    std::cout << "\nPattern 1: Many small allocations..." << std::endl;
+    __blib_log_info("\nPattern 1: Many small allocations...");
     std::vector<void*> smallAllocs;
     for (int i = 0; i < 100; ++i)
     {
@@ -276,7 +276,7 @@ void example5_allocationPatterns()
 
     size_t histogram1[9];
     global.getHistogram(histogram1);
-    std::cout << "Small allocations (0-64B): " << histogram1[0] << std::endl;
+    __blib_log_info("Small allocations (0-64B): %zu", histogram1[0]);
 
     // Очистка
     for (void* ptr : smallAllocs)
@@ -286,7 +286,7 @@ void example5_allocationPatterns()
     smallAllocs.clear();
 
     // Паттерн 2: Несколько больших аллокаций
-    std::cout << "\nPattern 2: Few large allocations..." << std::endl;
+    __blib_log_info("\nPattern 2: Few large allocations...");
     std::vector<void*> largeAllocs;
     for (int i = 0; i < 10; ++i)
     {
@@ -295,7 +295,7 @@ void example5_allocationPatterns()
 
     size_t histogram2[9];
     global.getHistogram(histogram2);
-    std::cout << "Large allocations (4KB-16KB): " << histogram2[4] << std::endl;
+    __blib_log_info("Large allocations (4KB-16KB): %zu", histogram2[4]);
 
     // Очистка
     for (void* ptr : largeAllocs)
@@ -304,7 +304,7 @@ void example5_allocationPatterns()
     }
 
     // Финальный dump
-    std::cout << "\nFull pattern analysis:" << std::endl;
+    __blib_log_info("\nFull pattern analysis:");
     global.dumpStats();
 
     global.setExtendedStatsEnabled(false);
@@ -323,7 +323,7 @@ public:
         auto& global = blib::memory::GlobalAllocator::instance();
         global.setExtendedStatsEnabled(true);
         startAllocated = global.getCurrentAllocated();
-        std::cout << "[MemoryProfiler] " << name << " started" << std::endl;
+        __blib_log_info("[MemoryProfiler] %s started", name);
 #endif
     }
 
@@ -334,8 +334,8 @@ public:
         size_t endAllocated = global.getCurrentAllocated();
         size_t diff = endAllocated - startAllocated;
         
-        std::cout << "[MemoryProfiler] " << name << " finished" << std::endl;
-        std::cout << "  Memory delta: " << static_cast<ptrdiff_t>(diff) << " bytes" << std::endl;
+        __blib_log_info("[MemoryProfiler] %s finished", name);
+        __blib_log_info("  Memory delta: %lld bytes", static_cast<long long>(static_cast<ptrdiff_t>(diff)));
         
         global.setExtendedStatsEnabled(false);
 #endif
@@ -348,12 +348,12 @@ private:
 
 void example6_conditionalStats()
 {
-    std::cout << "\n=== Example 6: Conditional Statistics (Debug only) ===" << std::endl;
+    __blib_log_info("\n=== Example 6: Conditional Statistics (Debug only) ===");
 
 #ifdef BLIB_DEBUG
-    std::cout << "Running in DEBUG mode - profiling enabled" << std::endl;
+    __blib_log_info("Running in DEBUG mode - profiling enabled");
 #else
-    std::cout << "Running in RELEASE mode - profiling disabled" << std::endl;
+    __blib_log_info("Running in RELEASE mode - profiling disabled");
 #endif
 
     {
@@ -383,8 +383,11 @@ void example6_conditionalStats()
 
 int main()
 {
-    std::cout << "blib::memory Extended Statistics Examples" << std::endl;
-    std::cout << "==========================================\n" << std::endl;
+    // CLI-пример: включаем stdout-эхо консоли, чтобы вывод был виден в терминале
+    blib::console::Console::instance().getOutput().setStdoutEcho(true);
+
+    __blib_log_info("blib::memory Extended Statistics Examples");
+    __blib_log_info("==========================================\n");
 
     example1_basicExtendedStats();
     example2_perThreadStats();
@@ -393,6 +396,6 @@ int main()
     example5_allocationPatterns();
     example6_conditionalStats();
 
-    std::cout << "\n=== All examples completed ===" << std::endl;
+    __blib_log_info("\n=== All examples completed ===");
     return 0;
 }

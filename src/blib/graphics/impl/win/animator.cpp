@@ -1,5 +1,7 @@
 #include <blib/graphics/animator.h>
 
+#include <blib/core/console/console.h>
+
 #include <cmath>
 
 bool blib::graphics::Animator::loadFromAssimp(const aiScene* paiscene)
@@ -10,7 +12,7 @@ bool blib::graphics::Animator::loadFromAssimp(const aiScene* paiscene)
     {
         if(!(this->animationList[i].loadFromAssimp(paiscene->mAnimations[i])))
         {
-            // TODO : Logging
+            __blib_log_error("failed to load animation #%zu from scene", i);
             return false;
         }
     }
@@ -44,7 +46,8 @@ bool blib::graphics::Animator::selectAnimation(const std::string& animationName)
         }
     }
 
-    // TODO : Logging
+    // Анимации с таким именем нет — предупреждаем вызывающего через консоль
+    __blib_log_warning("animation '%s' not found in animator", animationName.c_str());
     return false;
 }
 

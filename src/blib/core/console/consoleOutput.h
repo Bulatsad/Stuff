@@ -36,9 +36,21 @@ namespace blib
         {
         private:
             MultiProducerSingleConsumerCircleQueue<ConsoleLine> lines;
+
+            // Дублировать строки в stdout/stderr (CLI-режим). Включается
+            // приложениями без UI-потребителя буфера (консольные утилиты,
+            // тестовый раннер), чтобы вывод оставался видимым в терминале.
+            // GUI-приложения (ConsoleWindow) оставляют эхо выключенным,
+            // чтобы не дублировать строки и не загрязнять stdout.
+            bool echoToStdout;
         public:
             // @param capacity Максимальное число необработанных строк
             explicit ConsoleOutput(size_t capacity = 2048);
+
+            // Управление stdout-эхом. Выставляется один раз при старте
+            // (обычно из main()) до начала многопоточного логирования;
+            // чтение флага в add() из потоков-продюсеров не синхронизировано.
+            void setStdoutEcho(bool enabled);
 
             void add(ConsoleMessageType type, const std::string& text);
             void add(ConsoleMessageType type, std::string&& text);

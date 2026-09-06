@@ -1,9 +1,8 @@
 #include <WinSock2.h>
 
+#include <blib/core/console/console.h>
 #include <blib/network/socket.h>
 #include <blib/network/impl/win/winNetworkUtil.h>
-
-#include <stdio.h>
 
 blib::network::Socket::Socket()
 {
@@ -106,6 +105,6 @@ void blib::network::InitBlibSocket()
     int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (iResult != NO_ERROR)
     {
-        fprintf(stderr, "WSAStartup failed with error: %d\n", iResult);
+        __blib_log_error("WSAStartup failed with error: %d", iResult);
     }
 }

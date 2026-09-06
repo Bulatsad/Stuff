@@ -19,7 +19,7 @@
 #include <blib/system/memory/allocators/debugAllocator.h>
 #include <blib/system/memory/allocators/mallocAllocator.h>
 
-#include <iostream>
+#include <blib/core/console/console.h>
 #include <cstring>
 
 // ============================================================================
@@ -28,7 +28,7 @@
 
 void example1_basicDebugAllocator()
 {
-    std::cout << "=== Example 1: Basic DebugAllocator ===" << std::endl;
+    __blib_log_info("=== Example 1: Basic DebugAllocator ===");
 
     // Создаём DebugAllocator поверх MallocAllocator
     blib::memory::DebugAllocator<blib::memory::MallocAllocator> debugAlloc(
@@ -37,15 +37,15 @@ void example1_basicDebugAllocator()
 
     // Выделяем память
     void* ptr = debugAlloc.allocate(128);
-    std::cout << "Allocated 128 bytes with debug wrapper at " << ptr << std::endl;
+    __blib_log_info("Allocated 128 bytes with debug wrapper at %p", ptr);
 
     // Используем память нормально
     std::memset(ptr, 0, 128);
-    std::cout << "Memory initialized successfully" << std::endl;
+    __blib_log_info("Memory initialized successfully");
 
     // Освобождаем память - проверит guard bytes
     debugAlloc.deallocate(ptr, 128);
-    std::cout << "Deallocated successfully (guard bytes intact)" << std::endl;
+    __blib_log_info("Deallocated successfully (guard bytes intact)");
 }
 
 // ============================================================================
@@ -54,8 +54,8 @@ void example1_basicDebugAllocator()
 
 void example2_bufferOverflow()
 {
-    std::cout << "\n=== Example 2: Buffer Overflow Detection ===" << std::endl;
-    std::cout << "This example will ABORT due to buffer overflow detection!" << std::endl;
+    __blib_log_info("\n=== Example 2: Buffer Overflow Detection ===");
+    __blib_log_info("This example will ABORT due to buffer overflow detection!");
 
     blib::memory::DebugAllocator<blib::memory::MallocAllocator> debugAlloc(
         blib::memory::MallocAllocator{}
@@ -63,20 +63,20 @@ void example2_bufferOverflow()
 
     // Выделяем 64 байта
     char* buffer = static_cast<char*>(debugAlloc.allocate(64));
-    std::cout << "Allocated 64 bytes" << std::endl;
+    __blib_log_info("Allocated 64 bytes");
 
     // ОШИБКА: Пишем за пределы буфера (перезаписываем back guard)
-    std::cout << "Writing beyond buffer boundary..." << std::endl;
+    __blib_log_info("Writing beyond buffer boundary...");
     for (int i = 0; i < 70; ++i) // Перезапись!
     {
         buffer[i] = 'A';
     }
 
     // При deallocate обнаружит перезапись guard bytes
-    std::cout << "Attempting to deallocate..." << std::endl;
+    __blib_log_info("Attempting to deallocate...");
     debugAlloc.deallocate(buffer, 64); // ABORT здесь!
     
-    std::cout << "This line will never be reached!" << std::endl;
+    __blib_log_info("This line will never be reached!");
 }
 
 // ============================================================================
@@ -85,25 +85,25 @@ void example2_bufferOverflow()
 
 void example3_bufferUnderflow()
 {
-    std::cout << "\n=== Example 3: Buffer Underflow Detection ===" << std::endl;
-    std::cout << "This example will ABORT due to buffer underflow detection!" << std::endl;
+    __blib_log_info("\n=== Example 3: Buffer Underflow Detection ===");
+    __blib_log_info("This example will ABORT due to buffer underflow detection!");
 
     blib::memory::DebugAllocator<blib::memory::MallocAllocator> debugAlloc(
         blib::memory::MallocAllocator{}
     );
 
     char* buffer = static_cast<char*>(debugAlloc.allocate(64));
-    std::cout << "Allocated 64 bytes" << std::endl;
+    __blib_log_info("Allocated 64 bytes");
 
     // ОШИБКА: Пишем перед началом буфера (перезаписываем front guard)
-    std::cout << "Writing before buffer start..." << std::endl;
+    __blib_log_info("Writing before buffer start...");
     buffer[-1] = 'X'; // Перезапись front guard!
 
     // При deallocate обнаружит перезапись
-    std::cout << "Attempting to deallocate..." << std::endl;
+    __blib_log_info("Attempting to deallocate...");
     debugAlloc.deallocate(buffer, 64); // ABORT здесь!
     
-    std::cout << "This line will never be reached!" << std::endl;
+    __blib_log_info("This line will never be reached!");
 }
 
 // ============================================================================
@@ -112,15 +112,15 @@ void example3_bufferUnderflow()
 
 void example4_useAfterFree()
 {
-    std::cout << "\n=== Example 4: Use-After-Free Detection ===" << std::endl;
-    std::cout << "This example will ABORT due to use-after-free detection!" << std::endl;
+    __blib_log_info("\n=== Example 4: Use-After-Free Detection ===");
+    __blib_log_info("This example will ABORT due to use-after-free detection!");
 
     blib::memory::DebugAllocator<blib::memory::MallocAllocator> debugAlloc(
         blib::memory::MallocAllocator{}
     );
 
     int* data = static_cast<int*>(debugAlloc.allocate(sizeof(int) * 10));
-    std::cout << "Allocated array of 10 ints" << std::endl;
+    __blib_log_info("Allocated array of 10 ints");
 
     // Нормальное использование
     for (int i = 0; i < 10; ++i)
@@ -130,18 +130,18 @@ void example4_useAfterFree()
 
     // Освобождаем память (DebugAllocator заполнит poison pattern)
     debugAlloc.deallocate(data, sizeof(int) * 10);
-    std::cout << "Memory deallocated and poisoned" << std::endl;
+    __blib_log_info("Memory deallocated and poisoned");
 
     // ОШИБКА: Используем память после free
-    std::cout << "Attempting to read freed memory..." << std::endl;
+    __blib_log_info("Attempting to read freed memory...");
     int value = data[0]; // Чтение poison pattern (0xDEADC0DE)
-    std::cout << "Read value: 0x" << std::hex << value << std::dec << std::endl;
+    __blib_log_info("Read value: 0x%x", value);
     
     // Если попытаться deallocate снова - обнаружит double-free
-    std::cout << "Attempting double-free..." << std::endl;
+    __blib_log_info("Attempting double-free...");
     debugAlloc.deallocate(data, sizeof(int) * 10); // ABORT здесь!
     
-    std::cout << "This line will never be reached!" << std::endl;
+    __blib_log_info("This line will never be reached!");
 }
 
 // ============================================================================
@@ -150,25 +150,25 @@ void example4_useAfterFree()
 
 void example5_doubleFree()
 {
-    std::cout << "\n=== Example 5: Double-Free Detection ===" << std::endl;
-    std::cout << "This example will ABORT due to double-free detection!" << std::endl;
+    __blib_log_info("\n=== Example 5: Double-Free Detection ===");
+    __blib_log_info("This example will ABORT due to double-free detection!");
 
     blib::memory::DebugAllocator<blib::memory::MallocAllocator> debugAlloc(
         blib::memory::MallocAllocator{}
     );
 
     void* ptr = debugAlloc.allocate(256);
-    std::cout << "Allocated 256 bytes" << std::endl;
+    __blib_log_info("Allocated 256 bytes");
 
     // Освобождаем первый раз
     debugAlloc.deallocate(ptr, 256);
-    std::cout << "First deallocation successful" << std::endl;
+    __blib_log_info("First deallocation successful");
 
     // ОШИБКА: Освобождаем второй раз
-    std::cout << "Attempting second deallocation..." << std::endl;
+    __blib_log_info("Attempting second deallocation...");
     debugAlloc.deallocate(ptr, 256); // ABORT здесь!
     
-    std::cout << "This line will never be reached!" << std::endl;
+    __blib_log_info("This line will never be reached!");
 }
 
 // ============================================================================
@@ -177,12 +177,12 @@ void example5_doubleFree()
 
 void example6_leakTracking()
 {
-    std::cout << "\n=== Example 6: Leak Tracking ===" << std::endl;
+    __blib_log_info("\n=== Example 6: Leak Tracking ===");
 
     auto& global = blib::memory::GlobalAllocator::instance();
 
     // Включаем leak tracking
-    std::cout << "Enabling leak tracking..." << std::endl;
+    __blib_log_info("Enabling leak tracking...");
     global.setLeakTrackingEnabled(true);
 
     // Выделяем память через DefaultAllocator (использует GlobalAllocator)
@@ -192,21 +192,21 @@ void example6_leakTracking()
     void* ptr2 = alloc.allocate(2048);
     void* ptr3 = alloc.allocate(4096);
     
-    std::cout << "Allocated 3 blocks: 1024, 2048, 4096 bytes" << std::endl;
+    __blib_log_info("Allocated 3 blocks: 1024, 2048, 4096 bytes");
 
     // Освобождаем только один блок
     alloc.deallocate(ptr2, 2048);
-    std::cout << "Deallocated middle block (2048 bytes)" << std::endl;
+    __blib_log_info("Deallocated middle block (2048 bytes)");
 
     // Намеренно "забываем" освободить ptr1 и ptr3 для демонстрации утечек
 
     // Проверяем утечки
-    std::cout << "\nChecking for leaks..." << std::endl;
+    __blib_log_info("\nChecking for leaks...");
     size_t leakCount = global.dumpLeaks();
     
     if (leakCount > 0)
     {
-        std::cout << "Leaks detected! See report above." << std::endl;
+        __blib_log_info("Leaks detected! See report above.");
     }
 
     // Cleanup (освобождаем утечки чтобы не мешать другим примерам)
@@ -215,7 +215,7 @@ void example6_leakTracking()
 
     // Выключаем leak tracking
     global.setLeakTrackingEnabled(false);
-    std::cout << "Leak tracking disabled" << std::endl;
+    __blib_log_info("Leak tracking disabled");
 }
 
 // ============================================================================
@@ -224,21 +224,21 @@ void example6_leakTracking()
 
 void example7_automaticLeakReport()
 {
-    std::cout << "\n=== Example 7: Automatic Leak Report on Exit ===" << std::endl;
+    __blib_log_info("\n=== Example 7: Automatic Leak Report on Exit ===");
 
     auto& global = blib::memory::GlobalAllocator::instance();
 
     // Включаем leak tracking
     global.setLeakTrackingEnabled(true);
-    std::cout << "Leak tracking enabled" << std::endl;
+    __blib_log_info("Leak tracking enabled");
 
     // Выделяем память и "забываем" освободить
     blib::memory::Allocator alloc;
     void* leak1 = alloc.allocate(512);
     void* leak2 = alloc.allocate(1024);
     
-    std::cout << "Allocated 2 blocks that will leak: 512, 1024 bytes" << std::endl;
-    std::cout << "When program exits, GlobalAllocator destructor will report these leaks" << std::endl;
+    __blib_log_info("Allocated 2 blocks that will leak: 512, 1024 bytes");
+    __blib_log_info("When program exits, GlobalAllocator destructor will report these leaks");
     
     // НЕ освобождаем память намеренно
     // При выходе из программы GlobalAllocator::~GlobalAllocator() выведет отчёт
@@ -250,7 +250,7 @@ void example7_automaticLeakReport()
 
 void example8_debugAllocatorWithTypeErasure()
 {
-    std::cout << "\n=== Example 8: DebugAllocator with Type Erasure ===" << std::endl;
+    __blib_log_info("\n=== Example 8: DebugAllocator with Type Erasure ===");
 
     // Создаём DebugAllocator и оборачиваем в type-erased Allocator
     blib::memory::DebugAllocator<blib::memory::MallocAllocator> debugAlloc(
@@ -259,18 +259,18 @@ void example8_debugAllocatorWithTypeErasure()
     
     blib::memory::Allocator alloc(std::move(debugAlloc));
 
-    std::cout << "Created type-erased Allocator with DebugAllocator inside" << std::endl;
+    __blib_log_info("Created type-erased Allocator with DebugAllocator inside");
 
     // Теперь можем использовать как обычный Allocator
     void* ptr = alloc.allocate(256);
-    std::cout << "Allocated 256 bytes" << std::endl;
+    __blib_log_info("Allocated 256 bytes");
 
     // Используем память
     std::memset(ptr, 0xAB, 256);
 
     // Освобождаем - DebugAllocator внутри проверит guard bytes
     alloc.deallocate(ptr, 256);
-    std::cout << "Deallocated successfully (guards checked by DebugAllocator)" << std::endl;
+    __blib_log_info("Deallocated successfully (guards checked by DebugAllocator)");
 }
 
 // ============================================================================
@@ -285,21 +285,21 @@ void example8_debugAllocatorWithTypeErasure()
 
 void example9_conditionalDebug()
 {
-    std::cout << "\n=== Example 9: Conditional Debug Allocator ===" << std::endl;
+    __blib_log_info("\n=== Example 9: Conditional Debug Allocator ===");
 
 #ifdef BLIB_DEBUG
-    std::cout << "Debug build: using DebugAllocator (with overhead)" << std::endl;
+    __blib_log_info("Debug build: using DebugAllocator (with overhead)");
     ProductionAllocator alloc(blib::memory::MallocAllocator{});
 #else
-    std::cout << "Release build: using MallocAllocator (no overhead)" << std::endl;
+    __blib_log_info("Release build: using MallocAllocator (no overhead)");
     ProductionAllocator alloc;
 #endif
 
     void* ptr = alloc.allocate(1024);
-    std::cout << "Allocated 1024 bytes" << std::endl;
+    __blib_log_info("Allocated 1024 bytes");
     
     alloc.deallocate(ptr, 1024);
-    std::cout << "Deallocated successfully" << std::endl;
+    __blib_log_info("Deallocated successfully");
 }
 
 // ============================================================================
@@ -308,11 +308,14 @@ void example9_conditionalDebug()
 
 int main()
 {
-    std::cout << "blib::memory Debug Tools Examples" << std::endl;
-    std::cout << "==================================\n" << std::endl;
+    // CLI-пример: включаем stdout-эхо консоли, чтобы вывод был виден в терминале
+    blib::console::Console::instance().getOutput().setStdoutEcho(true);
 
-    std::cout << "WARNING: Some examples will intentionally trigger errors and abort!" << std::endl;
-    std::cout << "Comment out examples 2-5 to run the rest.\n" << std::endl;
+    __blib_log_info("blib::memory Debug Tools Examples");
+    __blib_log_info("==================================\n");
+
+    __blib_log_info("WARNING: Some examples will intentionally trigger errors and abort!");
+    __blib_log_info("Comment out examples 2-5 to run the rest.\n");
 
     // Безопасные примеры
     example1_basicDebugAllocator();
@@ -320,12 +323,12 @@ int main()
     example8_debugAllocatorWithTypeErasure();
     example9_conditionalDebug();
 
-    std::cout << "\n=== Safe examples completed ===" << std::endl;
-    std::cout << "\nTo test error detection, uncomment and run these (one at a time!):" << std::endl;
-    std::cout << "  - example2_bufferOverflow()" << std::endl;
-    std::cout << "  - example3_bufferUnderflow()" << std::endl;
-    std::cout << "  - example4_useAfterFree()" << std::endl;
-    std::cout << "  - example5_doubleFree()" << std::endl;
+    __blib_log_info("\n=== Safe examples completed ===");
+    __blib_log_info("\nTo test error detection, uncomment and run these (one at a time!):");
+    __blib_log_info("  - example2_bufferOverflow()");
+    __blib_log_info("  - example3_bufferUnderflow()");
+    __blib_log_info("  - example4_useAfterFree()");
+    __blib_log_info("  - example5_doubleFree()");
 
     // ОПАСНЫЕ ПРИМЕРЫ - раскомментировать по одному для тестирования!
     // example2_bufferOverflow();     // ABORT!

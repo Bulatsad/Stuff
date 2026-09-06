@@ -16,7 +16,7 @@ namespace
 		std::string path = std::string(TEST_SOURCE_DIR) + "/blib/core/pdl/" + name;
 		bool ok = p.load(path);
 		if (!ok)
-			std::cerr << path << " load failed: " << p.getLastError() << std::endl;
+			__blib_log_error("%s load failed: %s", path.c_str(), p.getLastError().c_str());
 		return ok;
 	}
 }

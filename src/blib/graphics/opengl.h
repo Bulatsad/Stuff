@@ -108,8 +108,6 @@ typedef void (__blib_gl_calling_convension* __blib_gl_signature_glBlitFramebuffe
 
 
 
-
-
 namespace blib
 {
     namespace graphics
@@ -160,7 +158,6 @@ namespace blib
             __blib_gl_signature_glFramebufferRenderbuffer __blib_gl_glFramebufferRenderbuffer = nullptr;
             __blib_gl_signature_glFramebufferTexture2D __blib_gl_glFramebufferTexture2D = nullptr;
             __blib_gl_signature_glBlitFramebuffer __blib_gl_glBlitFramebuffer = nullptr;
-            
         };
 
         struct __blib_graphics_api ogl_s
