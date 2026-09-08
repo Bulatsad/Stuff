@@ -1,81 +1,47 @@
-#beng
+#beng — Bulat Engine: ECS-ядро движка (Scene, Component, System, Transform)
+#Зависит только от blib-core (blib-system транзитивно).
+#Графика и 3D-вьювер вынесены в misc/model_viewer.
 
-set (BIN beng)
+file (GLOB core_header_src "core/*.h" "core/impl/*.inl")
+file (GLOB core_impl_src "core/*.cpp")
 
-project(${BIN})
+file (GLOB component_header_src "components/*.h")
+file (GLOB component_impl_src "components/*.cpp")
 
-file (GLOB global_header_src "CmakeLists.txt" "*.h")
+file (GLOB system_header_src "systems/*.h")
+file (GLOB system_impl_src "systems/*.cpp")
 
-file (GLOB main_header_src "*main/*.h")
-file (GLOB main_impl_src   "*main/impl/*.cpp")
+# Хидеры включены в таргет явно — чтобы быть видимыми в Solution Explorer
+# (иначе Visual Studio показывает только .cpp)
+GroupSoureces("${HeaderGroupPrefix}/core" "${core_header_src}")
+GroupSoureces("${SourceGroupPrefix}/core" "${core_impl_src}")
 
-file (GLOB graphics_header_src "*graphics/*.h")
-file (GLOB graphics_impl_src   "*graphics/impl/*.cpp")
+GroupSoureces("${HeaderGroupPrefix}/components" "${component_header_src}")
+GroupSoureces("${SourceGroupPrefix}/components" "${component_impl_src}")
 
-GroupSoureces("" "${global_header_src}") 
+GroupSoureces("${HeaderGroupPrefix}/systems" "${system_header_src}")
+GroupSoureces("${SourceGroupPrefix}/systems" "${system_impl_src}")
 
-GroupSoureces("${HeaderGroupPrefix}/main" "${main_header_src}")
-GroupSoureces("${SourceGroupPrefix}/main" "${main_impl_src}")  
+GroupSoureces("${HeaderGroupPrefix}" "config.h")
 
-GroupSoureces("${HeaderGroupPrefix}/graphics" "${graphics_header_src}")
-GroupSoureces("${SourceGroupPrefix}/graphics" "${graphics_impl_src}")  
+# Пока beng собирается только как static library
+add_library(beng STATIC
+    config.h
 
-set(beng_sources 
-    ${global_header_src}
+    ${core_header_src}
+    ${core_impl_src}
 
-    ${main_header_src}
-    ${main_impl_src} 
+    ${component_header_src}
+    ${component_impl_src}
 
-	${graphics_header_src}
-    ${graphics_impl_src} 
-
+    ${system_header_src}
+    ${system_impl_src}
 )
 
-message ( ${global_header_src})
+set_target_properties(beng PROPERTIES FOLDER "beng" LINKER_LANGUAGE CXX)
 
-add_executable(${BIN} ${beng_sources})
+# Корень инклюдов: все инклюды имеют вид <beng/...>, корень — src/
+target_include_directories(beng PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
-target_link_directories(${BIN} PRIVATE ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
-target_link_directories(${BIN} PRIVATE ${assimp_lib})
-
-set(blib_link_type_enum blib_link_static blib_link_dynamic)
-set(blib_link_type STATIC CACHE STRING "Library link type")
-set_property(CACHE blib_link_type PROPERTY STRINGS ${blib_link_type_enum})
-
-target_compile_definitions(${BIN} PRIVATE blib_import)
-if(blib_link_type STREQUAL "blib_link_static")
-	target_compile_definitions(${BIN} PRIVATE blib_static)
-elseif(blib_link_type STREQUAL "blib_link_dynamic")
-	target_compile_definitions(${BIN} PRIVATE blib_dynamic)
-else()
-    message(FATAL_ERROR "Undefined blib link type")
-endif()
-
-set(debug_library_list debug  )
-
-target_link_libraries(${BIN} 
-	PUBLIC debug blib-graphics 
-	PUBLIC debug assimpd 
-	PUBLIC debug zlibstaticd 
-	PUBLIC optimized blib-graphics 
-	PUBLIC optimized assimp  
-	PUBLIC optimized zlibstatic
-)
-
-target_include_directories(${BIN} PRIVATE ${blib_dir})
-target_include_directories(${BIN} PRIVATE ${assimp_include})
-target_include_directories(${BIN} PRIVATE ${stb_include})
-target_include_directories(${BIN} PUBLIC  "${CMAKE_CURRENT_SOURCE_DIR}/../")
-
-if(WIN32)
-    #target_link_libraries(${BIN} PUBLIC Glu32)
-
-	#set_target_properties(${BIN} PROPERTIES VS_DEBUGGER_ENVIRONMENT)
-	set_target_properties(${BIN} PROPERTIES VS_DEBUGGER_ENVIRONMENT "${MY_PATH}" LINKER_LANGUAGE CXX)
-	set (CMAKE_CXX_FLAGS_RELEASE "/std:c++17 /EHsc /Gd /Gy /Oi /Gm- /MP /O2 /W3 /ZI /MD" )
-    set (CMAKE_CXX_FLAGS_RELWITHDEBINFO "/std:c++17 /EHsc /Gd /Gy /Oi /Gm- /MP /O2 /W3 /ZI /MD" )
-    set (CMAKE_CXX_FLAGS_MINSIZEREL "/std:c++17 /EHsc /Gd /Gy /Oi /Gm- /MP /O2 /W3 /ZI /MD" )
-    set (CMAKE_CXX_FLAGS_DEBUG "/std:c++17 /EHsc /Gd /Gy /GS /Oi /Gm- /MP /Od /W3 /ZI /MDd" )
-	
-	message(STATUS ${CMAKE_CXX_FLAGS_DEBUG})
-endif()
+# blib-core передаёт blib-system и все конфигурационные дефайны (PUBLIC)
+target_link_libraries(beng PUBLIC blib-core)

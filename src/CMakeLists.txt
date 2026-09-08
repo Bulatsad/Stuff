@@ -38,8 +38,19 @@ endif()
 
 add_subdirectory(${blib_dir})
 
-# beng — 3D-вьювер поверх blib-graphics; собирается только если
-# модуль графики доступен (на текущий момент — только Windows)
+# beng — ECS-ядро движка (Bulat Engine); от графики не зависит
+add_subdirectory(${beng_dir})
+
+# misc/model_viewer — 3D-вьювер поверх blib-graphics; собирается только
+# если модуль графики доступен (на текущий момент — только Windows)
 if(TARGET blib-graphics)
-	add_subdirectory(${beng_dir})
+	add_subdirectory(misc/model_viewer)
+endif()
+
+# misc/game — игровые приложения (client, server, test_ecs)
+add_subdirectory(misc/game)
+
+# Тесты движка (BUILD_TESTS) — по образцу blib/test
+if(BUILD_TESTS)
+	add_subdirectory(${beng_dir}/test)
 endif()
