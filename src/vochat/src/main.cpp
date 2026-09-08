@@ -2,7 +2,7 @@
 #include <Windows.h>
 
 #include <blib/core/console/console.h>
-#include<blib/core/algorithm/dtfExp.h>
+#include<blib/core/algorithm/dftExp.h>
 #include<blib/core/algorithm/dft.h>
 
 #include<blib/network/udpSocket.h>
