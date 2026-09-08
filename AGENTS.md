@@ -2,20 +2,24 @@
 
 ## Project Overview
 
-**Stuff** — собственный C++ игровой/мультимедийный движок под Windows (OpenGL 3.3+), в активной разработке.
+**Stuff** — собственный C++ игровой/мультимедийный движок (OpenGL 3.3+), в активной разработке.
 - **GitHub**: https://github.com/Bulatsad/Stuff.git
 - **Автор**: Bulatsad (bulatsad111199@gmail.com)
 - **Язык**: C++17, GLSL, CMake
-- **Платформа**: Windows (MSVC), Linux/macOS — только заглушки
+- **Платформа**: Windows (MSVC) — основная; **blib кроссплатформенный по задумке**, Linux/macOS — заглушки, которые должны стать реализациями
+
+**📖 Архитектура проекта:** `ARCHITECTURE.md` — слои (blib → beng → game), требования к beng, референсная игра (диаблоид), эдитор (плагин-модель), roadmap.
 
 ### Основные компоненты:
 | Модуль   | Тип        | Назначение |
 |----------|------------|------------|
-| `blib`   | library    | Ядро: math, graphics (OpenGL-обёртка), sound (WinMM), network (winsock), thread, algorithm (FFT) |
-| `beng`   | executable | 3D-вьювер: загрузка моделей через Assimp, скелетная анимация (.md5mesh), ImGui |
-| `vochat` | executable | Voice chat: запись/воспроизведение звука, FFT, UDP/TCP стриминг |
+| `blib`   | library    | Сервисы: math, graphics (OpenGL-обёртка), sound (WinMM), network (winsock), thread, algorithm (FFT). Кроссплатформенный по задумке |
+| `beng`   | library    | Bulat Engine: ECS-ядро (Scene, Entity, ComponentPool, System, TransformComponent). Целевые таргеты: beng-core / beng-client / beng-server / beng-editor (см. ARCHITECTURE.md) |
+| `model_viewer` | executable | 3D-вьювер: загрузка моделей через Assimp, скелетная анимация (.md5mesh), ImGui (Windows, поверх blib-graphics). Будущая основа 3D-ветки |
+| `vochat` | executable | Voice chat: запись/воспроизведение звука, FFT, UDP/TCP стриминг (отдельный инструмент) |
 | `client` | executable | Игровой клиент (изометрические тайлы, зачатки) |
 | `server` | executable | Игровой сервер (зачатки ECS) |
+| `test_ecs` | executable | Демо/Smoke-приложение ECS-ядра (Scene + Transform-иерархия) |
 
 ### Сторонние библиотеки (все в `thirdparty/`, без пакетных менеджеров):
 - **OpenGL API** headers (ручная загрузка, без GLEW/GLAD) — `thirdparty/opengl/`
@@ -29,12 +33,15 @@
 ```
 M:\Stuff\
 ├── AGENTS.md              <-- этот файл
+├── ARCHITECTURE.md        <-- слои, требования к beng, референсная игра, эдитор, roadmap
+├── ERROR_HANDLING_ARCHITECTURE.md
 ├── src/
 │   ├── CMakeLists.txt      <-- корневой CMake (project "Stuff", cmake >= 3.29)
 │   ├── blib/               <-- ядро (library)
-│   ├── beng/               <-- 3D-вьювер (executable)
+│   ├── beng/               <-- Bulat Engine: ECS-ядро (library) + тесты (beng/test)
 │   ├── vochat/             <-- voice chat (executable)
-│   ├── misc/game/          <-- client + server (executables)
+│   ├── misc/model_viewer/  <-- 3D-вьювер (executable, только Windows)
+│   ├── misc/game/          <-- client + server + test_ecs (executables)
 │   ├── shaders/            <-- GLSL шейдеры
 │   ├── test/               <-- тестовые файлы
 │   └── thirdparty/         <-- сторонние библиотеки
@@ -49,11 +56,28 @@ cmake -B ../build -DCMAKE_BUILD_TYPE=Debug
 
 # Сборка (из src/)
 cmake --build ../build --config Debug
+
+# Конфигурация с тестами
+cmake -B ../build -DBUILD_TESTS=ON
+
+# Прогон тестов (blib + beng)
+ctest --test-dir ../build -C Debug
 ```
 
 - CMake >= 3.29
 - Компилятор: MSVC (флаги захардкожены в CMakeLists.txt: `/std:c++17 /EHsc /Gd /Gy /Oi /Gm- /MP /O2 /W3 /ZI /MD`)
 - `blib` может собираться как static или shared (`blib_build_type`)
+- Тесты: `BUILD_TESTS=ON` — группы `blib_test_*` и `beng_test_*` (фреймворк `blib::test`, `BLIB_TEST_CASE`/`BLIB_TEST_CHECK`), CTest-регистрация
+
+## Архитектурные правила
+
+📖 Детали: **ARCHITECTURE.md** (слои, требования к beng, референсная игра, эдитор, roadmap)
+
+- **Три слоя, строгая иерархия:** `blib` (сервисы, ноль игровых концепций) → `beng` (среда выполнения: ECS, Application, модули, ресурсы) → `game` (правила и контент конкретной игры). Нижний слой не знает о верхнем.
+- **blib — кроссплатформенный по задумке:** Windows реализован, Linux/macOS — заглушки, которые должны стать реализациями. beng зависит от blib напрямую.
+- **Паттерн «lib + тонкий exe»:** каждый исполняемый файл — тонкая обёртка (`main()`) над core-библиотекой. Core-lib даёт frame-API (`initialize`/`tick`/`shutdown`) и **не владеет** главным циклом.
+- **Сервер — всегда отдельный процесс** (одиночная игра = локальный сервер + loopback). In-process хостинг сервера допустим только внутри эдитора (PIE).
+- **Эдитор — плагин-модель:** один эдитор на все игры; игра подключается как DLL. Реестр типов компонентов — только явная регистрация (static-local ID и `typeid()` через границу DLL запрещены).
 
 ## Ключевые паттерны кода
 
@@ -122,6 +146,15 @@ cmake --build ../build --config Debug
 ### Касты (СТРОГО)
 - Только C++-касты: `static_cast`, `reinterpret_cast`, `const_cast`
 - C-style касты `(T)x` в новом коде запрещены
+
+### Вшитые константы (СТРОГО)
+- Вшитые литералы в код **запрещены**: ни чисел, ни строк — всё через именованные константы
+- Числа: `int array[123]` → `constexpr buint32 maxItems = 123; int array[maxItems];`
+  - размеры буферов, лимиты, таймауты, порты, пороги — только именованные константы
+- Строки: пути к файлам, имена шейдеров/ассетов, ключи, формат-строки — тоже через константы
+- Именование: `constexpr`/`const` в camelCase (по конвенциям выше); макросы для констант не заводить (см. правило про макросы)
+- Допустимо: `0`/`1` только в тривиальных местах (инициализация циклов, инкременты, сравнения с нулём)
+- Исключение: тесты — там магические значения допустимы ради наглядности
 
 ### SAL-аннотации (СТРОГО)
 - `_In` / `_Out` **обязательны** для параметров-указателей и параметров-ссылок во всех новых функциях/методах
