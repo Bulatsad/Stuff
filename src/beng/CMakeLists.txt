@@ -1,6 +1,7 @@
-#beng — Bulat Engine: ECS-ядро движка (Scene, Component, System, Transform)
+#beng-core — Bulat Engine: переносимое ядро движка (ECS: Scene, Component,
+#System, Transform; Time). Ни графики, ни сети, ни звука.
 #Зависит только от blib-core (blib-system транзитивно).
-#Графика и 3D-вьювер вынесены в misc/model_viewer.
+#Остальные таргеты движка (beng-client/beng-server/beng-editor) появятся позже.
 
 file (GLOB core_header_src "core/*.h" "core/impl/*.inl")
 file (GLOB core_impl_src "core/*.cpp")
@@ -24,8 +25,8 @@ GroupSoureces("${SourceGroupPrefix}/systems" "${system_impl_src}")
 
 GroupSoureces("${HeaderGroupPrefix}" "config.h")
 
-# Пока beng собирается только как static library
-add_library(beng STATIC
+# Пока beng-core собирается только как static library
+add_library(beng-core STATIC
     config.h
 
     ${core_header_src}
@@ -38,10 +39,10 @@ add_library(beng STATIC
     ${system_impl_src}
 )
 
-set_target_properties(beng PROPERTIES FOLDER "beng" LINKER_LANGUAGE CXX)
+set_target_properties(beng-core PROPERTIES FOLDER "beng" LINKER_LANGUAGE CXX)
 
 # Корень инклюдов: все инклюды имеют вид <beng/...>, корень — src/
-target_include_directories(beng PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
+target_include_directories(beng-core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # blib-core передаёт blib-system и все конфигурационные дефайны (PUBLIC)
-target_link_libraries(beng PUBLIC blib-core)
+target_link_libraries(beng-core PUBLIC blib-core)

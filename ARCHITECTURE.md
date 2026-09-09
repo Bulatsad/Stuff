@@ -98,10 +98,10 @@
 Каждый исполняемый файл проекта — тонкая обёртка над core-библиотекой:
 
 ```
-game-client.exe  ──> game-client-core ──> beng-client ──> beng-core ──> blib
-game-server.exe  ──> game-server-core ──> beng-server ──> beng-core ──> blib
-game-editor.exe  ──> beng-editor + game-client-core + game-server-core + game-common
-game-common ──> beng-core ──> blib
+gravelands-client.exe ──> gravelands-client-core ──> beng-client ──> beng-core ──> blib
+gravelands-server.exe ──> gravelands-server-core ──> beng-server ──> beng-core ──> blib
+gravelands-editor.exe ──> beng-editor + gravelands-client-core + gravelands-server-core + gravelands-common
+gravelands-common ──> beng-core ──> blib
 ```
 
 - Core-библиотеки дают frame-API (`initialize` / `tick` / `shutdown`),
@@ -110,10 +110,12 @@ game-common ──> beng-core ──> blib
   корректно гасит.
 - Этот же паттерн позволяет эдитору хостить игру in-process: он сам вызывает
   `tick` ядер внутри своего ImGui-цикла.
+- Игра названа **Gravelands** (диаблоид): таргеты именуются `gravelands-*`,
+  namespace — `gravelands`, инклюды — `<gravelands/...>` (корень `src/misc`).
 
 ---
 
-## 🎮 Референсная игра — диаблоид
+## 🎮 Референсная игра — Gravelands (диаблоид)
 
 Условный «Path of Exile 2 с графикой Stronghold»: изометрическая ARPG,
 клиент-сервер, серверный авторитет.
@@ -122,15 +124,20 @@ game-common ──> beng-core ──> blib
 
 | Модуль | Тип | Назначение |
 |--------|-----|------------|
-| `game-common` | library | общие определения: компоненты, пакеты протокола, формулы, статы |
-| `game-server-core` + `game-server.exe` | library + exe | авторитетная симуляция: Movement, Combat, Loot, Session |
-| `game-client-core` + `game-client.exe` | library + exe | представление: ввод, камера, интерполяция, рендер, UI |
-| `game-editor.exe` | exe | эдитор: правит сцены, Play mode (PIE) |
+| `gravelands-common` | library | общие определения: константы (есть), позже — компоненты, пакеты протокола, формулы, статы |
+| `gravelands-server-core` + `gravelands-server.exe` | library + exe | авторитетная симуляция: Movement, Combat, Loot, Session |
+| `gravelands-client-core` + `gravelands-client.exe` | library + exe | представление: ввод, камера, интерполяция, рендер, UI |
+| `gravelands-editor.exe` | exe | эдитор: правит сцены, Play mode (PIE) |
 
 **Сервер — всегда отдельный процесс.** Даже одиночная игра: запускается
-локальный `game-server.exe`, клиент подключается по loopback. In-process
+локальный `gravelands-server.exe`, клиент подключается по loopback. In-process
 хостинг сервера существует только внутри эдитора (PIE) и только через
 core-библиотеку — см. раздел про эдитор.
+
+**Таймстеп — гибридный** (как FixedUpdate/Update в Unity):
+сервер шагает симуляцию фиксированными тиками 30 Гц с аккумулятором
+(`serverTickRate`/`serverFixedDelta` в `gravelands-common`), клиент рендерит
+и читает ввод с переменным dt.
 
 ### Поток данных (сетевой цикл)
 
@@ -156,11 +163,11 @@ core-библиотеку — см. раздел про эдитор.
 | `TransformComponent`, `TransformSystem` | beng-core | есть |
 | `CameraComponent`, `SpriteRenderComponent` | beng-client | рендер-представление |
 | `ResourceManager` (меш/текстура/звук) | beng-client | кеш по ключам |
-| `UnitComponent`, `InventoryComponent`, `SkillComponent` | game-common | определения, не логика |
-| `MovementSystem`, `CombatSystem`, `LootSystem` | game-server-core | только сервер |
-| `InputSystem`, `CameraFollowSystem`, `InterpolationSystem` | game-client-core | только клиент |
-| формулы урона, таблицы статов | game-common | нужны серверу и UI клиента |
-| тайловый мир (статика) | game-common + game-server | ECS — только динамика |
+| `UnitComponent`, `InventoryComponent`, `SkillComponent` | gravelands-common | определения, не логика |
+| `MovementSystem`, `CombatSystem`, `LootSystem` | gravelands-server-core | только сервер |
+| `InputSystem`, `CameraFollowSystem`, `InterpolationSystem` | gravelands-client-core | только клиент |
+| формулы урона, таблицы статов | gravelands-common | нужны серверу и UI клиента |
+| тайловый мир (статика) | gravelands-common + gravelands-server-core | ECS — только динамика |
 
 ---
 
@@ -170,10 +177,10 @@ core-библиотеку — см. раздел про эдитор.
 игра подключается к нему как плагин (DLL).
 
 ```
-game-editor.exe
+gravelands-editor.exe
    ├── beng-editor (каркас: панели, вьюпорт, gizmo, selection, undo/redo)
-   ├── загружает game.dll (плагин игры: регистрация типов + правила сериализации)
-   └── Play mode: хостит game-client-core in-process + game-server-core in-process
+   ├── загружает gravelands.dll (плагин игры: регистрация типов + правила сериализации)
+   └── Play mode: хостит gravelands-client-core in-process + gravelands-server-core in-process
         (связь между ними — loopback TCP, сетевой код-путь остаётся настоящим)
 ```
 
@@ -205,7 +212,7 @@ game-editor.exe
 8. **Сборка/отладка**: эдитор находит нужную game.dll (Debug/Release).
 
 **Поэтапное внедрение:** пункты 1, 2, 5 закладываются сразу (shared core,
-явная регистрация, версионированный формат); на первом этапе game-плагин
+явная регистрация, версионированный формат); на первом этапе плагин игры
 можно линковать в эдитор статически — это меняет только CMake, не код игры,
 и ускоряет появление эдитора.
 
@@ -218,14 +225,18 @@ src/
 ├── blib/            # сервисы (как есть)
 ├── beng/
 │   ├── core/        # beng-core
-│   ├── client/      # beng-client
-│   ├── server/      # beng-server
-│   └── editor/      # beng-editor (каркас)
-├── misc/game/
-│   ├── common/      # game-common (lib)
-│   ├── client/      # game-client-core (lib) + game-client (тонкий exe)
-│   ├── server/      # game-server-core (lib) + game-server (тонкий exe)
-│   └── editor/      # game-editor (exe, единственный на все игры)
+│   ├── components/  # движковые компоненты (Transform — есть)
+│   ├── systems/     # движковые системы (TransformSystem — есть)
+│   ├── test/        # юнит-тесты beng (beng_test_*, BUILD_TESTS)
+│   ├── test_ecs/    # демо/Smoke ECS-ядра (есть)
+│   ├── client/      # beng-client (будущее)
+│   ├── server/      # beng-server (будущее)
+│   └── editor/      # beng-editor (каркас, будущее)
+├── misc/gravelands/         # игра Gravelands (диаблоид)
+│   ├── common/      # gravelands-common (lib, есть)
+│   ├── client/      # gravelands-client-core (lib) + gravelands-client (тонкий exe, есть)
+│   ├── server/      # gravelands-server-core (lib) + gravelands-server (тонкий exe, есть)
+│   └── editor/      # gravelands-editor (exe, будущее)
 ├── misc/model_viewer/   # будущая 3D-ветка (меши/анимация), не трогать до этапа 3D
 ├── vochat/          # отдельный инструмент, не часть игровой архитектуры
 └── thirdparty/
@@ -239,10 +250,10 @@ src/
 |--------|--------------|
 | Как нарисовать спрайт / отправить пакет / аллоцировать память? | blib |
 | Как устроен игровой цикл, тикрейт, ECS, ресурсы? | beng |
-| Какие у монстра статы и формулы урона? | game |
-| Кто авторитет в мире: клиент или сервер? | сервер (game-server-core) |
+| Какие у монстра статы и формулы урона? | gravelands |
+| Кто авторитет в мире: клиент или сервер? | сервер (gravelands-server-core) |
 | Кто знает, как выглядит эдитор? | beng-editor |
-| Кто знает, какие типы есть у игры? | game-плагин (game-common) |
+| Кто знает, какие типы есть у игры? | плагин игры (gravelands-common) |
 | Кто владеет while-циклом процесса? | тонкий exe (или эдитор в PIE) |
 
 ---
@@ -251,15 +262,15 @@ src/
 
 1. **beng-core: Application + тикрейт + интерфейсы модулей.** Рефлексия
    компонентов и явная регистрация типов. Shared-сборка blib/beng-core.
-2. **beng-server + game-server-core**: TCP-сервер, снапшоты, WorldManager;
+2. **beng-server + gravelands-server-core**: TCP-сервер, снапшоты, WorldManager;
    простейшая симуляция (движение юнитов, сессия игрока).
-3. **beng-client + game-client-core**: RenderModule/InputModule/AudioModule,
+3. **beng-client + gravelands-client-core**: RenderModule/InputModule/AudioModule,
    ResourceManager, рендер-ECS (спрайтовая изометрия на базе isometricTileset);
    подключение клиента, интерполяция.
-4. **Геймплей-петля диаблоида**: бой, лут, скиллы (game-common/server),
+4. **Геймплей-петля диаблоида**: бой, лут, скиллы (gravelands-common/server),
    UI (ImGui), звук.
-5. **beng-editor + game-editor**: панели, вьюпорт, Inspector через рефлексию,
-   сериализация сцен, PIE (in-process хостинг, loopback TCP).
+5. **beng-editor + gravelands-editor**: панели, вьюпорт, Inspector через
+   рефлексию, сериализация сцен, PIE (in-process хостинг, loopback TCP).
 6. **Опционально**: 3D-меши с изокамерой (`MeshRenderComponent`,
    контент-плейсхолдеры из obj_spider), UDP-канал, hot-reload плагина.
 
@@ -267,11 +278,22 @@ src/
 
 ## 🧹 Миграция текущего кода
 
-- **`misc/game/server/engine/bridge`** — дублирует ECS (свои entity/transform):
-  заменить на beng-core, bridge удалить.
-- **`misc/game/client/main.cpp`** — использует `printf` и держит весь код
-  в main: переписать на frame-API core-библиотеки + `Console`.
-- **`misc/game/test_ecs`** — остаётся как демо beng-core, но на новом
-  `Application`-API.
-- **`misc/model_viewer`** — не трогать: станет основой 3D-ветки на этапе 6.
-- **`vochat`** — отдельный инструмент, вне игровой архитектуры.
+**Выполнено (2026-09):**
+
+- Таргет `beng` → `beng-core`; демо переехало в `beng/test_ecs/` (линкует beng-core).
+- `misc/game` → `misc/gravelands`: игра именуется Gravelands, namespace `gravelands`,
+  инклюды `<gravelands/...>` (корень `src/misc`).
+- `server/engine/` (дубль ECS с битыми инклюдами) удалён; вместо него —
+  `gravelands-server-core` (ServerCore: beng::Scene + аккумулятор фикс. 30 Гц)
+  + тонкий `gravelands-server`.
+- `client` переписан на паттерн «lib + тонкий exe»: `gravelands-client-core`
+  (ClientCore с pimpl: окно/таргет/камера/тайлы) + тонкий `gravelands-client`;
+  `printf` заменён на Console; IsometricTileset пересобран на Mesh
+  (старый код опирался на уже удалённые Romb/Rectangle).
+- `misc/misc` (legacy Types/ObjectPool/LinkedList) удалён.
+
+**Осталось (по roadmap):**
+
+- `gravelands-common` — вырастет из header-only в lib с общими компонентами/пакетами.
+- `misc/model_viewer` — не трогать: станет основой 3D-ветки на этапе 6.
+- `vochat` — отдельный инструмент, вне игровой архитектуры.

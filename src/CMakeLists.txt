@@ -38,8 +38,11 @@ endif()
 
 add_subdirectory(${blib_dir})
 
-# beng — ECS-ядро движка (Bulat Engine); от графики не зависит
+# beng-core — ECS-ядро движка (Bulat Engine); от графики не зависит
 add_subdirectory(${beng_dir})
+
+# beng/test_ecs — демо/Smoke-приложение ECS-ядра (Scene + Transform-иерархия)
+add_subdirectory(${beng_dir}/test_ecs)
 
 # misc/model_viewer — 3D-вьювер поверх blib-graphics; собирается только
 # если модуль графики доступен (на текущий момент — только Windows)
@@ -47,8 +50,8 @@ if(TARGET blib-graphics)
 	add_subdirectory(misc/model_viewer)
 endif()
 
-# misc/game — игровые приложения (client, server, test_ecs)
-add_subdirectory(misc/game)
+# misc/gravelands — игра Gravelands (диаблоид): библиотеки + тонкие exe
+add_subdirectory(misc/gravelands)
 
 # Тесты движка (BUILD_TESTS) — по образцу blib/test
 if(BUILD_TESTS)

@@ -17,9 +17,10 @@
 | `beng`   | library    | Bulat Engine: ECS-ядро (Scene, Entity, ComponentPool, System, TransformComponent). Целевые таргеты: beng-core / beng-client / beng-server / beng-editor (см. ARCHITECTURE.md) |
 | `model_viewer` | executable | 3D-вьювер: загрузка моделей через Assimp, скелетная анимация (.md5mesh), ImGui (Windows, поверх blib-graphics). Будущая основа 3D-ветки |
 | `vochat` | executable | Voice chat: запись/воспроизведение звука, FFT, UDP/TCP стриминг (отдельный инструмент) |
-| `client` | executable | Игровой клиент (изометрические тайлы, зачатки) |
-| `server` | executable | Игровой сервер (зачатки ECS) |
-| `test_ecs` | executable | Демо/Smoke-приложение ECS-ядра (Scene + Transform-иерархия) |
+| `gravelands-common` | library | Gravelands: общие определения (константы; позже — компоненты, пакеты, формулы). Header-only, таргет INTERFACE |
+| `gravelands-client-core` + `gravelands-client` | library + exe | Gravelands: клиент (ClientCore, frame-API) + тонкий exe. Паттерн «lib + тонкий exe» |
+| `gravelands-server-core` + `gravelands-server` | library + exe | Gravelands: сервер (ServerCore: beng::Scene, фикс. тикрейт 30 Гц) + тонкий exe |
+| `test_ecs` | executable | Демо/Smoke-приложение ECS-ядра (beng/test_ecs, Scene + Transform-иерархия) |
 
 ### Сторонние библиотеки (все в `thirdparty/`, без пакетных менеджеров):
 - **OpenGL API** headers (ручная загрузка, без GLEW/GLAD) — `thirdparty/opengl/`
@@ -38,10 +39,10 @@ M:\Stuff\
 ├── src/
 │   ├── CMakeLists.txt      <-- корневой CMake (project "Stuff", cmake >= 3.29)
 │   ├── blib/               <-- ядро (library)
-│   ├── beng/               <-- Bulat Engine: ECS-ядро (library) + тесты (beng/test)
+│   ├── beng/               <-- Bulat Engine: ECS-ядро (library) + тесты (beng/test) + демо (beng/test_ecs)
 │   ├── vochat/             <-- voice chat (executable)
 │   ├── misc/model_viewer/  <-- 3D-вьювер (executable, только Windows)
-│   ├── misc/game/          <-- client + server + test_ecs (executables)
+│   ├── misc/gravelands/    <-- игра Gravelands: common + client (core+exe) + server (core+exe)
 │   ├── shaders/            <-- GLSL шейдеры
 │   ├── test/               <-- тестовые файлы
 │   └── thirdparty/         <-- сторонние библиотеки
@@ -78,6 +79,7 @@ ctest --test-dir ../build -C Debug
 - **Паттерн «lib + тонкий exe»:** каждый исполняемый файл — тонкая обёртка (`main()`) над core-библиотекой. Core-lib даёт frame-API (`initialize`/`tick`/`shutdown`) и **не владеет** главным циклом.
 - **Сервер — всегда отдельный процесс** (одиночная игра = локальный сервер + loopback). In-process хостинг сервера допустим только внутри эдитора (PIE).
 - **Эдитор — плагин-модель:** один эдитор на все игры; игра подключается как DLL. Реестр типов компонентов — только явная регистрация (static-local ID и `typeid()` через границу DLL запрещены).
+- **Game-слой именуется по игре:** Gravelands — таргеты `gravelands-*`, namespace `gravelands`, инклюды `<gravelands/...>` (корень `src/misc`). Таймстеп гибридный: сервер — фиксированные тики (аккумулятор, `serverFixedDelta`), клиент — переменный dt.
 
 ## Ключевые паттерны кода
 

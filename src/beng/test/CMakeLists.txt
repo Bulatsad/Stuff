@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # beng tests (по образцу blib/test)
 #
 # Каждая группа компилируется один раз как OBJECT-библиотека и
@@ -22,7 +22,7 @@ foreach(group ${beng_test_groups})
 	set(group_obj beng_test_${group}_obj)
 	add_library(${group_obj} OBJECT src/impl/test${group}.cpp)
 	target_include_directories(${group_obj} PRIVATE ${root_dir})
-	target_link_libraries(${group_obj} PRIVATE beng)
+	target_link_libraries(${group_obj} PRIVATE beng-core)
 	set_target_properties(${group_obj} PROPERTIES FOLDER "beng/tests/${group}")
 
 	# Standalone executable for this group: main + group objects
@@ -32,7 +32,7 @@ foreach(group ${beng_test_groups})
 		$<TARGET_OBJECTS:blib_test_main>
 		$<TARGET_OBJECTS:${group_obj}>
 	)
-	target_link_libraries(${group_exe} PRIVATE beng)
+	target_link_libraries(${group_exe} PRIVATE beng-core)
 	set_target_properties(${group_exe} PROPERTIES FOLDER "beng/tests/${group}")
 	add_test(NAME ${group_exe} COMMAND ${group_exe})
 	list(APPEND beng_test_group_exes ${group_exe})
@@ -45,7 +45,7 @@ target_sources(beng_test_all PRIVATE $<TARGET_OBJECTS:blib_test_main>)
 foreach(group ${beng_test_groups})
 	target_sources(beng_test_all PRIVATE $<TARGET_OBJECTS:beng_test_${group}_obj>)
 endforeach()
-target_link_libraries(beng_test_all PRIVATE beng)
+target_link_libraries(beng_test_all PRIVATE beng-core)
 set_target_properties(beng_test_all PROPERTIES FOLDER "beng/tests")
 add_test(NAME beng_test_all COMMAND beng_test_all)
 

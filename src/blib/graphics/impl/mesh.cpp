@@ -273,8 +273,12 @@ void blib::graphics::Mesh::draw(blib::graphics::RenderContext& ctx, const std::v
 
     ctx.api.ogl.ext.__blib_glBindVertexArray(__blib_this_context(this)->vao);
 
-    //ctx.api.ogl.ext.__blib_gl_glDrawArrays(primitiveTypeToOGL(this->primitiveType), 0, this->vertices.size());
-    ctx.api.ogl.ext.__blib_gl_glDrawElements(primitiveTypeToOGL(this->primitiveType), sizeof(this->faces[0].indices[0]) * this->faces[0].indices.size() * this->faces.size(), GL_UNSIGNED_INT, 0);
+    // count = количество ИНДЕКСОВ (а не байт): раньше сюда передавался
+    // размер в байтах, что заставляло читать за пределами EBO
+    // и рисовать мусорные треугольники из невалидных индексов
+    const GLsizei indexCount = static_cast<GLsizei>(
+        this->faces[0].indices.size() * this->faces.size());
+    ctx.api.ogl.ext.__blib_gl_glDrawElements(primitiveTypeToOGL(this->primitiveType), indexCount, GL_UNSIGNED_INT, 0);
 
     ctx.api.ogl.ext.__blib_glBindVertexArray(0);
 }
