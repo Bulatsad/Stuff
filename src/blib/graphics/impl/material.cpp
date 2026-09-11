@@ -41,14 +41,22 @@ blib::graphics::MaterialError blib::graphics::Material::loadDiffuseTextureFromAs
                 {
                 case 3:
                     this->diffuseImage = blib::graphics::Image(width, height);
-                    for (int i = 0; i < width; ++i)
+                    // stbi отдаёт пиксели построчно (row-major):
+                    // индекс = (row * width + col). Раньше стояла
+                    // транспонированная индексация (i * height + j) —
+                    // для неквадратных текстур она читала за границей
+                    // буфера, для квадратных — зеркалила картинку.
+                    // Alpha не используется (Image всегда RGBA), ставим
+                    // непрозрачность, а не 0
+                    for (int j = 0; j < height; ++j)
                     {
-                        for (int j = 0; j < height; ++j)
+                        for (int i = 0; i < width; ++i)
                         {
-                            this->diffuseImage[i][j].red = pPixelData[(i * height + j) * 3 + 0];
-                            this->diffuseImage[i][j].green = pPixelData[(i * height + j) * 3 + 1];
-                            this->diffuseImage[i][j].blue = pPixelData[(i * height + j) * 3 + 2];
-                            this->diffuseImage[i][j].alpha = 0;
+                            const int srcIndex = (j * width + i) * 3;
+                            this->diffuseImage[i][j].red = pPixelData[srcIndex + 0];
+                            this->diffuseImage[i][j].green = pPixelData[srcIndex + 1];
+                            this->diffuseImage[i][j].blue = pPixelData[srcIndex + 2];
+                            this->diffuseImage[i][j].alpha = 255;
                         }
                     }
                     break;
@@ -78,6 +86,16 @@ blib::graphics::MaterialError blib::graphics::Material::loadDiffuseTextureFromAs
 
 bool blib::graphics::Material::bake(blib::graphics::RenderContext& ctx)
 {
+    // Пустое изображение (нет диффузной текстуры у материала) —
+    // GL-текстуру не создаём: textureID остаётся 0, и Mesh::draw
+    // подставит плоскую белую заглушку. Раньше glTexImage2D с
+    // размерами 0x0 создавал «пустую» текстуру, сэмплинг которой
+    // давал чёрный цвет
+    if (this->diffuseImage.width == 0 || this->diffuseImage.height == 0)
+    {
+        return false;
+    }
+
     blib::graphics::TextureError err = this->diffuse.create(this->diffuseImage, ctx);
     if (__blib_unlikely(err != blib::graphics::TextureError::None))
     {

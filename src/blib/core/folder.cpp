@@ -37,10 +37,31 @@ __blib_platform_depended std::vector<std::string> blib::core::Folder::getAllEntr
 	{
 		do
 		{
-			char buff[MAX_PATH];
-			for (int i = 0; i < MAX_PATH; i++)
-				buff[i] = (char)wfd.cFileName[i];
-			res.push_back(std::string(buff));
+			// BUG-FIX: раньше WCHAR-имя копировалось побайтово в char
+			// (каждый второй байт — 0), из-за чего std::string
+			// обрезался до первого символа и Folder::down никогда
+			// не находил файлы. Правильная конвертация — через
+			// WideCharToMultiByte
+			int length = WideCharToMultiByte(
+				CP_UTF8, 0,
+				wfd.cFileName, -1,
+				nullptr, 0,
+				nullptr, nullptr);
+			if (length <= 0)
+			{
+				continue;
+			}
+
+			std::string entry(static_cast<size_t>(length), '\0');
+			WideCharToMultiByte(
+				CP_UTF8, 0,
+				wfd.cFileName, -1,
+				&entry[0], length,
+				nullptr, nullptr);
+			// Обрезать завершающий '\0' (length включает его)
+			entry.resize(static_cast<size_t>(length) - 1);
+
+			res.push_back(std::move(entry));
 		} while (NULL != FindNextFileW(hFind, &wfd));
 		FindClose(hFind);
 	}

@@ -67,6 +67,9 @@ void blib::graphics::RenderApi::InitGraphicsApi()
     this->ogl.__blib_glPushMatrix   = &__blib_glPushMatrix;
     this->ogl.__blib_glPopMatrix    = &__blib_glPopMatrix;
     this->ogl.__blib_gl_glClear     = &glClear;               //static_cast<__blib_gl_signature_glClear>(getprocaddr("glClear"));
+    this->ogl.__blib_glPolygonMode  = &glPolygonMode;         // GL 1.x — экспортируется из Opengl32 напрямую
+    this->ogl.__blib_glLineWidth    = &glLineWidth;           // GL 1.x — экспортируется из Opengl32 напрямую
+    this->ogl.__blib_glPolygonOffset = &glPolygonOffset;      // GL 1.x — экспортируется из Opengl32 напрямую
 
 
     this->ogl.ext.__blib_glGenBuffers              = static_cast<__blib_gl_signature_glGenBuffers>(getprocaddr("glGenBuffers"));

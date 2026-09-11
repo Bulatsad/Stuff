@@ -1,44 +1,46 @@
-#model_viewer — 3D-вьювер моделей (Assimp + Dear ImGui) поверх blib-graphics.
+#model_viewer — 3D-вьювер моделей (прототип эдитора).
+#Паттерн «lib + тонкий exe»:
+#  - model_viewer-core: ViewerCore (frame-API initialize/tick/shutdown),
+#    ECS-сцена beng, панели beng-editor, рендер в FBO вьюпорта;
+#  - model_viewer: тонкий exe, только main().
 #Собирается только под Windows (добавляется из корневого CMake при
 #наличии таргета blib-graphics).
-#
-#Легаси-исходники graphics/ (beng::graphics::Model/GameObject/Scene)
-#остались в дереве на будущее, но в сборку НЕ включены:
-#это стабы со ссылками на старый API (<beng/graphics/...> в старом
-#расположении) — текущий main.cpp их не использует (работает через
-#blib::graphics::SkinModel).
 
-file (GLOB main_header_src "main/*.h")
-file (GLOB main_impl_src "main/impl/*.cpp")
+file (GLOB core_header_src "core/*.h")
+file (GLOB core_impl_src "core/*.cpp")
 
-# Старый снапшот главного цикла — не собирать
-list (FILTER main_impl_src EXCLUDE REGEX "main_OLD")
+# Хидеры включены в таргет явно — чтобы быть видимыми в Solution Explorer
+GroupSoureces("${HeaderGroupPrefix}/model_viewer/core" "${core_header_src}")
+GroupSoureces("${SourceGroupPrefix}/model_viewer/core" "${core_impl_src}")
+GroupSoureces("${SourceGroupPrefix}/model_viewer/main" "main/main.cpp")
 
-# Легаси-заголовки graphics/ — только для видимости в Solution Explorer
-file (GLOB graphics_header_src "graphics/*.h")
-
-GroupSoureces("${HeaderGroupPrefix}/main" "${main_header_src}")
-GroupSoureces("${SourceGroupPrefix}/main" "${main_impl_src}")
-GroupSoureces("${HeaderGroupPrefix}/graphics/legacy" "${graphics_header_src}")
-
-add_executable(model_viewer
-    ${main_header_src}
-    ${main_impl_src}
-
-    ${graphics_header_src}
+# Core-библиотека: вся логика вьювера
+add_library(model_viewer-core STATIC
+    ${core_header_src}
+    ${core_impl_src}
 )
 
-set_target_properties(model_viewer PROPERTIES FOLDER "misc")
+set_target_properties(model_viewer-core PROPERTIES FOLDER "misc/model_viewer" LINKER_LANGUAGE CXX)
 
-# blib-graphics (PUBLIC) даёт: корень инклюдов src/, конфигурационные
-# дефайны, Assimp-хедеры, ImGui-хедеры, OpenGL-хедеры
-target_link_libraries(model_viewer PRIVATE blib-graphics)
+# Корень инклюдов: <model_viewer/...> разрешается от src/misc
+# (имя каталога повторяет имя таргета — как <gravelands/...>)
+target_include_directories(model_viewer-core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
-# Assimp + zlib (prebuilt .lib из thirdparty/assimplib)
-target_link_directories(model_viewer PRIVATE ${assimp_lib})
-target_link_libraries(model_viewer PRIVATE
+# beng-editor тянет beng-client, beng-core и blib-graphics (PUBLIC):
+# ImGui-хедеры, консоль, рендер — всё доступно транзитивно
+target_link_libraries(model_viewer-core PUBLIC beng-editor)
+
+# Assimp + zlib (prebuilt .lib из thirdparty/assimplib) — нужны
+# на этапе линковки exe (Importer::ReadFile и зилевые символы)
+target_link_directories(model_viewer-core PUBLIC ${assimp_lib})
+target_link_libraries(model_viewer-core PUBLIC
     debug assimpd
     debug zlibstaticd
     optimized assimp
     optimized zlibstatic
 )
+
+# Тонкий exe
+add_executable(model_viewer main/main.cpp)
+target_link_libraries(model_viewer PRIVATE model_viewer-core)
+set_target_properties(model_viewer PROPERTIES FOLDER "misc/model_viewer")

@@ -41,6 +41,14 @@ add_subdirectory(${blib_dir})
 # beng-core — ECS-ядро движка (Bulat Engine); от графики не зависит
 add_subdirectory(${beng_dir})
 
+# beng-client — рендер-ECS движка; требует blib-graphics (сейчас — Windows)
+if(TARGET blib-graphics)
+	add_subdirectory(${beng_dir}/client)
+
+	# beng-editor — панели эдитора на ImGui; тоже требует blib-graphics
+	add_subdirectory(${beng_dir}/editor)
+endif()
+
 # beng/test_ecs — демо/Smoke-приложение ECS-ядра (Scene + Transform-иерархия)
 add_subdirectory(${beng_dir}/test_ecs)
 

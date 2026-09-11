@@ -89,7 +89,9 @@ blib::graphics::IRenderTarget::IRenderTarget(buint32 a_viewportWidth, buint32 a_
             this->rc.api.ogl.ext.__blib_gl_glBindFramebuffer(GL_FRAMEBUFFER, this->ctx.pdctx.frameBufferIds[i]);
 
             // Binding render buffer to frame buffer
-            this->rc.api.ogl.ext.__blib_gl_glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, this->ctx.pdctx.frameBufferIds[i]);
+            // Исправлен баг: раньше сюда передавался ID фреймбуфера,
+            // из-за чего depth/stencil в FBO не привязывался вовсе
+            this->rc.api.ogl.ext.__blib_gl_glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, this->ctx.pdctx.renderBufferIds[i]);
         }
     }
 
@@ -99,6 +101,45 @@ blib::graphics::IRenderTarget::IRenderTarget(buint32 a_viewportWidth, buint32 a_
 
 void blib::graphics::IRenderTarget::applySettings()
 {
+}
+
+void blib::graphics::IRenderTarget::resize(buint32 a_viewportWidth, buint32 a_viewportHeight)
+{
+    // Защита от вырожденных размеров (схлопнутое окно/панель)
+    // и от бесполезного повторного ресайза в тот же размер
+    if (__blib_unlikely(a_viewportWidth < 1 || a_viewportHeight < 1))
+    {
+        return;
+    }
+    if (a_viewportWidth == this->ctx.viewportWidth && a_viewportHeight == this->ctx.viewportHeight)
+    {
+        return;
+    }
+
+    this->ctx.viewportWidth = a_viewportWidth;
+    this->ctx.viewportHeight = a_viewportHeight;
+
+    for (size_t i = 0; i < this->ctx.frameBuffersCount; ++i)
+    {
+        // Цветовая текстура: перезаливка хранилища того же объекта
+        // (идентификатор не меняется — внешние биндинги валидны)
+        blib::graphics::TextureError terr = this->ctx.frameTextures[i].resize(
+            static_cast<bint16>(a_viewportWidth),
+            static_cast<bint16>(a_viewportHeight),
+            this->rc);
+        if (__blib_unlikely(terr != blib::graphics::TextureError::None))
+        {
+            __blib_log_warning("fbo resize: failed to resize texture #%zu (error %u)", i, static_cast<buint32>(terr));
+        }
+
+        // Depth/stencil renderbuffer: переаллокация хранилища того же
+        // объекта (привязки к FBO сохраняются)
+        this->rc.api.ogl.ext.__blib_gl_glBindRenderbuffer(GL_RENDERBUFFER, this->ctx.pdctx.renderBufferIds[i]);
+        this->rc.api.ogl.ext.__blib_gl_glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, a_viewportWidth, a_viewportHeight);
+    }
+    this->rc.api.ogl.ext.__blib_gl_glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+    // Viewport обновится в следующем clear()
 }
 
 void blib::graphics::IRenderTarget::clear(const Color& color)

@@ -48,6 +48,12 @@ typedef void (__blib_gl_calling_convension* __blib_gl_signature_glPushMatrix)(vo
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glPopMatrix)(void);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glClear)(GLbitfield mask);
 
+// Функции для wireframe-отрисовки и толщины линий (GL 1.x,
+// экспортируются напрямую из Opengl32 — см. InitGraphicsApi)
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glPolygonMode)(GLenum face, GLenum mode);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glLineWidth)(GLfloat width);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glPolygonOffset)(GLfloat factor, GLfloat units);
+
 
 
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glNormal3f)(GLfloat nx, GLfloat ny, GLfloat nz);
@@ -176,6 +182,9 @@ namespace blib
             __blib_gl_signature_glPushMatrix   __blib_glPushMatrix = nullptr;
             __blib_gl_signature_glPopMatrix    __blib_glPopMatrix = nullptr;
             __blib_gl_signature_glClear        __blib_gl_glClear = nullptr;
+            __blib_gl_signature_glPolygonMode  __blib_glPolygonMode = nullptr;
+            __blib_gl_signature_glLineWidth    __blib_glLineWidth = nullptr;
+            __blib_gl_signature_glPolygonOffset __blib_glPolygonOffset = nullptr;
             oglExt_s ext;
         };
 

@@ -42,6 +42,7 @@ namespace blib
             void bake(blib::graphics::RenderContext& ctx) const;
         public:
             Mesh();
+            ~Mesh();
             bool ngonencoding = false;
 
             PrimitiveType primitiveType;

@@ -1,0 +1,19 @@
+# Build output
+build/
+linuxbuild/
+winbuild/
+
+# Deploy-скрипты/снапшоты (локальное, не в репозиторий)
+deploy_coreonly/
+
+# CMake/CTest artifacts
+src/Testing/
+
+# Вендорный код (локально, не в репозиторий)
+src/thirdparty/
+
+# Тестовые 3D-ассеты (локально)
+obj_spider/
+
+# Личная конфигурация инструментов
+opencode.json

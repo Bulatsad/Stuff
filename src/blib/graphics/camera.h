@@ -7,6 +7,7 @@
 #include <blib/graphics/drawable.h>
 #include <blib/graphics/transformable.h>
 #include <blib/graphics/renderWindow.h>
+#include <blib/graphics/iCamera.h>
 
 #include <blib/core/math/angle.h>
 
@@ -19,7 +20,7 @@ namespace blib
         * 
         * implement Transormable
         */
-        class __blib_graphics_api Camera : public Transform
+        class __blib_graphics_api Camera : public Transform, public blib::graphics::ICamera
         {
         private:
             blib::graphics::TransformMatrix projectionMatrix;
@@ -47,8 +48,8 @@ namespace blib
             // farDist - far distance of cutting off
             void setPerpective(const blib::math::AngleDegreef& fov, float aspect, float nearDist, float farDist);
 
-            const blib::graphics::TransformMatrix& getProjectionMatrix() const;
-            const blib::graphics::TransformMatrix& getViewMatrix() const;
+            const blib::graphics::TransformMatrix& getProjectionMatrix() const override;
+            const blib::graphics::TransformMatrix& getViewMatrix() const override;
 
             void controlUpdate(float deltaTime,  RenderWindow& wnd, bool isFocused);
 

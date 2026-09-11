@@ -1,6 +1,8 @@
 #include <blib/graphics/mesh.h>
 
 #include <blib/core/console/console.h>
+#include <blib/system/memory/globalAllocator.h>
+#include <blib/graphics/shaderPaths.h>
 
 #include <Windows.h>
 #include <gl/GL.h>
@@ -197,7 +199,10 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderContext& ctx) const
     ctx.api.ogl.ext.__blib_glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(this->faces[0].indices[0]) * this->faces[0].indices.size() * this->faces.size(), &(tmp[0]), GL_STATIC_DRAW);
 
 
-    const char* vertexShaderPath = this->boneIds.empty() ? "M:\\Stuff\\src\\shaders\\mesh\\MeshVertexShader.glsl" : "M:\\Stuff\\src\\shaders\\mesh\\SkinMeshVertexShader.glsl";
+    // Выбор вершинного шейдера: скиннинговая ветка включается,
+    // если у меша есть веса костей (см. MeshAttributeNames::boneIds)
+    const std::string vertexShaderPath = std::string(blib::graphics::meshShaderBasePath) +
+        (this->boneIds.empty() ? blib::graphics::meshVertexShaderName : blib::graphics::skinMeshVertexShaderName);
     this->vertexShader.setPath(vertexShaderPath);
     this->vertexShader.setType(blib::graphics::Shader::Type::vertex);
     this->vertexShader.setRenderApi(&(ctx.api));
@@ -212,7 +217,7 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderContext& ctx) const
         }
     }
 
-    this->fragmentShader.setPath("M:\\Stuff\\src\\shaders\\mesh\\MeshFragmentShader.glsl");
+    this->fragmentShader.setPath(std::string(blib::graphics::meshShaderBasePath) + blib::graphics::meshFragmentShaderName);
     this->fragmentShader.setType(blib::graphics::Shader::Type::fragment);
     this->fragmentShader.setRenderApi(&(ctx.api));
     {
@@ -242,8 +247,22 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderContext& ctx) const
 
 blib::graphics::Mesh::Mesh()
 {
-    this->ctx = new oglMeshContext();
+    // Выделяющая форма new запрещена проектом: контекст меша
+    // аллоцируется через GlobalAllocator (см. AGENTS.md)
+    this->ctx = blib::memory::GlobalAllocator::instance().allocate(sizeof(oglMeshContext));
     memset(this->ctx, 0, sizeof(oglMeshContext));
+}
+
+blib::graphics::Mesh::~Mesh()
+{
+    // Симметрично конструктору: возвращаем память контекста
+    // глобальному аллокатору (GL-ресурсы VBO/VAO сейчас не
+    // освобождаются — см. TODO в bake)
+    if (this->ctx)
+    {
+        blib::memory::GlobalAllocator::instance().deallocate(this->ctx, sizeof(oglMeshContext));
+        this->ctx = nullptr;
+    }
 }
 
 void blib::graphics::Mesh::draw(blib::graphics::RenderContext& ctx) const
@@ -267,7 +286,24 @@ void blib::graphics::Mesh::draw(blib::graphics::RenderContext& ctx, const std::v
     }
 
     ctx.api.ogl.ext.__blib_gl_glActiveTexture(GL_TEXTURE0);
-    ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, this->material.diffuse.getContext().textureID);
+    // Диффузная текстура заменяется плоской белой при выключенных
+    // текстурах (отладка во вьювере/эдиторе) или когда у материала
+    // её вообще нет (textureID == 0 — сэмплинг пустой текстуры
+    // давал бы чёрный цвет)
+    GLuint boundTexture = 0;
+    if (!ctx.useDiffuseTextures)
+    {
+        boundTexture = ctx.getFlatWhiteTexture();
+    }
+    else
+    {
+        boundTexture = this->material.diffuse.getContext().textureID;
+        if (boundTexture == 0)
+        {
+            boundTexture = ctx.getFlatWhiteTexture();
+        }
+    }
+    ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, boundTexture);
     GLint samplerPos = ctx.api.ogl.ext.__blib_gl_glGetUniformLocation(this->drawer.getContext(), "textureSampler");
     ctx.api.ogl.ext.__blib_gl_glUniform1i(samplerPos, 0);
 

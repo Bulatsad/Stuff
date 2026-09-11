@@ -1,13 +1,41 @@
 #include <blib/graphics/rendercontext.h>
 
-#include <blib/graphics/camera.h>
+#include <blib/graphics/iCamera.h>
 #include <blib/graphics/shader.h>
 
+#include <Windows.h>
+#include <gl/GL.h>
+
+namespace
+{
+    // Пиксель плоской белой текстуры-заглушки (RGBA8)
+    constexpr buint8 flatWhiteComponent = 255;
+    const GLubyte flatWhitePixel[4] = { flatWhiteComponent, flatWhiteComponent, flatWhiteComponent, flatWhiteComponent };
+}
 
 blib::graphics::RenderContext::RenderContext()
 {
     this->vievMatrix.loadIdentity();
     this->projectionMatrix.loadIdentity();
+}
+
+GLuint blib::graphics::RenderContext::getFlatWhiteTexture() const
+{
+    // Ленивая инициализация при первом вызове. Текстура живёт до
+    // конца процесса: GL-контекст в приложении один, освобождать
+    // её отдельно не нужно
+    static GLuint flatWhiteTextureId = 0;
+    if (flatWhiteTextureId == 0)
+    {
+        this->api.ogl.ext.__blib_gl_glGenTextures(1, &flatWhiteTextureId);
+        this->api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, flatWhiteTextureId);
+        this->api.ogl.ext.__blib_gl_glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, flatWhitePixel);
+        this->api.ogl.ext.__blib_gl_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        this->api.ogl.ext.__blib_gl_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        this->api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    return flatWhiteTextureId;
 }
 
 
@@ -41,7 +69,7 @@ void blib::graphics::RenderContext::sendVievMatrixToShaderProgram()
     this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_TRUE, reinterpret_cast<const GLfloat*>(pViewMatrix));
 }
 
-void blib::graphics::RenderContext::setCamera(blib::graphics::Camera* a_pCamera)
+void blib::graphics::RenderContext::setCamera(blib::graphics::ICamera* a_pCamera)
 {
     this->pCamera = a_pCamera;
 }

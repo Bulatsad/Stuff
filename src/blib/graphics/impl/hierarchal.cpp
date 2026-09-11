@@ -31,10 +31,19 @@ bool blib::graphics::IHierarchal::addChild(blib::graphics::IHierarchal* ph)
     return true;
 }
 
-//const std::vector<const blib::graphics::IHierarchal*>& blib::graphics::IHierarchal::getChilds() const
+// const std::vector<const blib::graphics::IHierarchal*>& blib::graphics::IHierarchal::getChilds() const
 //{
 //    return static_cast<const std::vector<const blib::graphics::IHierarchal*> >(this->childs);
 //}
+
+const std::vector<const blib::graphics::IHierarchal*>& blib::graphics::IHierarchal::getChilds() const
+{
+    // childs хранит неконстантные указатели; константная версия
+    // возвращает их же как указатели на константу. Переинтерпретация
+    // контейнера допустима: vector<T*> и vector<T const*> имеют
+    // идентичную раскладку (элемент — указатель), элементы не меняются
+    return *reinterpret_cast<const std::vector<const blib::graphics::IHierarchal*>*>(&this->childs);
+}
 
 const std::vector<blib::graphics::IHierarchal*>& blib::graphics::IHierarchal::getChilds()
 {

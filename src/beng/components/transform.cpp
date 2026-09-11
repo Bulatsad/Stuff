@@ -4,6 +4,54 @@
 
 namespace beng
 {
+    namespace
+    {
+        // Сборка локальной TRS-матрицы из позиции/вращения/масштаба.
+        // Раскладка согласована с blib::graphics::composeMatrix и
+        // ITransformable: data[row][col], трансляция — в последней
+        // колонке (data[i][3]) — именно такую матрицу ожидает
+        // рендер (glUniformMatrix4fv с transpose=GL_TRUE).
+        //
+        // Формула дублирует blib::graphics::composeMatrix намеренно:
+        // beng-core зависит только от blib-core (математика), а
+        // composeMatrix живёт в blib-graphics — тащить сюда весь
+        // графический модуль нельзя (см. ARCHITECTURE.md, слои).
+        blib::math::Matrix<float, 4, 4> composeTrsMatrix(
+            _In const blib::math::Vector<float, 3>& position,
+            _In const blib::math::Quaternion<float>& rotation,
+            _In const blib::math::Vector<float, 3>& scale)
+        {
+            const blib::math::Quaternion<float> q = rotation.normalize();
+            const float qw = q.w, qx = q.x, qy = q.y, qz = q.z;
+
+            const float r00 = 1.0f - 2.0f * (qy * qy + qz * qz);
+            const float r01 = 2.0f * (qx * qy - qw * qz);
+            const float r02 = 2.0f * (qx * qz + qw * qy);
+            const float r10 = 2.0f * (qx * qy + qw * qz);
+            const float r11 = 1.0f - 2.0f * (qx * qx + qz * qz);
+            const float r12 = 2.0f * (qy * qz - qw * qx);
+            const float r20 = 2.0f * (qx * qz - qw * qy);
+            const float r21 = 2.0f * (qy * qz + qw * qx);
+            const float r22 = 1.0f - 2.0f * (qx * qx + qy * qy);
+
+            blib::math::Matrix<float, 4, 4> result;
+            result.loadIdentity();
+            result.data[0][0] = r00 * scale.x;
+            result.data[0][1] = r01 * scale.y;
+            result.data[0][2] = r02 * scale.z;
+            result.data[0][3] = position.x;
+            result.data[1][0] = r10 * scale.x;
+            result.data[1][1] = r11 * scale.y;
+            result.data[1][2] = r12 * scale.z;
+            result.data[1][3] = position.y;
+            result.data[2][0] = r20 * scale.x;
+            result.data[2][1] = r21 * scale.y;
+            result.data[2][2] = r22 * scale.z;
+            result.data[2][3] = position.z;
+            return result;
+        }
+    }
+
     TransformComponent::TransformComponent(_In Scene* scene)
         : localPosition(0.0f, 0.0f, 0.0f)
         , localRotation(1.0f, 0.0f, 0.0f, 0.0f) // identity quaternion (w=1)
@@ -41,11 +89,11 @@ namespace beng
             updateWorldMatrix();
         }
 
-        // Извлечь позицию из мировой матрицы (4-я колонка)
+        // Извлечь позицию из мировой матрицы (последняя колонка)
         return blib::math::Vector<float, 3>(
-            worldMatrix.data[3][0],
-            worldMatrix.data[3][1],
-            worldMatrix.data[3][2]
+            worldMatrix.data[0][3],
+            worldMatrix.data[1][3],
+            worldMatrix.data[2][3]
         );
     }
 
@@ -206,14 +254,11 @@ namespace beng
 
     void TransformComponent::updateWorldMatrix() const
     {
-        // Создать локальную матрицу TRS (Translation-Rotation-Scale)
-
-        // TODO: Полноценное вычисление TRS матрицы
-        // Пока упрощённо — только позиция
-        worldMatrix.loadIdentity();
-        worldMatrix.data[3][0] = localPosition.x;
-        worldMatrix.data[3][1] = localPosition.y;
-        worldMatrix.data[3][2] = localPosition.z;
+        // Полная TRS-матрица: позиция + вращение + масштаб.
+        // Раньше писалась только позиция (TODO в этом месте) — 
+        // rotation/scale из local-полей игнорировались, что делало
+        // мировую матрицу непригодной для рендера
+        worldMatrix = composeTrsMatrix(localPosition, localRotation, localScale);
 
         // Если есть родитель — умножить на его мировую матрицу.
         // getWorldMatrix родителя рекурсивно пересчитает его самого,

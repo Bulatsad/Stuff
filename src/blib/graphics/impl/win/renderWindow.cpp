@@ -151,8 +151,11 @@ void blib::graphics::RenderWindow::enableIsometricTileGreed()
 
 void blib::graphics::RenderWindow::update()
 {
+    // Прокручиваем ВСЕ накопленные сообщения (а не одно за кадр):
+    // при работе с ImGui очередь WM_MOUSEMOVE/KEYDOWN растёт быстрее,
+    // чем качается один PeekMessage — ввод начинал отставать
     MSG msg;
-    if (PeekMessage(&msg, __blib_render_window_this_context(this)->hwnd, 0, 0, PM_REMOVE))
+    while (PeekMessage(&msg, __blib_render_window_this_context(this)->hwnd, 0, 0, PM_REMOVE))
     {
         if (msg.message == WM_CLOSE || msg.message == WM_QUIT || msg.message == WM_DESTROY)
         {
@@ -180,13 +183,13 @@ void blib::graphics::RenderWindow::display(IRenderTarget& rt, bint16 xStart, bin
     //rt.rc.api.ogl.__blib_gl_glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     rt.rc.api.ogl.ext.__blib_gl_glBlitFramebuffer(
-        0, 0, this->width, this->height,                    // �������� �������������
-        xStart, xStart, xStart + rtCtx.viewportWidth, xStart + rtCtx.viewportHeight,    // ������� �������������
-        GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT,          // ��� ���������� (����)
-        GL_NEAREST                                          // ������
+        0, 0, this->width, this->height,                    // �������� �������������
+        xStart, xStart, xStart + rtCtx.viewportWidth, xStart + rtCtx.viewportHeight,    // ������� �������������
+        GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT,          // ��� ���������� (����)
+        GL_NEAREST                                          // ������
     );
     
-    // ������� ������� �����
+    // ������� ������� �����
     rt.rc.api.ogl.ext.__blib_gl_glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     SwapBuffers(__blib_render_window_this_context(this)->hdc);
@@ -199,6 +202,14 @@ void blib::graphics::RenderWindow::close()
 
 
     __blib_render_window_this_context(this)->open = false;
+}
+
+void blib::graphics::RenderWindow::swapBuffers()
+{
+    // Обмен буферов без блита FBO: вызывающий сам отрисовал всё
+    // в back-буфер (например, сцену через display() раньше, а UI —
+    // поверх неё ImGui-бэкендом)
+    SwapBuffers(__blib_render_window_this_context(this)->hdc);
 }
 
 void* blib::graphics::RenderWindow::__getCtx()

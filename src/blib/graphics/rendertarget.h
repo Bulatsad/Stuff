@@ -67,6 +67,14 @@ namespace blib
 
             void clear(const Color& color = Color::Black);
 
+            // Изменить размер вьюпорта: пересоздаёт хранилища цветовых
+            // текстур и depth/stencil renderbuffer для ВСЕХ кадровых
+            // буферов. Идентификаторы GL-объектов сохраняются — биндинги
+            // (ImGui-вьюпорты, меши) остаются валидными. Используется
+            // вьюверами/эдиторами при изменении размера вьюпорта;
+            // недопустимые размеры игнорируются
+            void resize(buint32 a_viewportWidth, buint32 a_viewportHeight);
+
             // ATTENTION!!!
             // Between clearing and drawing for one render target can not be
             // clearing or drawing to another render target. Cause render target

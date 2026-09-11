@@ -56,6 +56,12 @@ namespace blib
             TextureError create(const void* pdata, bint16 width, bint16 height, buint8 bytesPerPixel, blib::graphics::RenderContext& ctx, genFlags flags = genFlags::none);
             void free(blib::graphics::RenderContext& ctx);
 
+            // Пересоздать хранилище СУЩЕСТВУЮЩЕЙ текстуры с новыми
+            // размерами (идентификатор GL-объекта сохраняется — все
+            // внешние биндинги остаются валидными). Используется при
+            // ресайзе рендер-таргетов/вьюпортов
+            TextureError resize(bint16 width, bint16 height, blib::graphics::RenderContext& ctx);
+
             TextureCtx getContext() const;
 
             void update(

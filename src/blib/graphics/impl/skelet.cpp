@@ -154,6 +154,11 @@ bool blib::graphics::Skelet::finishFromArmature(const aiNode* armature)
         return false;
     }
 
+    // Сразу приводим скелет в консистентную bind-позу: иерархические
+    // globalTransform + финальные матрицы для скиннинга. Без этого
+    // до первого applyClip скелет, рисуемый линиями, «разобран»
+    this->computeBindPose();
+
     return true;
 }
 
@@ -250,6 +255,25 @@ void blib::graphics::Skelet::updateTransforms(blib::graphics::Bone* pbone)
     for (blib::graphics::IHierarchal* pchild : pbone->getChilds())
     {
         this->updateTransforms(static_cast<blib::graphics::Bone*>(pchild));
+    }
+}
+
+void blib::graphics::Skelet::computeBindPose()
+{
+    if (__blib_unlikely(!(this->root)))
+    {
+        __blib_log_warning("computeBindPose: skeleton has no root");
+        return;
+    }
+
+    // globalTransform каждой кости = parent.global * bone.local
+    // (рекурсивно сверху вниз — та же логика, что в applyClip)
+    this->updateTransforms(this->root);
+
+    // Финальные матрицы для скиннинга: global * inverse-bind (offset)
+    for (size_t i = 0; i < this->boneStorage.size(); ++i)
+    {
+        this->finalMatrices[i] = blib::graphics::mul(this->boneStorage[i].globalTransform, this->boneStorage[i].offsetMatrix);
     }
 }
 

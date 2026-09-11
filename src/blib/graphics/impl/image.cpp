@@ -157,11 +157,15 @@ blib::graphics::Image::Image(decltype(blib::graphics::Image::width) aWidth, decl
     this->bitmap.resize(this->width * this->height);
     if (pdata)
     {
-        for (decltype(blib::graphics::Image::width) i = 0; i < this->width; ++i)
+        // pdata — row-major (строка за строкой), как отдаёт stb_image.
+        // (*this)[x][y] = bitmap[y * width + x] — та же раскладка.
+        // Раньше стояло pdata[i * width + j] — транспонированное чтение:
+        // квадратные картинки зеркалились, неквадратные давали мусор
+        for (decltype(blib::graphics::Image::height) j = 0; j < this->height; ++j)
         {
-            for (decltype(blib::graphics::Image::height) j = 0; j < this->height; ++j)
+            for (decltype(blib::graphics::Image::width) i = 0; i < this->width; ++i)
             {
-                (*this)[i][j] = pdata[i * this->width + j];
+                (*this)[i][j] = pdata[j * this->width + i];
             }
         }
     }
@@ -233,17 +237,25 @@ const void* blib::graphics::Image::getData() const
 
 void blib::graphics::Image::update(decltype(blib::graphics::Image::width) posX, decltype(blib::graphics::Image::height) posY, const blib::graphics::Image& img)
 {
-    for (decltype(blib::graphics::Image::width) i = 0; img.width; ++i)
+    // Row-major: bitmap[y * width + x]. Вписываем img поверх позиции
+    // (posX, posY); раньше здесь была транспонированная индексация
+    for (decltype(blib::graphics::Image::width) i = 0; i < img.width; ++i)
     {
-        for (decltype(blib::graphics::Image::height) j = 0; img.height; ++j)
+        for (decltype(blib::graphics::Image::height) j = 0; j < img.height; ++j)
         {
-            this->bitmap[(i + posX) * this->height + j + posY] = img.bitmap[i * img.height + j];
+            this->bitmap[(j + posY) * this->width + (i + posX)] = img.bitmap[j * img.width + i];
         }
     }
 }
 
 blib::core::UnsafeSlicer<blib::graphics::Color> blib::graphics::Image::operator[](buint16 index) 
 {
-    blib::core::UnsafeSlicer<blib::graphics::Color> slicer(this->bitmap.data(), height);
-    return blib::core::UnsafeSlicer<blib::graphics::Color>(&(slicer[index]));
+    // Row-major: image[x][y] = bitmap[y * width + x].
+    // Срез стартует в столбце x строки 0 и шагает на width элементов
+    // (переход к следующей строке). Раньше срез строился со stride
+    // = height (column-major) — расходилось с TGX-загрузчиком
+    // (bitmap[y * width + x]) и с загрузкой текстур из stb
+    return blib::core::UnsafeSlicer<blib::graphics::Color>(
+        &(this->bitmap[static_cast<size_t>(index)]),
+        this->width);
 }

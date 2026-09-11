@@ -27,6 +27,21 @@ namespace blib
             double getCurrentTimeMs() const { return this->currentTimeMs; }
             bool playing() const { return this->isPlaying; }
 
+            // Скраб времени: принудительно выставить позицию в текущем
+            // клипе (используется слайдером плейбека; позу нужно
+            // переложить через update — см. SkinModel::update)
+            void setCurrentTime(double timeMs) { this->currentTimeMs = timeMs; }
+
+            // Включает/выключает зацикливание ТЕКУЩЕГО клипа
+            // (при выключенном cycled время не оборачивается fmod'ом)
+            void setCycled(bool cycled)
+            {
+                if (!(this->animationList.empty()))
+                {
+                    this->animationList[this->currentAnimationIndex].cycled = cycled;
+                }
+            }
+
             bool loadFromAssimp(const aiScene* paiscene);
             bool selectAnimation(const std::string& animationName);
             bool play();

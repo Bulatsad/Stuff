@@ -77,6 +77,27 @@ void blib::graphics::Texture::free(blib::graphics::RenderContext& ctx)
     __blib_get_gl_texture_id(this) = 0;
 }
 
+blib::graphics::TextureError blib::graphics::Texture::resize(bint16 aWidth, bint16 aHeight, blib::graphics::RenderContext& ctx)
+{
+    if (__blib_unlikely(aWidth <= 0 || aHeight <= 0))
+    {
+        __blib_return_error(blib::graphics::TextureError::UnsupportedFormat,
+            "texture resize: invalid dimensions %dx%d", aWidth, aHeight);
+    }
+
+    this->width = aWidth;
+    this->height = aHeight;
+
+    // Перезаливка хранилища того же GL-объекта: идентификатор
+    // текстуры не меняется, старые данные затираются новым
+    // буфером (nullptr — неинициализированное содержимое)
+    ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, __blib_get_gl_texture_id(this));
+    ctx.api.ogl.ext.__blib_gl_glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, this->width, this->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, 0);
+
+    return blib::graphics::TextureError::None;
+}
+
 TextureCtx blib::graphics::Texture::getContext() const
 {
     return this->ctx;

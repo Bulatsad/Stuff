@@ -47,6 +47,11 @@ namespace blib
             void display(IRenderTarget& rt, bint16 xStart = 0, bint16 yStart = 0);
             void close();
 
+            // SwapBuffers без блита рендер-таргета: для приложений,
+            // которые рисуют UI поверх сцены сами (ImGui-вьюпорты,
+            // эдитор) и не используют display()/blit
+            void swapBuffers();
+
             void* __getCtx();
         };
     }

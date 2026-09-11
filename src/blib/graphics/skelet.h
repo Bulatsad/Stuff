@@ -28,6 +28,13 @@ namespace blib
             bool makeBoneTree(const aiNode* pbone);
             bool loadDefaultPoseFromArmature(const aiNode* pbone);
 
+            // Вычисляет bind-позу: прогоняет globalTransform по иерархии
+            // от root и заполняет finalMatrices. Обязателен после загрузки
+            // до первой отрисовки: без него finalMatrices нулевые, а
+            // globalTransform костей не учитывают иерархию (скелет,
+            // рисуемый линиями, будет «разобран»)
+            void computeBindPose();
+
             void applyClip(const blib::graphics::AnimationClip& clip, double timeTicks);
 
             std::vector<blib::graphics::Bone>& getBoneStorage();
