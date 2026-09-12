@@ -39,10 +39,23 @@ namespace blib
             mutable blib::graphics::Shader fragmentShader;
             mutable blib::graphics::Shader vertexShader;
             mutable blib::graphics::ShaderProgram drawer;
+            mutable blib::graphics::Shader outlineFragmentShader;
+            mutable blib::graphics::Shader outlineVertexShader;
+            mutable blib::graphics::ShaderProgram outlineDrawer;
             void bake(blib::graphics::RenderContext& ctx) const;
         public:
             Mesh();
             ~Mesh();
+
+            // Владение сырым ctx (GlobalAllocator) и GL-ресурсами:
+            // копирование дало бы двойное освобождение (см. GRAPHICS.md).
+            // Перемещение безопасно — ctx передаётся, источник обнуляется
+            // (нужно vector<SkinMesh>::resize — MoveInsertable)
+            Mesh(const Mesh&) = delete;
+            Mesh& operator=(const Mesh&) = delete;
+            Mesh(Mesh&& other) noexcept;
+            Mesh& operator=(Mesh&& other) = delete;
+
             bool ngonencoding = false;
 
             PrimitiveType primitiveType;

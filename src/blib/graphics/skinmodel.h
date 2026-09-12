@@ -43,6 +43,13 @@ namespace blib
             blib::graphics::Animator& getAnimator();
             const blib::graphics::Animator& getAnimator() const;
 
+            // Прямой доступ к мешам модели (настройка материалов —
+            // NPR-параметры, контуры; инспекция). Структуру вектора
+            // (число элементов/порядок) менять нельзя — подмена
+            // скина идёт только через replaceMeshesFromAssimp
+            std::vector<blib::graphics::SkinMesh>& getMeshes();
+            const std::vector<blib::graphics::SkinMesh>& getMeshes() const;
+
             // IDrawable
             virtual void draw(blib::graphics::RenderContext& ctx) const override;
 

@@ -3,6 +3,7 @@
 #include <blib/config.h>
 
 #include <blib/graphics/transformMatrix.h>
+#include <blib/graphics/vector.h>
 
 namespace blib
 {
@@ -27,6 +28,11 @@ namespace blib
 
             // Проекционная матрица (перспектива/орто)
             virtual const blib::graphics::TransformMatrix& getProjectionMatrix() const = 0;
+
+            // Позиция камеры в мире (нужна шейдерам: rim-light,
+            // туман, спекуляр). Все реализации (Camera, OrbitCamera,
+            // IsometricCamera) её имеют
+            virtual const blib::graphics::Vector3f& getPosition() const = 0;
         };
     }
 }

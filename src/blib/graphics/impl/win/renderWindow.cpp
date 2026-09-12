@@ -174,6 +174,13 @@ bool blib::graphics::RenderWindow::isOpen()
 
 void blib::graphics::RenderWindow::display(IRenderTarget& rt, bint16 xStart, bint16 yStart)
 {
+    // Блит сцены в back-буфер, затем презентация
+    this->blitToBackbuffer(rt, xStart, yStart);
+    this->swapBuffers();
+}
+
+void blib::graphics::RenderWindow::blitToBackbuffer(IRenderTarget& rt, bint16 xStart, bint16 yStart)
+{
     //this->rc.api.ogl.__blib_glPopMatrix();
 
     auto& rtCtx = rt.getContext();
@@ -191,8 +198,6 @@ void blib::graphics::RenderWindow::display(IRenderTarget& rt, bint16 xStart, bin
     
     // ������� ������� �����
     rt.rc.api.ogl.ext.__blib_gl_glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    SwapBuffers(__blib_render_window_this_context(this)->hdc);
 }
 
 void blib::graphics::RenderWindow::close()

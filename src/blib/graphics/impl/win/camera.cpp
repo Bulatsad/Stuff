@@ -96,7 +96,9 @@ void blib::graphics::Camera::controlUpdate(float deltaTime, blib::graphics::Rend
         this->move(this->right * movespeed * deltaTime);
     }
     this->updateVectors();
-    this->viewMatrix = blib::graphics::lookAt(this->getPosition(), this->getPosition() + this->front, this->up);
+    // Явная квалификация Transform::getPosition: после добавления
+    // ICamera::getPosition вызов без квалификации неоднозначен
+    this->viewMatrix = blib::graphics::lookAt(this->Transform::getPosition(), this->Transform::getPosition() + this->front, this->up);
 }
 
 blib::math::Matrix<float, 4, 4> blib::graphics::Camera::perspective(const blib::math::AngleDegreef& fov, float aspect, float nearDist, float farDist)

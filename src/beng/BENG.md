@@ -111,7 +111,7 @@
 
 ## TODO
 
-- [ ] Фаза 2 модульных доков beng: `MODEL_VIEWER.md`, `CLIENT.md`, `EDITOR.md`, `GRAVELANDS.md`.
+- [ ] Фаза 2 модульных доков beng: `MODEL_VIEWER.md`, `CLIENT.md`, `EDITOR.md` (`GRAVELANDS.md` — готов, см. `misc/gravelands`).
 - [ ] `beng-server` — не реализован (см. ARCHITECTURE.md).
 - [ ] `Application`, рефлексия компонентов, `ResourceManager` — не реализованы (must-требования ARCHITECTURE.md).
 - [ ] `ComponentTypeRegistry` не thread-safe — регистрация типов строго до запуска цикла.

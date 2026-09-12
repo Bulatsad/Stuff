@@ -10,8 +10,8 @@ file (GLOB core_impl_src "core/*.cpp")
 GroupSoureces("${HeaderGroupPrefix}/core" "${core_header_src}")
 GroupSoureces("${SourceGroupPrefix}/core" "${core_impl_src}")
 
-# Core-библиотека клиента. Пока рендерит напрямую через blib-graphics;
-# рендер-ECS (beng-client) придёт позже — см. ARCHITECTURE.md
+# Core-библиотека клиента. Рендер — blib-graphics напрямую + рендер-ECS
+# beng-client (скелетные модели: SkinnedMeshComponent/RenderSystem)
 add_library(gravelands-client-core STATIC
     ${core_header_src}
     ${core_impl_src}
@@ -19,8 +19,9 @@ add_library(gravelands-client-core STATIC
 set_target_properties(gravelands-client-core PROPERTIES FOLDER "gravelands/client" LINKER_LANGUAGE CXX)
 
 # gravelands-common даёт <gravelands/...> и blib-core;
-# beng-core — Time; blib-graphics — окно/рендер/камера
-target_link_libraries(gravelands-client-core PUBLIC gravelands-common beng-core blib-graphics)
+# beng-core — Time; beng-client — рендер-ECS и загрузка моделей;
+# blib-graphics — окно/рендер/камера
+target_link_libraries(gravelands-client-core PUBLIC gravelands-common beng-core beng-client blib-graphics)
 
 # Assimp + zlib (prebuilt .lib из thirdparty/assimplib) — нужны blib-graphics
 # (material.obj) при использовании Mesh/Material

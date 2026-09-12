@@ -25,3 +25,9 @@ Type blib::math::tan(const Type& arg)
 {
     return std::tan(arg);
 }
+
+template<class Type>
+Type blib::math::atan2(const Type& y, const Type& x)
+{
+    return std::atan2(y, x);
+}

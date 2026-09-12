@@ -54,6 +54,12 @@ namespace blib
             ~Texture();
             TextureError create(const Image& image, blib::graphics::RenderContext& ctx, genFlags flags = genFlags::none);
             TextureError create(const void* pdata, bint16 width, bint16 height, buint8 bytesPerPixel, blib::graphics::RenderContext& ctx, genFlags flags = genFlags::none);
+
+            // Depth-текстура (GL_DEPTH_COMPONENT24, сэмплируется в
+            // пост-процессинге для дымки/fog): создание хранилища
+            // без загрузки данных (данные пишет рендер в FBO)
+            TextureError createDepth(bint16 width, bint16 height, blib::graphics::RenderContext& ctx);
+
             void free(blib::graphics::RenderContext& ctx);
 
             // Пересоздать хранилище СУЩЕСТВУЮЩЕЙ текстуры с новыми
@@ -61,6 +67,10 @@ namespace blib
             // внешние биндинги остаются валидными). Используется при
             // ресайзе рендер-таргетов/вьюпортов
             TextureError resize(bint16 width, bint16 height, blib::graphics::RenderContext& ctx);
+
+            // Переаллокация хранилища depth-текстуры с новыми размерами
+            // (аналог resize для createDepth)
+            TextureError resizeDepth(bint16 width, bint16 height, blib::graphics::RenderContext& ctx);
 
             TextureCtx getContext() const;
 

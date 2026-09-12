@@ -191,11 +191,15 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderContext& ctx) const
         ctx.api.ogl.ext.__blib_glVertexAttribPointer((GLuint)MeshAttributeNames::boneWeights, 4, GL_FLOAT, GL_FALSE, 0, 0);
     }
 
-    //// populate normals vbo and enable attribute
-    //ctx.api.ogl.ext.__blib_glBindBuffer(GL_ARRAY_BUFFER, __blib_this_context(this)->vbos[normalAttributeName]);
-    //ctx.api.ogl.ext.__blib_glBufferData(GL_ARRAY_BUFFER, sizeof(this->normals[0]) * this->normals.size(), this->normals.data(), GL_STATIC_DRAW);
-    //ctx.api.ogl.ext.__blib_glEnableVertexAttribArray(normalAttributeName);
-    //ctx.api.ogl.ext.__blib_glVertexAttribPointer(normalAttributeName, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    // populate normals vbo and enable attribute (нужны свету/контурам
+    // NPR-пайплайна; ранее грузились только в CPU — см. GRAPHICS.md)
+    if (this->normals.size() == this->vertices.size())
+    {
+        ctx.api.ogl.ext.__blib_glBindBuffer(GL_ARRAY_BUFFER, __blib_this_context(this)->vbos[(GLuint)MeshAttributeNames::normals]);
+        ctx.api.ogl.ext.__blib_glBufferData(GL_ARRAY_BUFFER, sizeof(this->normals[0]) * this->normals.size(), this->normals.data(), GL_STATIC_DRAW);
+        ctx.api.ogl.ext.__blib_glEnableVertexAttribArray((GLuint)MeshAttributeNames::normals);
+        ctx.api.ogl.ext.__blib_glVertexAttribPointer((GLuint)MeshAttributeNames::normals, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    }
 
     // TODO : Triangulate and rewrite renderer
     ctx.api.ogl.ext.__blib_glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, __blib_this_context(this)->faces);
@@ -244,6 +248,45 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderContext& ctx) const
         }
     }
 
+    // Контурная программа (inverted hull, фаза 8): компилируется всегда —
+    // включение контура решает материал в draw() (outlineEnabled).
+    // Выбор вершинного шейдера — как у основной программы (скиннинг)
+    const std::string outlineVertexShaderPath = std::string(blib::graphics::meshShaderBasePath) +
+        (this->boneIds.empty() ? blib::graphics::outlineVertexShaderName : blib::graphics::skinOutlineVertexShaderName);
+    this->outlineVertexShader.setPath(outlineVertexShaderPath);
+    this->outlineVertexShader.setType(blib::graphics::Shader::Type::vertex);
+    this->outlineVertexShader.setRenderApi(&(ctx.api));
+    {
+        blib::graphics::ShaderError err = this->outlineVertexShader.compile();
+        if (__blib_unlikely(err != blib::graphics::ShaderError::None))
+        {
+            __blib_log_warning("mesh bake: outline vertex shader compile failed (error %u)", static_cast<buint32>(err));
+        }
+    }
+
+    this->outlineFragmentShader.setPath(std::string(blib::graphics::meshShaderBasePath) + blib::graphics::outlineFragmentShaderName);
+    this->outlineFragmentShader.setType(blib::graphics::Shader::Type::fragment);
+    this->outlineFragmentShader.setRenderApi(&(ctx.api));
+    {
+        blib::graphics::ShaderError err = this->outlineFragmentShader.compile();
+        if (__blib_unlikely(err != blib::graphics::ShaderError::None))
+        {
+            __blib_log_warning("mesh bake: outline fragment shader compile failed (error %u)", static_cast<buint32>(err));
+        }
+    }
+
+    this->outlineDrawer.setRenderApi(&(ctx.api));
+    this->outlineDrawer.create();
+    this->outlineDrawer.AttachShader(this->outlineVertexShader);
+    this->outlineDrawer.AttachShader(this->outlineFragmentShader);
+    {
+        blib::graphics::ShaderError err = this->outlineDrawer.compile();
+        if (__blib_unlikely(err != blib::graphics::ShaderError::None))
+        {
+            __blib_log_warning("mesh bake: outline program link failed (error %u)", static_cast<buint32>(err));
+        }
+    }
+
     this->material.bake(ctx);
 
     // Контекст, в котором созданы GL-ресурсы: нужен деструктору для
@@ -286,6 +329,32 @@ blib::graphics::Mesh::~Mesh()
     }
 }
 
+blib::graphics::Mesh::Mesh(Mesh&& other) noexcept
+    : IDrawable()
+    , ITransformable(std::move(other))
+    , ctx(other.ctx)
+    , baked(other.baked)
+    , fragmentShader(std::move(other.fragmentShader))
+    , vertexShader(std::move(other.vertexShader))
+    , drawer(std::move(other.drawer))
+    , outlineFragmentShader(std::move(other.outlineFragmentShader))
+    , outlineVertexShader(std::move(other.outlineVertexShader))
+    , outlineDrawer(std::move(other.outlineDrawer))
+    , ngonencoding(other.ngonencoding)
+    , primitiveType(other.primitiveType)
+    , vertices(std::move(other.vertices))
+    , normals(std::move(other.normals))
+    , textureCoords(std::move(other.textureCoords))
+    , colors(std::move(other.colors))
+    , boneIds(std::move(other.boneIds))
+    , boneWeights(std::move(other.boneWeights))
+    , faces(std::move(other.faces))
+    , material(std::move(other.material))
+{
+    // Источник обнуляется: его деструктор не тронет переданный ctx
+    other.ctx = nullptr;
+}
+
 void blib::graphics::Mesh::draw(blib::graphics::RenderContext& ctx) const
 {
     this->draw(ctx, nullptr);
@@ -295,6 +364,13 @@ void blib::graphics::Mesh::draw(blib::graphics::RenderContext& ctx, const std::v
 {
     if (!(this->baked))
         this->bake(ctx);
+
+    // Face culling включается на время отрисовки: pass 1 рисует
+    // лицевые грани (cull back), pass 2 (контур) — задние (cull front).
+    // Раньше culling не включался вовсе — меши обязаны иметь
+    // корректную обмотку (CCW снаружи)
+    ctx.api.ogl.__blib_glEnable(GL_CULL_FACE);
+    ctx.api.ogl.__blib_glCullFace(GL_BACK);
 
     ctx.setShaderProgram(&(this->drawer));
     ctx.sendVievMatrixToShaderProgram();
@@ -306,38 +382,75 @@ void blib::graphics::Mesh::draw(blib::graphics::RenderContext& ctx, const std::v
         ctx.sendBoneMatricesToShaderProgram(*pBoneMatrices);
     }
 
-    ctx.api.ogl.ext.__blib_gl_glActiveTexture(GL_TEXTURE0);
-    // Диффузная текстура заменяется плоской белой при выключенных
-    // текстурах (отладка во вьювере/эдиторе) или когда у материала
-    // её вообще нет (textureID == 0 — сэмплинг пустой текстуры
-    // давал бы чёрный цвет)
-    GLuint boundTexture = 0;
-    if (!ctx.useDiffuseTextures)
-    {
-        boundTexture = ctx.getFlatWhiteTexture();
-    }
-    else
-    {
-        boundTexture = this->material.diffuse.getContext().textureID;
-        if (boundTexture == 0)
-        {
-            boundTexture = ctx.getFlatWhiteTexture();
-        }
-    }
-    ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, boundTexture);
-    GLint samplerPos = ctx.api.ogl.ext.__blib_gl_glGetUniformLocation(this->drawer.getContext(), "textureSampler");
-    ctx.api.ogl.ext.__blib_gl_glUniform1i(samplerPos, 0);
+    // Свет и позиция камеры (NPR-пайплайн, фаза 4): шейдеры без
+    // этих uniform'ов просто пропускают отправку
+    ctx.sendLightsToShaderProgram();
+    ctx.sendCameraPositionToShaderProgram();
 
-    ctx.api.ogl.ext.__blib_glBindVertexArray(__blib_this_context(this)->vao);
+    // Текстуры и material-униформы (shadingMode, rim, ramp, emission)
+    // биндятся из материала — см. Material::apply
+    this->material.apply(ctx, this->drawer);
+
+    // Отладочная раскраска нормалями (RenderContext::showNormals):
+    // шейдеры без этого uniform просто игнорируются (location == -1)
+    const GLint showNormalsLocation = this->drawer.getUniformLocation("gShowNormals");
+    if (showNormalsLocation != -1)
+    {
+        ctx.api.ogl.ext.__blib_gl_glUniform1i(showNormalsLocation, ctx.showNormals ? 1 : 0);
+    }
 
     // count = количество ИНДЕКСОВ (а не байт): раньше сюда передавался
     // размер в байтах, что заставляло читать за пределами EBO
     // и рисовать мусорные треугольники из невалидных индексов
     const GLsizei indexCount = static_cast<GLsizei>(
         this->faces[0].indices.size() * this->faces.size());
+
+    ctx.api.ogl.ext.__blib_glBindVertexArray(__blib_this_context(this)->vao);
     ctx.api.ogl.ext.__blib_gl_glDrawElements(primitiveTypeToOGL(this->primitiveType), indexCount, GL_UNSIGNED_INT, 0);
 
+    // Pass 2 — контур (inverted hull): раздутые задние грани плоским
+    // цветом из материала. Без контура у меша с выключенной обмоткой
+    // лишнего прохода нет
+    if (this->material.outlineEnabled && this->material.outlineWidth > 0.0f)
+    {
+        ctx.setShaderProgram(&(this->outlineDrawer));
+        ctx.sendVievMatrixToShaderProgram();
+        ctx.sendProjectionMatrixToShaderProgram();
+        ctx.sendModelMatrixToShaderProgram(this->getTransform());
+
+        if (pBoneMatrices)
+        {
+            ctx.sendBoneMatricesToShaderProgram(*pBoneMatrices);
+        }
+
+        const GLint outlineWidthLocation = this->outlineDrawer.getUniformLocation("gOutlineWidth");
+        if (outlineWidthLocation != -1)
+        {
+            ctx.api.ogl.ext.__blib_gl_glUniform1f(outlineWidthLocation, this->material.outlineWidth);
+        }
+
+        const GLint outlineColorLocation = this->outlineDrawer.getUniformLocation("gOutlineColor");
+        if (outlineColorLocation != -1)
+        {
+            ctx.api.ogl.ext.__blib_gl_glUniform3f(
+                outlineColorLocation,
+                this->material.outlineColor.x,
+                this->material.outlineColor.y,
+                this->material.outlineColor.z);
+        }
+
+        // Только задние грани: раздутый силуэт не перекрывает
+        // переднюю поверхность объекта
+        ctx.api.ogl.__blib_glCullFace(GL_FRONT);
+        ctx.api.ogl.ext.__blib_gl_glDrawElements(primitiveTypeToOGL(this->primitiveType), indexCount, GL_UNSIGNED_INT, 0);
+        ctx.api.ogl.__blib_glCullFace(GL_BACK);
+    }
+
     ctx.api.ogl.ext.__blib_glBindVertexArray(0);
+
+    // Culling выключается — состояние для прочих проходов
+    // (LineRenderer, пост-пасс) как раньше
+    ctx.api.ogl.__blib_glDisable(GL_CULL_FACE);
 }
 
 //void blib::graphics::Mesh::draw(blib::graphics::RenderTarget& target, blib::graphics::RenderContext& ctx) const

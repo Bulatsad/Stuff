@@ -156,6 +156,16 @@ const blib::graphics::Animator& blib::graphics::SkinModel::getAnimator() const
     return this->animator;
 }
 
+std::vector<blib::graphics::SkinMesh>& blib::graphics::SkinModel::getMeshes()
+{
+    return this->meshes;
+}
+
+const std::vector<blib::graphics::SkinMesh>& blib::graphics::SkinModel::getMeshes() const
+{
+    return this->meshes;
+}
+
 void blib::graphics::SkinModel::draw(blib::graphics::RenderContext& ctx) const
 {
     const std::vector<blib::graphics::TransformMatrix>& finalMatrices = this->skelet.getFinalMatrices();

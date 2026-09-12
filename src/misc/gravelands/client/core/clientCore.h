@@ -45,6 +45,32 @@ namespace gravelands
         void tick();
 
         /**
+         * Обновление изометрической камеры: WASD двигает цель по земле,
+         * Add/Subtract — зум. Вызывается из tick() каждый кадр.
+         */
+        void updateCamera(float deltaTime);
+
+        /**
+         * Отладочное управление светом (фаза 4): стрелки вращают
+         * источник, [ ] — интенсивность. Применяет состояние к
+         * renderTarget.rc.directionalLight. Вызывается из tick().
+         */
+        void updateLight(float deltaTime);
+
+        /**
+         * Полупрозрачный оверлей в углу: подсказка по клавишам
+         * и текущие параметры света (ImGui, без ввода). Из tick().
+         */
+        void drawOverlay();
+
+        /**
+         * Загрузка тестовой скелетной модели-«танцора» (фаза 9):
+         * ECS-сущность со SkinnedMeshComponent/AnimatorComponent,
+         * NPR-материалы, запуск анимации. Из initialize().
+         */
+        void loadDancerModel();
+
+        /**
          * Корректно остановить ядро и освободить ресурсы.
          */
         void shutdown();

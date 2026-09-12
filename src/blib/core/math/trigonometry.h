@@ -15,6 +15,9 @@ namespace blib
     
         template<class Type>
         Type tan(const Type& arg);
+
+        template<class Type>
+        Type atan2(const Type& y, const Type& x);
     }
 }
 

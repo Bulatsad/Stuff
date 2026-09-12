@@ -71,6 +71,30 @@ blib::graphics::TextureError blib::graphics::Texture::create(const void* pdata, 
     return blib::graphics::TextureError::None;
 }
 
+blib::graphics::TextureError blib::graphics::Texture::createDepth(bint16 width, bint16 height, blib::graphics::RenderContext& ctx)
+{
+    this->width = width;
+    this->height = height;
+
+    ctx.api.ogl.ext.__blib_gl_glGenTextures(1, &__blib_get_gl_texture_id(this));
+    ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, __blib_get_gl_texture_id(this));
+
+    // Depth-текстура: данные пишет рендер (FBO-attachment), сэмплинг —
+    // в пост-процессинге (fog). Формат GL_DEPTH_COMPONENT24
+    ctx.api.ogl.ext.__blib_gl_glTexImage2D(
+        GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24,
+        this->width, this->height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+
+    ctx.api.ogl.ext.__blib_gl_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    ctx.api.ogl.ext.__blib_gl_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    ctx.api.ogl.ext.__blib_gl_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    ctx.api.ogl.ext.__blib_gl_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, 0);
+
+    return blib::graphics::TextureError::None;
+}
+
 void blib::graphics::Texture::free(blib::graphics::RenderContext& ctx)
 {
     ctx.api.ogl.ext.__blib_gl_glDeleteTextures(1, &__blib_get_gl_texture_id(this));
@@ -93,6 +117,26 @@ blib::graphics::TextureError blib::graphics::Texture::resize(bint16 aWidth, bint
     // буфером (nullptr — неинициализированное содержимое)
     ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, __blib_get_gl_texture_id(this));
     ctx.api.ogl.ext.__blib_gl_glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, this->width, this->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, 0);
+
+    return blib::graphics::TextureError::None;
+}
+
+blib::graphics::TextureError blib::graphics::Texture::resizeDepth(bint16 aWidth, bint16 aHeight, blib::graphics::RenderContext& ctx)
+{
+    if (__blib_unlikely(aWidth <= 0 || aHeight <= 0))
+    {
+        __blib_return_error(blib::graphics::TextureError::UnsupportedFormat,
+            "depth texture resize: invalid dimensions %dx%d", aWidth, aHeight);
+    }
+
+    this->width = aWidth;
+    this->height = aHeight;
+
+    ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, __blib_get_gl_texture_id(this));
+    ctx.api.ogl.ext.__blib_gl_glTexImage2D(
+        GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24,
+        this->width, this->height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
     ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, 0);
 
     return blib::graphics::TextureError::None;

@@ -43,6 +43,7 @@ namespace blib
             {
                 RenderTargetPlatfornmDependetCtx pdctx;
                 std::vector<blib::graphics::Texture> frameTextures;
+                std::vector<blib::graphics::Texture> frameDepthTextures;
                 buint8 frameBuffersCount;
                 buint8 currentFrameBufferIndex;
 
@@ -68,16 +69,16 @@ namespace blib
             void clear(const Color& color = Color::Black);
 
             // Изменить размер вьюпорта: пересоздаёт хранилища цветовых
-            // текстур и depth/stencil renderbuffer для ВСЕХ кадровых
-            // буферов. Идентификаторы GL-объектов сохраняются — биндинги
-            // (ImGui-вьюпорты, меши) остаются валидными. Используется
-            // вьюверами/эдиторами при изменении размера вьюпорта;
-            // недопустимые размеры игнорируются
+            // и depth-текстур для ВСЕХ кадровых буферов. Идентификаторы
+            // GL-объектов сохраняются — биндинги (ImGui-вьюпорты, меши)
+            // остаются валидными. Используется вьюверами/эдиторами при
+            // изменении размера вьюпорта; недопустимые размеры
+            // игнорируются
             void resize(buint32 a_viewportWidth, buint32 a_viewportHeight);
 
             // ATTENTION!!!
             // Between clearing and drawing for one render target can not be
-            // clearing or drawing to another render target. Cause render target
+            // clearing or drawing to another target. Cause render target
             // swithing global gl contexts. may be I fix it later, there need 
             // another render thread or render context manager. // TODO : 
             void draw(const blib::graphics::IDrawable& drawable);
@@ -85,6 +86,18 @@ namespace blib
             const RenderTargetCtx& getContext() const
             {
                 return this->ctx;
+            }
+
+            // Текстуры ТЕКУЩЕГО кадрового буфера (после clear()):
+            // цвет и глубина — вход пост-процессинга (см. PostProcess)
+            const blib::graphics::Texture& getColorTexture() const
+            {
+                return this->ctx.frameTextures[this->ctx.currentFrameBufferIndex];
+            }
+
+            const blib::graphics::Texture& getDepthTexture() const
+            {
+                return this->ctx.frameDepthTextures[this->ctx.currentFrameBufferIndex];
             }
         };
     }

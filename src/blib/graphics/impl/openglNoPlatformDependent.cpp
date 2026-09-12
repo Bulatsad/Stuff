@@ -67,6 +67,10 @@ void blib::graphics::RenderApi::InitGraphicsApi()
     this->ogl.__blib_glPushMatrix   = &__blib_glPushMatrix;
     this->ogl.__blib_glPopMatrix    = &__blib_glPopMatrix;
     this->ogl.__blib_gl_glClear     = &glClear;               //static_cast<__blib_gl_signature_glClear>(getprocaddr("glClear"));
+    this->ogl.__blib_glClearColor  = &glClearColor;          // GL 1.x — экспортируется из Opengl32 напрямую
+    this->ogl.__blib_glBlendFunc   = &glBlendFunc;           // GL 1.x — экспортируется из Opengl32 напрямую
+    this->ogl.__blib_glDepthMask   = &glDepthMask;           // GL 1.x — экспортируется из Opengl32 напрямую
+    this->ogl.__blib_glCullFace    = &glCullFace;            // GL 1.x — экспортируется из Opengl32 напрямую
     this->ogl.__blib_glPolygonMode  = &glPolygonMode;         // GL 1.x — экспортируется из Opengl32 напрямую
     this->ogl.__blib_glLineWidth    = &glLineWidth;           // GL 1.x — экспортируется из Opengl32 напрямую
     this->ogl.__blib_glPolygonOffset = &glPolygonOffset;      // GL 1.x — экспортируется из Opengl32 напрямую
@@ -84,12 +88,14 @@ void blib::graphics::RenderApi::InitGraphicsApi()
     this->ogl.ext.__blib_glDeleteVertexArrays      = static_cast<__blib_gl_signature_glDeleteVertexArrays>(getprocaddr("glDeleteVertexArrays"));
 
     this->ogl.ext.__blib_gl_glCreateProgram = static_cast<__blib_gl_signature_glCreateProgram>(getprocaddr("glCreateProgram"));
+    this->ogl.ext.__blib_gl_glDeleteProgram = static_cast<__blib_gl_signature_glDeleteProgram>(getprocaddr("glDeleteProgram"));
     this->ogl.ext.__blib_gl_glAttachShader = static_cast<__blib_gl_signature_glAttachShader>(getprocaddr("glAttachShader"));
     this->ogl.ext.__blib_gl_glDetachShader = static_cast<__blib_gl_signature_glDetachShader>(getprocaddr("glDetachShader"));
     this->ogl.ext.__blib_gl_glLinkProgram = static_cast<__blib_gl_signature_glLinkProgram>(getprocaddr("glLinkProgram"));
     this->ogl.ext.__blib_gl_glUseProgram = static_cast<__blib_gl_signature_glUseProgram>(getprocaddr("glUseProgram"));
     this->ogl.ext.__blib_gl_glShaderSource = static_cast<__blib_gl_signature_glShaderSource>(getprocaddr("glShaderSource"));
     this->ogl.ext.__blib_gl_glCreateShader = static_cast<__blib_gl_signature_glCreateShader>(getprocaddr("glCreateShader")); 
+    this->ogl.ext.__blib_gl_glDeleteShader = static_cast<__blib_gl_signature_glDeleteShader>(getprocaddr("glDeleteShader"));
     this->ogl.ext.__blib_gl_glCompileShader = static_cast<__blib_gl_signature_glCompileShader>(getprocaddr("glCompileShader")); 
     this->ogl.ext.__blib_gl_glGetShaderiv = static_cast<__blib_gl_signature_glGetShaderiv>(getprocaddr("glGetShaderiv"));
     this->ogl.ext.__blib_gl_glGetShaderInfoLog = static_cast<__blib_gl_signature_glGetShaderInfoLog>(getprocaddr("glGetShaderInfoLog"));
@@ -97,6 +103,9 @@ void blib::graphics::RenderApi::InitGraphicsApi()
     this->ogl.ext.__blib_gl_glBindTexture = static_cast<__blib_gl_signature_glBindTexture>(getprocaddr("glBindTexture"));
     this->ogl.ext.__blib_gl_glGetUniformLocation = static_cast<__blib_gl_signature_glGetUniformLocation>(getprocaddr("glGetUniformLocation")); 
     this->ogl.ext.__blib_gl_glUniform1i = static_cast<__blib_gl_signature_glUniform1i>(getprocaddr("glUniform1i")); 
+    this->ogl.ext.__blib_gl_glUniform1f = static_cast<__blib_gl_signature_glUniform1f>(getprocaddr("glUniform1f"));
+    this->ogl.ext.__blib_gl_glUniform3f = static_cast<__blib_gl_signature_glUniform3f>(getprocaddr("glUniform3f"));
+    this->ogl.ext.__blib_gl_glUniform3fv = static_cast<__blib_gl_signature_glUniform3fv>(getprocaddr("glUniform3fv"));
     this->ogl.ext.__blib_gl_glGetProgramiv = static_cast<__blib_gl_signature_glGetProgramiv>(getprocaddr("glGetProgramiv")); 
     this->ogl.ext.__blib_gl_glGetProgramInfoLog = static_cast<__blib_gl_signature_glGetProgramInfoLog>(getprocaddr("glGetProgramInfoLog"));
     this->ogl.ext.__blib_gl_glDrawArrays = static_cast<__blib_gl_signature_glDrawArrays>(getprocaddr("glDrawArrays"));

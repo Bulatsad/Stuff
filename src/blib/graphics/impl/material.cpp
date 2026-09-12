@@ -1,6 +1,7 @@
 #include <blib/graphics/material.h>
 
 #include <blib/core/console/console.h>
+#include <blib/graphics/shader.h>
 
 #include <assimp/scene.h>
 
@@ -316,6 +317,69 @@ blib::graphics::Material::~Material()
     if (this->pRenderContext && this->diffuse.getContext().textureID != 0)
     {
         this->diffuse.free(*this->pRenderContext);
+    }
+}
+
+void blib::graphics::Material::apply(blib::graphics::RenderContext& ctx, blib::graphics::ShaderProgram& program) const
+{
+    // Диффузная текстура (или плоская белая заглушка при выключенных
+    // текстурах / отсутствии текстуры) на TEXTURE0 + sampler-uniform
+    ctx.api.ogl.ext.__blib_gl_glActiveTexture(GL_TEXTURE0);
+
+    GLuint boundTexture = 0;
+    if (!ctx.useDiffuseTextures)
+    {
+        boundTexture = ctx.getFlatWhiteTexture();
+    }
+    else
+    {
+        boundTexture = this->diffuse.getContext().textureID;
+        if (boundTexture == 0)
+        {
+            boundTexture = ctx.getFlatWhiteTexture();
+        }
+    }
+
+    ctx.api.ogl.ext.__blib_gl_glBindTexture(GL_TEXTURE_2D, boundTexture);
+    const GLint samplerLocation = program.getUniformLocation("textureSampler");
+    ctx.api.ogl.ext.__blib_gl_glUniform1i(samplerLocation, 0);
+
+    // NPR-униформы (фаза 4): шейдеры без них (line-шейдеры и т.п.)
+    // просто игнорируются — location == -1
+    const GLint shadingModeLocation = program.getUniformLocation("gShadingMode");
+    if (shadingModeLocation != -1)
+    {
+        ctx.api.ogl.ext.__blib_gl_glUniform1i(shadingModeLocation, static_cast<GLint>(this->shadingMode));
+    }
+
+    const GLint rampSoftnessLocation = program.getUniformLocation("gRampSoftness");
+    if (rampSoftnessLocation != -1)
+    {
+        ctx.api.ogl.ext.__blib_gl_glUniform1f(rampSoftnessLocation, this->rampSoftness);
+    }
+
+    const GLint rimColorLocation = program.getUniformLocation("gRimColor");
+    if (rimColorLocation != -1)
+    {
+        ctx.api.ogl.ext.__blib_gl_glUniform3f(rimColorLocation, this->rimColor.x, this->rimColor.y, this->rimColor.z);
+    }
+
+    const GLint rimPowerLocation = program.getUniformLocation("gRimPower");
+    if (rimPowerLocation != -1)
+    {
+        ctx.api.ogl.ext.__blib_gl_glUniform1f(rimPowerLocation, this->rimPower);
+    }
+
+    const GLint emissionLocation = program.getUniformLocation("gEmission");
+    if (emissionLocation != -1)
+    {
+        ctx.api.ogl.ext.__blib_gl_glUniform3f(emissionLocation, this->emission.x, this->emission.y, this->emission.z);
+    }
+
+    const GLint alphaTestLocation = program.getUniformLocation("gAlphaTest");
+    if (alphaTestLocation != -1)
+    {
+        ctx.api.ogl.ext.__blib_gl_glUniform1f(alphaTestLocation, this->m_alphaTest);
     }
 }
 

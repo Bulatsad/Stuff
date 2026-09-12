@@ -47,6 +47,10 @@ typedef void (__blib_gl_calling_convension* __blib_gl_signature_glLoadIdentity)(
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glPushMatrix)(void);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glPopMatrix)(void);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glClear)(GLbitfield mask);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glClearColor)(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glBlendFunc)(GLenum sfactor, GLenum dfactor);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDepthMask)(GLboolean flag);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glCullFace)(GLenum mode);
 
 // Функции для wireframe-отрисовки и толщины линий (GL 1.x,
 // экспортируются напрямую из Opengl32 — см. InitGraphicsApi)
@@ -76,10 +80,12 @@ typedef void (__blib_gl_calling_convension* __blib_gl_signature_glVertexAttribPo
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glVertexAttribIPointer)(GLuint index, GLint size, GLenum type, GLsizei stride, const void* pointer);
 
 typedef GLuint (__blib_gl_calling_convension* __blib_gl_signature_glCreateShader)(GLenum shaderType);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDeleteShader)(GLuint shader);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glShaderSource)(GLuint shader, GLsizei count, const GLchar** string, const GLint* length);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glCompileShader)(GLuint shader);
 
 typedef GLuint (__blib_gl_calling_convension* __blib_gl_signature_glCreateProgram)(void);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDeleteProgram)(GLuint program);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glAttachShader)(GLuint program, GLuint shader);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDetachShader)(GLuint program, GLuint shader);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glLinkProgram)(GLuint program);
@@ -90,6 +96,9 @@ typedef void (__blib_gl_calling_convension* __blib_gl_signature_glActiveTexture)
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glBindTexture)(GLenum target, GLuint texture);
 typedef GLint(__blib_gl_calling_convension* __blib_gl_signature_glGetUniformLocation)(GLuint program, const GLchar* name);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glUniform1i)(GLint location, GLint v0);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glUniform1f)(GLint location, GLfloat v0);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glUniform3f)(GLint location, GLfloat v0, GLfloat v1, GLfloat v2);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glUniform3fv)(GLint location, GLsizei count, const GLfloat* value);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glGetProgramiv)(GLuint program, GLenum pname, GLint* params);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glGetProgramInfoLog)(GLuint program, GLsizei maxLength, GLsizei* length, GLchar* infoLog);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDrawArrays)(GLenum mode, GLint first, GLsizei count);
@@ -138,12 +147,14 @@ namespace blib
             __blib_gl_signature_glDeleteBuffers __blib_glDeleteBuffers = nullptr;
             __blib_gl_signature_glDeleteVertexArrays __blib_glDeleteVertexArrays = nullptr;
             __blib_gl_signature_glCreateProgram __blib_gl_glCreateProgram = nullptr;
+            __blib_gl_signature_glDeleteProgram __blib_gl_glDeleteProgram = nullptr;
             __blib_gl_signature_glAttachShader __blib_gl_glAttachShader = nullptr;
             __blib_gl_signature_glDetachShader __blib_gl_glDetachShader = nullptr;
             __blib_gl_signature_glLinkProgram __blib_gl_glLinkProgram = nullptr;
             __blib_gl_signature_glUseProgram __blib_gl_glUseProgram = nullptr;
             __blib_gl_signature_glShaderSource __blib_gl_glShaderSource = nullptr;
             __blib_gl_signature_glCreateShader __blib_gl_glCreateShader = nullptr;
+            __blib_gl_signature_glDeleteShader __blib_gl_glDeleteShader = nullptr;
             __blib_gl_signature_glCompileShader __blib_gl_glCompileShader = nullptr;
             __blib_gl_signature_glGetShaderiv __blib_gl_glGetShaderiv = nullptr;
             __blib_gl_signature_glGetShaderInfoLog __blib_gl_glGetShaderInfoLog = nullptr;
@@ -151,6 +162,9 @@ namespace blib
             __blib_gl_signature_glBindTexture __blib_gl_glBindTexture = nullptr;
             __blib_gl_signature_glGetUniformLocation __blib_gl_glGetUniformLocation = nullptr;
             __blib_gl_signature_glUniform1i __blib_gl_glUniform1i = nullptr;
+            __blib_gl_signature_glUniform1f __blib_gl_glUniform1f = nullptr;
+            __blib_gl_signature_glUniform3f __blib_gl_glUniform3f = nullptr;
+            __blib_gl_signature_glUniform3fv __blib_gl_glUniform3fv = nullptr;
             __blib_gl_signature_glGetProgramiv __blib_gl_glGetProgramiv = nullptr;
             __blib_gl_signature_glGetProgramInfoLog __blib_gl_glGetProgramInfoLog = nullptr;
             __blib_gl_signature_glDrawArrays __blib_gl_glDrawArrays = nullptr;
@@ -190,6 +204,10 @@ namespace blib
             __blib_gl_signature_glPushMatrix   __blib_glPushMatrix = nullptr;
             __blib_gl_signature_glPopMatrix    __blib_glPopMatrix = nullptr;
             __blib_gl_signature_glClear        __blib_gl_glClear = nullptr;
+            __blib_gl_signature_glClearColor   __blib_glClearColor = nullptr;
+            __blib_gl_signature_glBlendFunc    __blib_glBlendFunc = nullptr;
+            __blib_gl_signature_glDepthMask    __blib_glDepthMask = nullptr;
+            __blib_gl_signature_glCullFace     __blib_glCullFace = nullptr;
             __blib_gl_signature_glPolygonMode  __blib_glPolygonMode = nullptr;
             __blib_gl_signature_glLineWidth    __blib_glLineWidth = nullptr;
             __blib_gl_signature_glPolygonOffset __blib_glPolygonOffset = nullptr;
