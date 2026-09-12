@@ -45,8 +45,16 @@ namespace blib
             std::vector<blib::graphics::Bone> boneStorage;
             std::vector<blib::graphics::TransformMatrix> finalMatrices;
 
-            bool finishFromArmature(const aiNode* armature);
+            bool finishFromArmature(const aiNode* armature, const aiNode* sceneRoot);
+            void loadDefaultPoseFromNodes(const aiNode* sceneRoot);
             void updateTransforms(blib::graphics::Bone* pbone);
+
+            // Первая настоящая кость в поддереве узла (обход в глубину);
+            // nullptr, если костей нет
+            blib::graphics::Bone* findFirstBoneInSubtree(const aiNode* node);
+
+            // Количество настоящих костей в поддереве узла
+            size_t countBonesInSubtree(const aiNode* node) const;
         };
     }
 }

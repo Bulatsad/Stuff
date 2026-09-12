@@ -4,6 +4,39 @@
 
 #include <blib/core/console/console.h>
 
+namespace
+{
+    // Конвертация aiMatrix4x4 в TransformMatrix с тем же порядком
+    // элементов, что используется в остальных загрузчиках Assimp
+    blib::graphics::TransformMatrix transformFromAssimp(const aiMatrix4x4& m)
+    {
+        return blib::graphics::TransformMatrix(
+            {
+                m.a1, m.b1, m.c1, m.d1,
+                m.a2, m.b2, m.c2, m.d2,
+                m.a3, m.b3, m.c3, m.d3,
+                m.a4, m.b4, m.c4, m.d4
+            });
+    }
+
+    // Поиск канала анимации по имени узла: FBX-импортёр Assimp кладёт
+    // каналы не на кости, а на узлы цепочки трансформа
+    // ("<имя>_$AssimpFbx$_Rotation" и т.п.), а также на сам узел кости
+    // для простых трансформов
+    const blib::graphics::AnimationChannel* findChannel(
+        const blib::graphics::AnimationClip& clip, const std::string& nodeName)
+    {
+        for (const blib::graphics::AnimationChannel& channel : clip.channels)
+        {
+            if (channel.boneName == nodeName)
+            {
+                return &channel;
+            }
+        }
+        return nullptr;
+    }
+}
+
 blib::graphics::Bone* blib::graphics::Skelet::find(const std::string& name)
 {
     for (size_t i = 0; i < this->boneStorage.size(); ++i)
@@ -59,18 +92,28 @@ bool blib::graphics::Skelet::makeBoneTree(const aiNode* pbone)
 
         for (unsigned int i = 0; i < ctx.pnode->mNumChildren; ++i)
         {
-            blib::graphics::Bone* storedBone = this->find(ctx.pnode->mChildren[i]->mName.C_Str());
+            const aiNode* childNode = ctx.pnode->mChildren[i];
+            blib::graphics::Bone* storedBone = this->find(childNode->mName.C_Str());
             if (__blib_unlikely(!storedBone))
             {
-                __blib_log_error("bone '%s' not found while building bone tree", ctx.pnode->mChildren[i]->mName.C_Str());
-                return false;
+                // Узел без кости — не ошибка: FBX-импортёр Assimp
+                // раскладывает трансформ кости по узлам-декомпозициям
+                // ("<имя>_$AssimpFbx$_Translation" и т.п.). Пропускаем
+                // его, но поддерево обходим с тем же родителем-костью:
+                // глубже в цепочке лежит настоящий узел кости
+                boneTreeMakerCtx newCtx;
+                newCtx.bone = ctx.bone;
+                newCtx.pnode = childNode;
+                newCtx.prev = ctx.prev;
+                st.push(newCtx);
+                continue;
             }
-            
+
             ctx.bone->addChild(storedBone);
 
             boneTreeMakerCtx newCtx;
             newCtx.bone = storedBone;
-            newCtx.pnode = ctx.pnode->mChildren[i];
+            newCtx.pnode = childNode;
             newCtx.prev = ctx.bone;
             st.push(newCtx);
         }
@@ -93,9 +136,13 @@ bool blib::graphics::Skelet::loadDefaultPoseFromArmature(const aiNode* pbone)
     };
 
     std::stack<poseLoaderCtx> st;
+    // Сам узел armature не обрабатываем: это не-кость (либо созданный
+    // нами синтетический корень), а его трансформ для настоящих костей
+    // уже учтён в loadDefaultPoseFromNodes через цепочку предков
+    for (unsigned int i = 0; i < pbone->mNumChildren; ++i)
     {
         poseLoaderCtx newCtx;
-        newCtx.pnode = pbone;
+        newCtx.pnode = pbone->mChildren[i];
         st.push(newCtx);
     }
 
@@ -105,16 +152,13 @@ bool blib::graphics::Skelet::loadDefaultPoseFromArmature(const aiNode* pbone)
         st.pop();
 
         blib::graphics::Bone* bone = this->find(ctx.pnode->mName.C_Str());
-        if (bone)
+        // Запасной путь только для костей без узла сцены (mNode не
+        // заполнен): точную позу для остальных посчитала
+        // loadDefaultPoseFromNodes
+        if (bone && bone->node == nullptr)
         {
             const aiMatrix4x4& m = ctx.pnode->mTransformation;
-            bone->localTransform = blib::graphics::TransformMatrix(
-                {
-                    m.a1, m.b1, m.c1, m.d1,
-                    m.a2, m.b2, m.c2, m.d2,
-                    m.a3, m.b3, m.c3, m.d3,
-                    m.a4, m.b4, m.c4, m.d4
-                });
+            bone->localTransform = transformFromAssimp(m);
             bone->globalTransform = bone->localTransform;
         }
 
@@ -129,11 +173,116 @@ bool blib::graphics::Skelet::loadDefaultPoseFromArmature(const aiNode* pbone)
     return true;
 }
 
-bool blib::graphics::Skelet::finishFromArmature(const aiNode* armature)
+void blib::graphics::Skelet::loadDefaultPoseFromNodes(const aiNode* sceneRoot)
 {
+    if (!sceneRoot)
+    {
+        return;
+    }
+
+    // Точная bind-поза по цепочке узлов сцены: у FBX трансформ кости
+    // разложен по нескольким узлам ("<имя>_$AssimpFbx$_Translation"
+    // и т.п.) между родительской костью и самой костью. Локальный
+    // трансформ кости — произведение трансформов узлов от узла кости
+    // вверх по дереву:
+    //  - остановка на первой кости-предке (её трансформ не входит в
+    //    локальный — он относительно неё);
+    //  - трансформ сцен-рута не включается никогда (у MD5 там лежит
+    //    конверсия осей Z-up→Y-up, которую применяет вызывающий код
+    //    самостоятельно).
+    // Попутно запоминаем цепочку узлов в bone.chain — она нужна при
+    // воспроизведении анимации: Assimp кладёт каналы на узлы цепочки
+
+    // Предки от ближайшего к дальнему (в конце развернём в обратную
+    // сторону); переиспользуемый буфер, чтобы не выделять на кость
+    std::vector<blib::graphics::BoneChainElement> ancestors;
+
+    for (blib::graphics::Bone& bone : this->boneStorage)
+    {
+        const aiNode* boneNode = bone.node;
+        if (!boneNode)
+        {
+            continue;
+        }
+
+        ancestors.clear();
+
+        const aiNode* parent = boneNode->mParent;
+        while (parent && parent != sceneRoot)
+        {
+            // Остановка на настоящей кости-предке: найденная кость
+            // должна быть привязана именно к этому узлу (bone->node).
+            // Синтетический корень (node == nullptr) костью-предком
+            // не считается — его имя может совпадать с именем узла
+            // armature внутри цепочки FBX-декомпозиции
+            const blib::graphics::Bone* ancestorBone = this->find(parent->mName.C_Str());
+            if (ancestorBone && ancestorBone->node == parent)
+            {
+                break;
+            }
+
+            blib::graphics::BoneChainElement element;
+            element.nodeName = parent->mName.C_Str();
+            element.bindTransform = transformFromAssimp(parent->mTransformation);
+            ancestors.push_back(element);
+            parent = parent->mParent;
+        }
+
+        // Цепочка: от внешнего элемента к внутреннему; последний —
+        // собственный узел кости (его имя совпадает с именем кости —
+        // так подхватываются и «простые» каналы без суффиксов)
+        bone.chain.clear();
+        for (size_t i = ancestors.size(); i > 0; --i)
+        {
+            bone.chain.push_back(ancestors[i - 1]);
+        }
+        blib::graphics::BoneChainElement ownElement;
+        ownElement.nodeName = boneNode->mName.C_Str();
+        ownElement.bindTransform = transformFromAssimp(boneNode->mTransformation);
+        bone.chain.push_back(ownElement);
+
+        // Bind-поза — произведение цепочки в том же порядке
+        blib::graphics::TransformMatrix acc = blib::graphics::Identity;
+        for (const blib::graphics::BoneChainElement& element : bone.chain)
+        {
+            acc = blib::graphics::mul(acc, element.bindTransform);
+        }
+        bone.localTransform = acc;
+    }
+}
+
+bool blib::graphics::Skelet::finishFromArmature(const aiNode* armature, const aiNode* sceneRoot)
+{
+    // Корень скелета:
+    //  - если сам узел armature — кость, корень — она (как раньше);
+    //  - иначе ищем ПЕРВУЮ настоящую кость в поддереве armature.
+    //    Если поддерево этой кости содержит все кости armature —
+    //    она становится корнем. Синтетическую корневую кость в этом
+    //    случае НЕ создаём: у неё identity-трансформ в центре сцены,
+    //    и отладочный скелет рисует фантомный сегмент от центра сцены
+    //    до первой кости (у FBX это визуально «кость, которая
+    //    удлиняется/уменьшается» с неподвижной точкой у центра);
+    //  - если единой корневой кости нет (несколько независимых
+    //    скелетов) или костей нет вовсе — патология: оставляем
+    //    синтетическую кость (старое поведение)
+    const aiNode* treeRootNode = armature;
     blib::graphics::Bone* rootBone = this->find(armature->mName.C_Str());
     if (!rootBone)
     {
+        blib::graphics::Bone* firstBone = this->findFirstBoneInSubtree(armature);
+        if (firstBone &&
+            this->countBonesInSubtree(firstBone->node) == this->countBonesInSubtree(armature))
+        {
+            rootBone = firstBone;
+            treeRootNode = firstBone->node;
+        }
+    }
+    if (!rootBone)
+    {
+        // Синтетическая корневая кость: armature — не-кость, и общего
+        // корня в поддереве нет. Она должна нести identity-трансформ:
+        // её узел не настоящий, а реальная цепочка трансформов учтена
+        // в позах настоящих костей
         this->boneStorage.emplace_back();
         rootBone = &(this->boneStorage.back());
         rootBone->name = armature->mName.C_Str();
@@ -145,10 +294,13 @@ bool blib::graphics::Skelet::finishFromArmature(const aiNode* armature)
 
     this->finalMatrices.resize(this->boneStorage.size());
 
-    if (!(this->makeBoneTree(armature)))
+    if (!(this->makeBoneTree(treeRootNode)))
     {
         return false;
     }
+    // Сначала точная поза по цепочке узлов сцены, затем запасной проход
+    // по дереву armature для костей, у которых нет узла сцены
+    this->loadDefaultPoseFromNodes(sceneRoot);
     if (!(this->loadDefaultPoseFromArmature(armature)))
     {
         return false;
@@ -160,6 +312,57 @@ bool blib::graphics::Skelet::finishFromArmature(const aiNode* armature)
     this->computeBindPose();
 
     return true;
+}
+
+blib::graphics::Bone* blib::graphics::Skelet::findFirstBoneInSubtree(const aiNode* node)
+{
+    std::stack<const aiNode*> st;
+    st.push(node);
+
+    while (!(st.empty()))
+    {
+        const aiNode* current = st.top();
+        st.pop();
+
+        blib::graphics::Bone* bone = this->find(current->mName.C_Str());
+        if (bone && bone->node == current)
+        {
+            return bone;
+        }
+
+        for (unsigned int i = 0; i < current->mNumChildren; ++i)
+        {
+            st.push(current->mChildren[i]);
+        }
+    }
+
+    return nullptr;
+}
+
+size_t blib::graphics::Skelet::countBonesInSubtree(const aiNode* node) const
+{
+    size_t count = 0;
+    std::stack<const aiNode*> st;
+    st.push(node);
+
+    while (!(st.empty()))
+    {
+        const aiNode* current = st.top();
+        st.pop();
+
+        const blib::graphics::Bone* bone = this->find(current->mName.C_Str());
+        if (bone && bone->node == current)
+        {
+            ++count;
+        }
+
+        for (unsigned int i = 0; i < current->mNumChildren; ++i)
+        {
+            st.push(current->mChildren[i]);
+        }
+    }
+
+    return count;
 }
 
 bool blib::graphics::Skelet::loadFromAssimp(const aiMesh* paimesh)
@@ -196,7 +399,18 @@ bool blib::graphics::Skelet::loadFromAssimp(const aiMesh* paimesh)
         }
     }
 
-    return this->finishFromArmature(paimesh->mBones[0]->mArmature);
+    // Сцен-рут для расчёта позы выводим подъёмом по родителям узла
+    // первой кости (если узел известен)
+    const aiNode* sceneRoot = paimesh->mBones[0]->mNode;
+    if (sceneRoot)
+    {
+        while (sceneRoot->mParent)
+        {
+            sceneRoot = sceneRoot->mParent;
+        }
+    }
+
+    return this->finishFromArmature(paimesh->mBones[0]->mArmature, sceneRoot);
 }
 
 bool blib::graphics::Skelet::loadFromAssimp(const aiScene* paiscene)
@@ -237,7 +451,7 @@ bool blib::graphics::Skelet::loadFromAssimp(const aiScene* paiscene)
         return false;
     }
 
-    return this->finishFromArmature(armature);
+    return this->finishFromArmature(armature, paiscene->mRootNode);
 }
 
 void blib::graphics::Skelet::updateTransforms(blib::graphics::Bone* pbone)
@@ -279,13 +493,42 @@ void blib::graphics::Skelet::computeBindPose()
 
 void blib::graphics::Skelet::applyClip(const blib::graphics::AnimationClip& clip, double timeTicks)
 {
-    // MD5/Assimp animation channels store PARENT-RELATIVE (local) joint transforms,
-    // so sampled values are written into bone local transforms,
-    // then globals are recomputed top-down through the hierarchy
-    for (const blib::graphics::AnimationChannel& channel : clip.channels)
+    // Каналы анимации хранят трансформы относительно родительской
+    // кости. У FBX трансформ кости разложен по цепочке узлов, а каналы
+    // лежат на узлах цепочки — локальный трансформ собирается из неё:
+    // каждый элемент подменяется сэмплом канала с именем его узла
+    // (канала нет — остаётся bind-матрица элемента)
+    for (blib::graphics::Bone& bone : this->boneStorage)
     {
-        blib::graphics::Bone* pbone = this->find(channel.boneName);
-        if (!pbone)
+        if (!(bone.chain.empty()))
+        {
+            blib::graphics::TransformMatrix local = blib::graphics::Identity;
+            for (const blib::graphics::BoneChainElement& element : bone.chain)
+            {
+                const blib::graphics::AnimationChannel* channel = findChannel(clip, element.nodeName);
+                if (channel)
+                {
+                    blib::graphics::Vector3f position;
+                    blib::math::Quaternion<double> rotation;
+                    blib::graphics::Vector3f scale;
+
+                    if (channel->sample(timeTicks, position, rotation, scale))
+                    {
+                        local = blib::graphics::mul(local, blib::graphics::composeMatrix(position, rotation, scale));
+                        continue;
+                    }
+                }
+
+                local = blib::graphics::mul(local, element.bindTransform);
+            }
+            bone.localTransform = local;
+            continue;
+        }
+
+        // Кость без известной цепочки (или без узла сцены): канал
+        // ищется по имени самой кости, как раньше
+        const blib::graphics::AnimationChannel* channel = findChannel(clip, bone.name);
+        if (!channel)
         {
             continue;
         }
@@ -294,12 +537,12 @@ void blib::graphics::Skelet::applyClip(const blib::graphics::AnimationClip& clip
         blib::math::Quaternion<double> rotation;
         blib::graphics::Vector3f scale;
 
-        if (!(channel.sample(timeTicks, position, rotation, scale)))
+        if (!(channel->sample(timeTicks, position, rotation, scale)))
         {
             continue;
         }
 
-        pbone->localTransform = blib::graphics::composeMatrix(position, rotation, scale);
+        bone.localTransform = blib::graphics::composeMatrix(position, rotation, scale);
     }
 
     // bones without animated channels keep their bind local transforms,

@@ -36,6 +36,10 @@ namespace blib
             blib::graphics::Vector4f DiffuseColor = blib::graphics::Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
             blib::graphics::Vector4f SpecularColor = blib::graphics::Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
 
+            // Диффузный цвет загружен из материала (AI_MATKEY_COLOR_DIFFUSE):
+            // при отсутствии текстуры bake() синтезирует из него 1x1 текстуру
+            bool hasDiffuseColor = false;
+
             //PBRMaterial PBRmaterial;
 
             blib::graphics::Texture diffuse; // base color of the material

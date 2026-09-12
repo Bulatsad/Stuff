@@ -12,6 +12,8 @@ bool blib::graphics::Bone::loadFromAssimp(const aiBone* pbone)
         return false;
     }
 
+    this->node = pbone->mNode;
+
     this->offsetMatrix = blib::graphics::TransformMatrix(
         {
             pbone->mOffsetMatrix.a1, pbone->mOffsetMatrix.b1, pbone->mOffsetMatrix.c1, pbone->mOffsetMatrix.d1,

@@ -5,6 +5,22 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
+namespace
+{
+    // Размер синтезируемой 1x1 текстуры плоского цвета (см. bake)
+    constexpr buint16 flatColorTextureDimension = 1;
+    // Диапазон и округление при переводе компонента цвета 0..1 в байт
+    constexpr float colorByteRange = 255.0f;
+    constexpr float colorByteRounding = 0.5f;
+
+    // Компонент цвета (0..1) в байт (0..255) с клампом и округлением
+    buint8 colorComponentToByte(float component)
+    {
+        const float clamped = component < 0.0f ? 0.0f : (component > 1.0f ? 1.0f : component);
+        return static_cast<buint8>(clamped * colorByteRange + colorByteRounding);
+    }
+}
+
 blib::graphics::MaterialError blib::graphics::Material::loadDiffuseTextureFromAssimp(const aiMaterial* pmaterial, const blib::core::Folder& folder)
 {
     aiString path(folder.getCurrentPath());
@@ -86,14 +102,29 @@ blib::graphics::MaterialError blib::graphics::Material::loadDiffuseTextureFromAs
 
 bool blib::graphics::Material::bake(blib::graphics::RenderContext& ctx)
 {
-    // Пустое изображение (нет диффузной текстуры у материала) —
-    // GL-текстуру не создаём: textureID остаётся 0, и Mesh::draw
-    // подставит плоскую белую заглушку. Раньше glTexImage2D с
-    // размерами 0x0 создавал «пустую» текстуру, сэмплинг которой
-    // давал чёрный цвет
+    // Пустое изображение (нет диффузной текстуры у материала):
+    //  - если у материала есть диффузный цвет — синтезируем 1x1
+    //    текстуру этого цвета, чтобы меш рисовался цветом из файла
+    //    вместо плоской белой заглушки;
+    //  - иначе GL-текстуру не создаём: textureID остаётся 0, и
+    //    Mesh::draw подставит плоскую белую заглушку. Раньше
+    //    glTexImage2D с размерами 0x0 создавал «пустую» текстуру,
+    //    сэмплинг которой давал чёрный цвет
     if (this->diffuseImage.width == 0 || this->diffuseImage.height == 0)
     {
-        return false;
+        if (!(this->hasDiffuseColor))
+        {
+            return false;
+        }
+
+        this->diffuseImage.create(
+            flatColorTextureDimension,
+            flatColorTextureDimension,
+            blib::graphics::Color(
+                colorComponentToByte(this->DiffuseColor.x),
+                colorComponentToByte(this->DiffuseColor.y),
+                colorComponentToByte(this->DiffuseColor.z),
+                colorComponentToByte(this->DiffuseColor.w)));
     }
 
     blib::graphics::TextureError err = this->diffuse.create(this->diffuseImage, ctx);
@@ -107,6 +138,16 @@ bool blib::graphics::Material::bake(blib::graphics::RenderContext& ctx)
 
 void blib::graphics::Material::loadFromAssimpMaterial(const aiMaterial* pmaterial, const blib::core::Folder& folder)
 {
+    // Диффузный цвет (RGB) — fallback для материалов без текстуры:
+    // bake() синтезирует из него 1x1 текстуру
+    aiColor4D diffuseColor;
+    if (pmaterial->Get(AI_MATKEY_COLOR_DIFFUSE, diffuseColor) == aiReturn_SUCCESS)
+    {
+        this->DiffuseColor = blib::graphics::Vector4f(
+            diffuseColor.r, diffuseColor.g, diffuseColor.b, diffuseColor.a);
+        this->hasDiffuseColor = true;
+    }
+
     // Детали ошибки уже залогированы внутри loadDiffuseTextureFromAssimp
     // через __blib_return_error, дублировать тут незачем
     this->loadDiffuseTextureFromAssimp(pmaterial, folder);

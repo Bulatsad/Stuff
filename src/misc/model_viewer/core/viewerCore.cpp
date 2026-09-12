@@ -79,8 +79,11 @@ namespace modelviewer
         constexpr float cameraFarDistance = 1000.0f;
         constexpr float cameraInitialDistance = 100.0f;
         // MD5-модели приходят с осью Z вверх, мир вьювера — Y вверх:
-        // поворачиваем модель на -90° вокруг X
+        // поворачиваем модель на -90° вокруг X. FBX/DAE/OBJ — Y вверх,
+        // для них поворот не нужен (см. isMd5MeshPath)
         constexpr float md5ZUpToYUpDegrees = -90.0f;
+        // Расширение файлов MD5-моделей (по нему определяется ось вверх)
+        constexpr const char* md5MeshExtension = ".md5mesh";
 
         // Лейаут панелей
         constexpr float leftPanelWidth = 280.0f;
@@ -202,6 +205,30 @@ namespace modelviewer
                 transform.data[0][3],
                 transform.data[1][3],
                 transform.data[2][3]);
+        }
+
+        // MD5-модель (расширение ".md5mesh", без учёта регистра)?
+        // Только MD5 приходит с осью Z вверх и требует поворота на -90°
+        // вокруг X; FBX/DAE/OBJ — Y вверх, их не поворачиваем
+        bool isMd5MeshPath(_In const std::string& path)
+        {
+            const size_t extensionLength = std::char_traits<char>::length(md5MeshExtension);
+            if (path.size() < extensionLength)
+            {
+                return false;
+            }
+
+            const std::string suffix = path.substr(path.size() - extensionLength);
+            for (size_t i = 0; i < extensionLength; ++i)
+            {
+                const char c = suffix[i];
+                const char lower = (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+                if (lower != md5MeshExtension[i])
+                {
+                    return false;
+                }
+            }
+            return true;
         }
     }
 
@@ -473,12 +500,16 @@ namespace modelviewer
 
         blib::graphics::SkinModel* model = meshComp.getModel();
 
-        // MD5 (и большинство форматов скелетных моделей) — Z вверх,
-        // мир вьювера — Y вверх: поворот на -90° вокруг X
+        // Ориентация осей: MD5 — Z вверх, мир вьювера — Y вверх,
+        // поворот на -90° вокруг X. FBX/DAE/OBJ — Y вверх: поворот
+        // не применяется (у них локальный поворот остаётся identity)
         beng::TransformComponent& transform = this->impl->scene.getComponent<beng::TransformComponent>(entity);
-        transform.setLocalRotation(blib::math::Quaternion<float>(
-            blib::math::AngleDegreef(md5ZUpToYUpDegrees),
-            blib::math::Vector<float, 3>(1.0f, 0.0f, 0.0f)));
+        if (isMd5MeshPath(path))
+        {
+            transform.setLocalRotation(blib::math::Quaternion<float>(
+                blib::math::AngleDegreef(md5ZUpToYUpDegrees),
+                blib::math::Vector<float, 3>(1.0f, 0.0f, 0.0f)));
+        }
 
         // Плейбек: зацикливание по умолчанию включено, анимация НЕ
         // стартует — модель рисуется как есть (bind-поза, ТЗ)
