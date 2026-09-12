@@ -106,9 +106,11 @@ void blib::graphics::RenderApi::InitGraphicsApi()
     this->ogl.ext.__blib_gl_glTexImage2D = &glTexImage2D;//static_cast<__blib_gl_signature_glTexImage2D>(getprocaddr("glTexImage2D"));
     this->ogl.ext.__blib_gl_glFlush = &glFlush;//static_cast<__blib_gl_signature_glFlush>(getprocaddr("glFlush"));
     this->ogl.ext.__blib_gl_glGenFramebuffers = static_cast<__blib_gl_signature_glGenFramebuffers>(getprocaddr("glGenFramebuffers"));
+    this->ogl.ext.__blib_gl_glDeleteFramebuffers = static_cast<__blib_gl_signature_glDeleteFramebuffers>(getprocaddr("glDeleteFramebuffers"));
     this->ogl.ext.__blib_gl_glBindFramebuffer = static_cast<__blib_gl_signature_glBindFramebuffer>(getprocaddr("glBindFramebuffer"));
 
     this->ogl.ext.__blib_gl_glGenRenderbuffers = static_cast<__blib_gl_signature_glGenRenderbuffers>(getprocaddr("glGenRenderbuffers"));
+    this->ogl.ext.__blib_gl_glDeleteRenderbuffers = static_cast<__blib_gl_signature_glDeleteRenderbuffers>(getprocaddr("glDeleteRenderbuffers"));
     this->ogl.ext.__blib_gl_glBindRenderbuffer = static_cast<__blib_gl_signature_glBindRenderbuffer>(getprocaddr("glBindRenderbuffer"));
     this->ogl.ext.__blib_gl_glRenderbufferStorage = static_cast<__blib_gl_signature_glRenderbufferStorage>(getprocaddr("glRenderbufferStorage"));
     this->ogl.ext.__blib_gl_glFramebufferRenderbuffer = static_cast<__blib_gl_signature_glFramebufferRenderbuffer>(getprocaddr("glFramebufferRenderbuffer"));

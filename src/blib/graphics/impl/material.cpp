@@ -102,6 +102,10 @@ blib::graphics::MaterialError blib::graphics::Material::loadDiffuseTextureFromAs
 
 bool blib::graphics::Material::bake(blib::graphics::RenderContext& ctx)
 {
+    // Запоминаем контекст рендера: он понадобится деструктору для
+    // возврата GL-текстуры через Texture::free
+    this->pRenderContext = &ctx;
+
     // Пустое изображение (нет диффузной текстуры у материала):
     //  - если у материала есть диффузный цвет — синтезируем 1x1
     //    текстуру этого цвета, чтобы меш рисовался цветом из файла
@@ -134,6 +138,19 @@ bool blib::graphics::Material::bake(blib::graphics::RenderContext& ctx)
         return false;
     }
     return true;
+}
+
+blib::graphics::Material::~Material()
+{
+    // Возврат GL-текстуры диффуза, если она была создана в bake.
+    // Материалы разрушаются вместе с моделью (или сцены раньше
+    // рендер-таргета), поэтому контекст рендера к этому моменту жив
+    // и GL-контекст текущий. Ограничение: материал не должен
+    // пережить владеющий контекстом RenderTarget
+    if (this->pRenderContext && this->diffuse.getContext().textureID != 0)
+    {
+        this->diffuse.free(*this->pRenderContext);
+    }
 }
 
 void blib::graphics::Material::loadFromAssimpMaterial(const aiMaterial* pmaterial, const blib::core::Folder& folder)

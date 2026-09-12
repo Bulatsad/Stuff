@@ -17,6 +17,19 @@ static __blib_inline buint8 selectNextFrameBufferIndex(buint8 currentIndex, buin
 
 blib::graphics::IRenderTarget::~IRenderTarget()
 {
+    // Освобождение GL-ресурсов FBO: цветовые текстуры, depth/stencil
+    // renderbuffers и сами framebuffers. Окно (и его GL-контекст)
+    // объявлено раньше рендер-таргета и разрушается позже, поэтому
+    // контекст на момент деструктора ещё текущий
+    for (size_t i = 0; i < this->ctx.frameBuffersCount; ++i)
+    {
+        this->ctx.frameTextures[i].free(this->rc);
+    }
+
+    this->rc.api.ogl.ext.__blib_gl_glDeleteRenderbuffers(
+        this->ctx.frameBuffersCount, this->ctx.pdctx.renderBufferIds.data());
+    this->rc.api.ogl.ext.__blib_gl_glDeleteFramebuffers(
+        this->ctx.frameBuffersCount, this->ctx.pdctx.frameBufferIds.data());
 }
 
 blib::graphics::IRenderTarget::IRenderTarget(buint32 a_viewportWidth, buint32 a_viewportHeight

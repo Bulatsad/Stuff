@@ -54,12 +54,16 @@ namespace blib
             MaterialError loadDiffuseTextureFromAssimp(const aiMaterial* pmaterial, const blib::core::Folder& folder);
             bool bake(blib::graphics::RenderContext& ctx);
 
-            ~Material()
-            {
-            }
+            // Возвращает GL-текстуру диффуза, если она была создана
+            // (см. реализацию в material.cpp: контекст рендера обязан
+            // быть жив на момент уничтожения материала)
+            ~Material();
 
         private:
-
+            // Контекст рендера, которым была создана GL-текстура
+            // диффуза (запоминается в bake). Нужен деструктору для
+            // возврата ресурса через Texture::free
+            blib::graphics::RenderContext* pRenderContext = nullptr;
         };
     }
 }

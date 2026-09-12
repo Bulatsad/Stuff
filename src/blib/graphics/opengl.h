@@ -97,12 +97,14 @@ typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDrawElements)(
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDeleteTextures)(GLsizei n, const GLuint* textures);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glGenTextures)(GLsizei n, GLuint* textures);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glGenFramebuffers)(GLsizei n, GLuint* ids);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDeleteFramebuffers)(GLsizei n, const GLuint* ids);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glTexParameteri)(GLenum target, GLenum pname, GLint param);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glTexImage2D)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void* data);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glFlush)(void);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glBindFramebuffer)(GLenum target, GLuint framebuffer);
 
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glGenRenderbuffers)(GLsizei n, GLuint* renderbuffers);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDeleteRenderbuffers)(GLsizei n, const GLuint* renderbuffers);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glBindRenderbuffer)(GLenum target, GLuint renderbuffer);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glRenderbufferStorage)(GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glFramebufferRenderbuffer)(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
@@ -156,9 +158,11 @@ namespace blib
             __blib_gl_signature_glTexImage2D __blib_gl_glTexImage2D = nullptr;
             __blib_gl_signature_glFlush __blib_gl_glFlush = nullptr;
             __blib_gl_signature_glGenFramebuffers __blib_gl_glGenFramebuffers = nullptr;
+            __blib_gl_signature_glDeleteFramebuffers __blib_gl_glDeleteFramebuffers = nullptr;
             __blib_gl_signature_glBindFramebuffer __blib_gl_glBindFramebuffer = nullptr;
 
             __blib_gl_signature_glGenRenderbuffers __blib_gl_glGenRenderbuffers = nullptr;
+            __blib_gl_signature_glDeleteRenderbuffers __blib_gl_glDeleteRenderbuffers = nullptr;
             __blib_gl_signature_glBindRenderbuffer __blib_gl_glBindRenderbuffer = nullptr;
             __blib_gl_signature_glRenderbufferStorage __blib_gl_glRenderbufferStorage = nullptr;
             __blib_gl_signature_glFramebufferRenderbuffer __blib_gl_glFramebufferRenderbuffer = nullptr;
