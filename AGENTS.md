@@ -43,6 +43,7 @@
 | blib-network (winsock) | `src/blib/network/NETWORK.md` |
 | blib/test (фреймворк и группы тестов) | `src/blib/test/TESTING.md` |
 | beng (ядро / клиент / эдитор) | `src/beng/BENG.md` |
+| model_viewer (3D-вьювер) | `src/misc/model_viewer/MODEL_VIEWER.md` |
 
 Индекс пополняется при создании новых доков (`MODEL_VIEWER.md`, `GRAVELANDS.md`, `CLIENT.md`, `EDITOR.md`, ...). При изменении кода модуля — обязательно обновлять его док (см. «Документация модулей» в строгих правилах ниже).
 

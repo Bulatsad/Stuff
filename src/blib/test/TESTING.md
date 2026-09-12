@@ -48,8 +48,9 @@
 | `hash` | MD5 (RFC 1321) и CRC32: векторы, потоковость, границы |
 | `circlequeue` | SPSC и MPSC очереди (roundtrip, переполнение, многопоточные стрессы) |
 | `console` | токенизация, cvar/команды, `execute`, история, автодополнение, `ConsoleOutput` |
+| `skinmesh` | `SkinMesh::loadFromAssimpMesh` (remap весов на предка, отброс+ренормализация, строгий режим, лимит 4 слотов) и `Skelet::adoptOffsetMatricesFrom` (перенос inverse-bind, идемпотентность) — на фикстурных aiScene/aiBone |
 
-Группы `allocator` и `circlequeue` фактически тестируют `blib-system`; остальные — `blib-core`. beng переиспользует `blib_test_main` (`src/beng/test/`, группы `registry componentPool scene entity transform time`).
+Группы `allocator` и `circlequeue` фактически тестируют `blib-system`; `skinmesh` — `blib-graphics` (per-group libs: `blib_test_group_libs_<group>`); остальные — `blib-core`. beng переиспользует `blib_test_main` (`src/beng/test/`, группы `registry componentPool scene entity transform time dialogWindow`); группа `dialogWindow` линкует `beng-editor` (per-group libs — переменная `beng_test_group_libs_<group>` в `src/beng/test/CMakeLists.txt`) и тестирует `DialogWindow` на **headless-ядре ImGui**: живой контекст (`CreateContext`/`NewFrame`/`EndFrame`) без бэкенда/окна/GL, шрифтовый атлас строится вручную (`io.Fonts->GetTexDataAsRGBA32`), ввод подаётся через `io.AddKeyEvent`/`AddMousePosEvent`/`AddMouseButtonEvent`. Проверка состояния попапа — через internals `ImGui::FindWindowByName` + `window->Active` (публичный `IsPopupOpen` читает `g.CurrentWindow` и вне окон неприменим — ID попапа завязан на окно-хост `DialogWindow`).
 
 ---
 
@@ -68,6 +69,8 @@
 - Нет CLI-фильтрации/листинга: нельзя запустить отдельный кейс (только выбрать exe группы).
 - Агрегат не изолирован: падение группы в `blib_test_all` валит весь прогон — для CI использовать `ctest` (каждый exe отдельно).
 - Abort-тесты `DebugAllocator` работают только на MSVC (SEH); на других платформах печатают `SKIPPED`.
+- **ImGui-ассерты работают только в Debug**: регрессионные тесты `dialogWindow` (пустые label → `IM_ASSERT(id != window->ID)`) в Release проходят тривиально — гонять их нужно в Debug-конфигурации.
+- **Assimp-структуры владеют массивами**: `~aiBone`/`~aiMesh` делают `delete[]`, `~aiNode`/`~aiScene` удаляют рекурсивно. Фикстуры `skinmesh` оборачивают их в `AssimpFixtureSlot` — placement new в сырую память и **без вызова деструкторов** (данные живут в векторах, а выделяющий `new[]` запрещён проектом).
 - Часть тестов аллокатора зависит от `BLIB_DEBUG_ALLOCATOR_ENABLED` (иначе `SKIPPED`).
 - `BLIB_TEST_KNOWN_FAILURE` реализован, но не используется; `BLIB_TEST_REQUIRE_THROWS/NOTHROW` не используются.
 - Справочные примеры (`allocatorExamples.cpp`, `debugExamples.cpp`, `statsExamples.cpp`, `autoDebugExample.cpp`, `singleProducerSingleConsumerQueueTest.txt`) **не собираются** — это просто примеры в дереве.

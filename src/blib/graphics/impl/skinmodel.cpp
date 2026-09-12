@@ -8,17 +8,21 @@ namespace
     // Загрузка мешей и материалов сцены против заданного скелета.
     // Меши заполняются через resize (Mesh владеет сырым ctx-указателем,
     // копирование недопустимо), при ошибке outMeshes может содержать
-    // частично загруженные меши — вызывающий отбрасывает вектор
+    // частично загруженные меши — вызывающий отбрасывает вектор.
+    // candidateSkelet — скелет файла-источника: в force-режиме по его
+    // иерархии ищутся предки для весов неизвестных костей
     bool loadMeshesFromAssimp(
         _In const aiScene* paiscene,
         _In const std::string& filename,
         _In const blib::graphics::Skelet& skelet,
+        _In bool force,
+        _In_opt const blib::graphics::Skelet* candidateSkelet,
         _Out std::vector<blib::graphics::SkinMesh>& outMeshes)
     {
         outMeshes.resize(paiscene->mNumMeshes);
         for (size_t i = 0; i < outMeshes.size(); ++i)
         {
-            if (!(outMeshes[i].loadFromAssimpMesh(paiscene->mMeshes[i], skelet)))
+            if (!(outMeshes[i].loadFromAssimpMesh(paiscene->mMeshes[i], skelet, force, candidateSkelet)))
             {
                 return false;
             }
@@ -46,13 +50,15 @@ bool blib::graphics::SkinModel::loadFromAssimp(const aiScene* paiscene, const st
         return false;
     }
 
-    return loadMeshesFromAssimp(paiscene, filename, this->skelet, this->meshes);
+    // Скелеты и аниматор текущей модели не трогаются
+    return loadMeshesFromAssimp(paiscene, filename, this->skelet, false, nullptr, this->meshes);
 }
 
-bool blib::graphics::SkinModel::replaceMeshesFromAssimp(_In const aiScene* paiscene, _In const std::string& filename)
+bool blib::graphics::SkinModel::replaceMeshesFromAssimp(_In const aiScene* paiscene, _In const std::string& filename, _In bool force)
 {
     // Файл без мешей (например, Mixamo animation FBX без скина) не
     // может заменить скин — иначе модель осталась бы без геометрии
+    // (force эту проверку не отменяет)
     if (__blib_unlikely(paiscene->mNumMeshes == 0))
     {
         __blib_log_error("skin '%s' contains no meshes", filename.c_str());
@@ -71,13 +77,31 @@ bool blib::graphics::SkinModel::replaceMeshesFromAssimp(_In const aiScene* paisc
 
     if (!(candidateSkelet.isCompatibleWith(this->skelet)))
     {
-        __blib_log_error("skin '%s' is not compatible with current skeleton", filename.c_str());
-        return false;
+        if (!force)
+        {
+            __blib_log_error("skin '%s' is not compatible with current skeleton", filename.c_str());
+            return false;
+        }
+
+        // Force-режим: retarget кожи на текущий риг — переносим
+        // inverse-bind матрицы кандидата на одноимённые кости текущего
+        // скелета. Меш после этого рендерится как нативно скиннутый к
+        // текущему ригу: пропорции следуют текущему скелету, швы на
+        // суставах не расходятся при анимации (веса костей без пары
+        // обработает remap ниже). computeBindPose пересчитывает
+        // finalMatrices с новыми offset-ами; при играющей анимации
+        // applyClip перезапишет их в следующем кадре
+        __blib_log_warning("skin '%s': skeleton mismatch ignored (forced apply)", filename.c_str());
+        this->skelet.adoptOffsetMatricesFrom(candidateSkelet);
+        this->skelet.computeBindPose();
     }
 
-    // Загрузка во временный вектор: при ошибке текущие меши не тронуты
+    // Загрузка во временный вектор: при ошибке текущие меши не тронуты.
+    // Веса костей, отсутствующих в текущем скелете, переносятся на
+    // ближайших существующих предков из иерархии скелета-кандидата
+    // (или отбрасываются и ренормализуются, если предка нет)
     std::vector<blib::graphics::SkinMesh> newMeshes;
-    if (!(loadMeshesFromAssimp(paiscene, filename, this->skelet, newMeshes)))
+    if (!(loadMeshesFromAssimp(paiscene, filename, this->skelet, force, force ? &candidateSkelet : nullptr, newMeshes)))
     {
         __blib_log_error("skin '%s': failed to load meshes", filename.c_str());
         return false;

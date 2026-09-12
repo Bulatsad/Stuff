@@ -83,7 +83,7 @@ namespace beng
         return true;
     }
 
-    bool SkinnedMeshComponent::loadSkinFromFile(_In const std::string& path)
+    bool SkinnedMeshComponent::loadSkinFromFile(_In const std::string& path, _In bool force)
     {
         if (__blib_unlikely(!this->model))
         {
@@ -99,12 +99,12 @@ namespace beng
             __blib_return_error(false, "assimp: failed to load skin '%s': %s", path.c_str(), importer.GetErrorString());
         }
 
-        if (__blib_unlikely(!this->model->replaceMeshesFromAssimp(pscene, path)))
+        if (__blib_unlikely(!this->model->replaceMeshesFromAssimp(pscene, path, force)))
         {
             __blib_return_error(false, "failed to replace skin from '%s'", path.c_str());
         }
 
-        __blib_log_info("skin replaced: %s", path.c_str());
+        __blib_log_info("skin replaced: %s%s", path.c_str(), force ? " (forced)" : "");
         return true;
     }
 

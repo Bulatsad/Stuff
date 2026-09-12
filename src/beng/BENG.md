@@ -81,7 +81,7 @@
   - позиция/размер — ответственность вызывающего (`SetNextWindowPos/Size` до `draw()`);
   - панель **не владеет данными**: получает указатели через `set*()`, nullptr = заглушка;
   - при выгрузке данных вызывающий обязан снять указатели.
-- Панели: `HierarchyPanel` (скелет + выбранная кость), `AnimationPanel` (`AnimatorComponent`), `ViewportPanel` (`IRenderTarget` + `OrbitCamera`, ввод камеры, замер размера), `RenderOptionsPanel` (галочки), `ConsolePanel` (обёртка `ConsoleWindow`; единственный консюмер буфера вывода — двух таких панелей быть не должно).
+- Панели: `HierarchyPanel` (скелет + выбранная кость), `AnimationPanel` (`AnimatorComponent`), `ViewportPanel` (`IRenderTarget` + `OrbitCamera`, ввод камеры, замер размера), `RenderOptionsPanel` (галочки), `ConsolePanel` (обёртка `ConsoleWindow`; единственный консюмер буфера вывода — двух таких панелей быть не должно), `DialogWindow` (модальный вопрос «продолжить/отменить» с колбэками; позиционирует себя сам, ID = заголовок).
 - Пример композиции — `ViewerCore`: хранит панели, расставляет окна, читает геттеры (см. `misc/model_viewer`).
 - Границы переиспользования: стек `blib-graphics` + ImGui + `beng-client`; `ViewportPanel` привязан к `OrbitCamera`, `ConsolePanel` — к синглтону `Console`.
 - Будущее: докинг и регистрация панелей в `EditorApplication` (см. комментарий в `iPanel.h`).
@@ -90,7 +90,7 @@
 
 - **Загрузка модели:** `SkinnedMeshComponent::loadFromFile` → Assimp → `SkinModel::loadFromAssimp` (скелет + аниматор + меши + материалы) → `AnimatorComponent::setAnimator(&model->getAnimator())` → панели привязываются (`setSkelet`, `setAnimatorComponent`).
 - **Внешняя анимация:** `loadAnimationsFromFile` → `Animator::appendFromAssimp(scene, &skelet, имя_файла)` → для каждого нового клипа `Skelet::bindClipToSkeleton` → вьювер выбирает последний клип и запускает его.
-- **Подмена скина:** `loadSkinFromFile` → `SkinModel::replaceMeshesFromAssimp` (атомарно; скелет и аниматор не трогаются) → внутри проверка `Skelet::isCompatibleWith` (имена + иерархия + inverse bind).
+- **Подмена скина:** `loadSkinFromFile` → `SkinModel::replaceMeshesFromAssimp` (атомарно; скелет и аниматор не трогаются) → внутри проверка `Skelet::isCompatibleWith` (имена + иерархия + inverse bind); при несовместимости `force = true` продолжает загрузку: перенос inverse-bind кандидата на текущий скелет (`adoptOffsetMatricesFrom` — меш рендерится как нативно скиннутый к текущему ригу, швы суставов не расходятся при анимации) + remap весов неизвестных костей на предков (или отброс с ренормализацией).
 - **Кадр вьювера:** ввод → `time.tick()` → `scene.update(dt)` (Transform → Animation → Render в FBO) → отладочные слои (скелет/каркас) → UI в back buffer → `swapBuffers()`. Ресайз FBO измеряется в UI-кадре и применяется в начале следующего.
 
 ---
@@ -103,6 +103,9 @@
 - **Владение GL:** модель обязана выгружаться раньше окна/рендер-таргета — деструкторы `Mesh`/`Material` освобождают GL-ресурсы через сохранённый `RenderContext`.
 - `AnimatorComponent::getAnimations()` для непривязанного компонента возвращает static-пустой вектор — ссылка валидна всегда.
 - **Панели и выгрузка:** после `unloadModel` снять `setSkelet(nullptr)`/`setAnimatorComponent(nullptr)` — иначе панели держат висячие указатели.
+- **DialogWindow и TextWrapped:** `AlwaysAutoResize`-модалка без `SetNextWindowSizeConstraints` схлопывается в узкий столбец (текст переносится по слову, кнопки уходят за край) — в `draw()` задаётся минимальная ширина `dialogMinWidth`.
+- **DialogWindow и окно-хост:** `OpenPopup`/`BeginPopupModal` читают `g.CurrentWindow` (ID-стек) — на корневом уровне (вне окон) это UB. Весь цикл жизни попапа живёт внутри невидимого окна `##DialogWindowPopupHost` (флаги NoDecoration/NoBackground/NoSavedSettings/NoInputs, позиция за экраном); ID попапа завязан на ID-стек хоста — проверять открытость снаружи можно только через internals (`FindWindowByName` + `Active`).
+- **DialogWindow и пустые label:** `finishWith*`/`close()` очищают строки контента — после них контент кадра больше не рисуется (флаг `finished`). Отрисовка `TextWrapped("")`/`Button("")` в корне окна даёт `id == window->ID` и `IM_ASSERT` в Debug-сборке ImGui (регрессия покрыта группой тестов `dialogWindow`).
 
 ---
 

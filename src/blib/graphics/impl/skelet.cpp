@@ -177,6 +177,28 @@ bool blib::graphics::Skelet::isCompatibleWith(_In const blib::graphics::Skelet& 
     return true;
 }
 
+void blib::graphics::Skelet::adoptOffsetMatricesFrom(_In const blib::graphics::Skelet& other)
+{
+    size_t adoptedCount = 0;
+    for (blib::graphics::Bone& bone : this->boneStorage)
+    {
+        const blib::graphics::Bone* otherBone = other.find(bone.name);
+        if (otherBone)
+        {
+            bone.offsetMatrix = otherBone->offsetMatrix;
+            ++adoptedCount;
+        }
+    }
+
+    // Кости без пары (например, отсутствующие в чужом риге) не
+    // трогаются — их веса обработает remap на этапе загрузки мешей
+    if (adoptedCount != this->boneStorage.size())
+    {
+        __blib_log_info("skeleton: adopted offset matrices for %zu of %zu bones",
+            adoptedCount, this->boneStorage.size());
+    }
+}
+
 bool blib::graphics::Skelet::hasNodeName(_In const std::string& nodeName) const
 {
     for (const blib::graphics::Bone& bone : this->boneStorage)

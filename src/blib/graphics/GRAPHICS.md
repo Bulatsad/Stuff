@@ -124,6 +124,7 @@
   - иначе — по `bone.chain` модели; кости без канала сохраняют bind-local.
   - Финал: `updateTransforms` (global = parent.global * local) + `finalMatrices[i] = global * offsetMatrix`.
 - `isCompatibleWith(other)` — полное совпадение скелетов: число костей, имена, имена родителей, `offsetMatrix` с допуском `1e-4` (для подмены скина).
+- `adoptOffsetMatricesFrom(other)` — перенос inverse-bind на одноимённые кости (retarget кожи на текущий риг; force-подмена мешей); кости без пары не трогаются; повторный вызов идемпотентен.
 - `hasNodeName(name)` — есть ли узел среди костей/цепочек.
 - `bindClipToSkeleton(clip, animationScene)` — строит `clip.boneChains` по дереву файла анимации; обязателен, когда декомпозиция внешнего FBX отличается от модели.
 
@@ -143,10 +144,10 @@
 
 - `SkinModel` = `Skelet` + `Animator` + `vector<SkinMesh>`.
 - `loadFromAssimp(scene, filename, animationScene = nullptr)`: скелет → аниматор (из `animationScene` или основной сцены) → меши + материалы.
-- `replaceMeshesFromAssimp(scene, filename)`: атомарная подмена скина — отказ при нуле мешей; скелет-кандидат грузится только для `isCompatibleWith`; новые меши во временном векторе, затем `swap`.
+- `replaceMeshesFromAssimp(scene, filename, force = false)`: атомарная подмена скина — отказ при нуле мешей (force не отменяет); скелет-кандидат грузится только для `isCompatibleWith`; при несовместимости обычный режим отказывает, `force = true` — warning, `adoptOffsetMatricesFrom` + `computeBindPose` (retarget bind-позы: меш ведёт себя как нативно скиннутый к текущему ригу) и продолжение (кандидат пробрасывается в `SkinMesh` для remap-а весов); новые меши во временном векторе, затем `swap`.
 - `update(dtMs)`: `animator.update` + `timeTicks = (currentTimeMs/1000)*tickPerSecond` + `skelet.applyClip`.
 - `draw(ctx)`: `modelTransform * meshTransform` на каждый меш + `mesh.draw(ctx, &finalMatrices)`.
-- `SkinMesh::loadFromAssimpMesh(aiMesh*, const Skelet&)` — раскладка весов: кость ищется по имени; на вершину максимум 4 веса (лишние отбрасываются с warning); `boneIndex >= __blib_max_bones` — ошибка.
+- `SkinMesh::loadFromAssimpMesh(aiMesh*, const Skelet&, force = false, candidateSkelet = nullptr)` — раскладка весов: кость ищется по имени; на вершину максимум 4 веса (лишние отбрасываются с warning); `boneIndex >= __blib_max_bones` — ошибка всегда. Неизвестная кость: обычный режим — ошибка; `force = true` — веса переносятся на ближайшего предка из иерархии `candidateSkelet`, существующего в текущем скелете (у Mixamo ленты `Ribbon*` висят на Head); если предка нет — отброс весов + **ренормализация** затронутых вершин к сумме 1 (вершины с нулевой суммой остаются нулевыми, warning).
 
 ### Assimp-флаги (важно)
 

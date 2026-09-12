@@ -38,6 +38,10 @@ namespace modelviewer
         // Смена мешей (skin) с сохранением скелета и анимаций (см. .cpp)
         void changeSkin();
 
+        // Форсированная смена скина при несовместимом скелете:
+        // вызывается по кнопке Force Apply диалога несовместимости
+        void applySkinForced(_In const std::string& path);
+
         // Добавление внешних анимаций к текущей модели (см. .cpp)
         void addAnimation();
 

@@ -30,8 +30,13 @@ namespace blib
              * (Skelet::isCompatibleWith), иначе отказ. Скелет, аниматор
              * и состояние плейбека не трогаются; при ошибке модель
              * остаётся без изменений.
+             *
+             * @param force true — при несовместимом скелете не
+             *        отказывать, а загружать как есть: веса костей,
+             *        отсутствующих в текущем скелете, отбрасываются,
+             *        остальные ренормализуются (SkinMesh::loadFromAssimpMesh)
              */
-            bool replaceMeshesFromAssimp(_In const aiScene* paiscene, _In const std::string& filename);
+            bool replaceMeshesFromAssimp(_In const aiScene* paiscene, _In const std::string& filename, _In bool force = false);
 
             blib::graphics::Skelet& getSkelet();
             const blib::graphics::Skelet& getSkelet() const;

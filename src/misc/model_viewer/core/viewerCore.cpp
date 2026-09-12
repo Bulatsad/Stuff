@@ -9,6 +9,7 @@
 #include <beng/core/time.h>
 #include <beng/editor/panels/animationPanel.h>
 #include <beng/editor/panels/consolePanel.h>
+#include <beng/editor/panels/dialogWindow.h>
 #include <beng/editor/panels/hierarchyPanel.h>
 #include <beng/editor/panels/renderOptionsPanel.h>
 #include <beng/editor/panels/viewportPanel.h>
@@ -120,6 +121,14 @@ namespace modelviewer
         constexpr const char* animationFileFilter =
             "Animations (*.fbx;*.dae)\0*.fbx;*.dae\0All Files (*.*)\0*.*\0";
 
+        // Диалог несовместимого скина (DialogWindow)
+        constexpr const char* skinMismatchDialogTitle = "Skeleton mismatch";
+        constexpr const char* skinMismatchDialogMessage =
+            "The new skin has a different skeleton (bone count / names / bind pose).\n"
+            "Weights of unknown bones will be dropped and renormalized.\n"
+            "Apply anyway?";
+        constexpr const char* forceApplyButtonLabel = "Force Apply";
+
         // Цвета скелета
         constexpr buint8 skeletonGrayComponent = 120;
         constexpr buint8 opaqueAlphaComponent = 255;
@@ -167,6 +176,11 @@ namespace modelviewer
         beng::editor::RenderOptionsPanel renderOptionsPanel;
         beng::editor::ConsolePanel consolePanel;
 
+        // Модальный диалог несовместимого скина (Force Apply / Cancel).
+        // Рисуется каждый кадр в drawPanels; состояние (путь кандидата)
+        // захватывается лямбдой колбэка
+        beng::editor::DialogWindow skinMismatchDialog;
+
         // Верхняя панель: путь к модели
         char modelPathBuffer[modelPathBufferSize];
 
@@ -195,6 +209,7 @@ namespace modelviewer
             , viewportPanel()
             , renderOptionsPanel()
             , consolePanel()
+            , skinMismatchDialog()
             , showConsole(false)
             , pendingViewportWidth(0)
             , pendingViewportHeight(0)
@@ -348,6 +363,12 @@ namespace modelviewer
             if (this->impl->showConsole)
             {
                 this->impl->showConsole = false;
+            }
+            else if (this->impl->skinMismatchDialog.isOpen())
+            {
+                // Escape отменяет модальный диалог: DialogWindow сам
+                // ловит ImGui-событие Escape внутри попапа, здесь окно
+                // приложения закрывать НЕ нужно
             }
             else
             {
@@ -613,7 +634,39 @@ namespace modelviewer
 
         // Скелет, аниматор и плейбек не трогаются — панели остаются
         // привязанными к тем же объектам, выбранная кость сохраняется
-        meshComp->loadSkinFromFile(std::string(pathBuffer));
+        if (!meshComp->loadSkinFromFile(std::string(pathBuffer)))
+        {
+            // Несовместимый скелет (или ошибка загрузки): предлагаем
+            // форсированное применение. Путь захватывается лямбдой —
+            // диалог сам не хранит данные приложения
+            this->impl->skinMismatchDialog.open(
+                skinMismatchDialogTitle,
+                skinMismatchDialogMessage,
+                forceApplyButtonLabel,
+                [this, path = std::string(pathBuffer)]() { this->applySkinForced(path); });
+        }
+    }
+
+    void ViewerCore::applySkinForced(_In const std::string& path)
+    {
+        if (this->impl->modelEntity == beng::invalidEntity)
+        {
+            __blib_log_warning("force skin: no model loaded");
+            return;
+        }
+
+        beng::SkinnedMeshComponent* meshComp =
+            this->impl->scene.tryGetComponent<beng::SkinnedMeshComponent>(this->impl->modelEntity);
+        if (__blib_unlikely(!meshComp || !meshComp->getModel()))
+        {
+            __blib_log_error("force skin: model component is not available");
+            return;
+        }
+
+        if (meshComp->loadSkinFromFile(path, true))
+        {
+            __blib_log_info("skin force-applied: %s", path.c_str());
+        }
     }
 
     void ViewerCore::addAnimation()
@@ -805,6 +858,10 @@ namespace modelviewer
             }
         }
         ImGui::End();
+
+        // Модальный диалог несовместимого скина (рисуется поверх
+        // панелей; пока открыт — блокирует ввод остальных окон)
+        this->impl->skinMismatchDialog.draw();
 
         // Центр: вьюпорт
         ImGui::SetNextWindowPos(ImVec2(leftPanelWidth, modelBarHeight), ImGuiCond_FirstUseEver);

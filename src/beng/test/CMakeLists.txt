@@ -12,7 +12,13 @@
 # ============================================================
 
 # Список групп: имя группы == суффикс файла test<group>.cpp
-set(beng_test_groups registry componentPool scene entity transform time)
+set(beng_test_groups registry componentPool scene entity transform time dialogWindow)
+
+# Дополнительные библиотеки групп (помимо обязательного beng-core).
+# dialogWindow рисует панель на ядре ImGui в headless-режиме
+# (без бэкенда/окна) — нужен beng-editor (PUBLIC тянет
+# beng-client -> blib-graphics -> imgui)
+set(beng_test_group_libs_dialogWindow beng-editor)
 
 # Список standalone-исполняемых групп (заполняется в цикле ниже)
 set(beng_test_group_exes)
@@ -22,7 +28,7 @@ foreach(group ${beng_test_groups})
 	set(group_obj beng_test_${group}_obj)
 	add_library(${group_obj} OBJECT src/impl/test${group}.cpp)
 	target_include_directories(${group_obj} PRIVATE ${root_dir})
-	target_link_libraries(${group_obj} PRIVATE beng-core)
+	target_link_libraries(${group_obj} PRIVATE beng-core ${beng_test_group_libs_${group}})
 	set_target_properties(${group_obj} PROPERTIES FOLDER "beng/tests/${group}")
 
 	# Standalone executable for this group: main + group objects
@@ -32,20 +38,22 @@ foreach(group ${beng_test_groups})
 		$<TARGET_OBJECTS:blib_test_main>
 		$<TARGET_OBJECTS:${group_obj}>
 	)
-	target_link_libraries(${group_exe} PRIVATE beng-core)
+	target_link_libraries(${group_exe} PRIVATE beng-core ${beng_test_group_libs_${group}})
 	set_target_properties(${group_exe} PROPERTIES FOLDER "beng/tests/${group}")
 	add_test(NAME ${group_exe} COMMAND ${group_exe})
 	list(APPEND beng_test_group_exes ${group_exe})
 endforeach()
 
 # Агрегатный executable: все группы в одном процессе
-# (удобство — падение одной группы валит весь прогон)
+# (удобство — падение одной группы валит весь прогон).
+# Линкует все доп. библиотеки групп (сейчас — beng-editor для
+# dialogWindow)
 add_executable(beng_test_all)
 target_sources(beng_test_all PRIVATE $<TARGET_OBJECTS:blib_test_main>)
 foreach(group ${beng_test_groups})
 	target_sources(beng_test_all PRIVATE $<TARGET_OBJECTS:beng_test_${group}_obj>)
 endforeach()
-target_link_libraries(beng_test_all PRIVATE beng-core)
+target_link_libraries(beng_test_all PRIVATE beng-core beng-editor)
 set_target_properties(beng_test_all PROPERTIES FOLDER "beng/tests")
 add_test(NAME beng_test_all COMMAND beng_test_all)
 

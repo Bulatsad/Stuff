@@ -16,7 +16,14 @@ target_link_libraries(blib_test_main PRIVATE blib-core)
 set_target_properties(blib_test_main PROPERTIES FOLDER "blib/tests")
 
 # Test group list: group name == file suffix test<group>.cpp
-set(blib_test_groups angle matrix pdl quaternion vector allocator iterator stream binary compression hash circlequeue console)
+set(blib_test_groups angle matrix pdl quaternion vector allocator iterator stream binary compression hash circlequeue console skinmesh)
+
+# Дополнительные библиотеки групп (помимо обязательного blib-core).
+# skinmesh строит фикстурные Assimp-сцены и зовёт SkinMesh/Skelet —
+# нужен blib-graphics (PUBLIC тянет blib-core + Opengl32) и prebuilt
+# assimp/zlib (символы aiNode/aiScene/material, как в model_viewer)
+set(blib_test_group_libs_skinmesh blib-graphics debug assimpd debug zlibstaticd optimized assimp optimized zlibstatic)
+set(blib_test_group_link_dirs_skinmesh ${assimp_lib})
 
 # Список standalone-исполняемых групп (заполняется в цикле ниже)
 set(blib_test_group_exes)
@@ -27,7 +34,8 @@ foreach(group ${blib_test_groups})
 	add_library(${group_obj} OBJECT src/impl/test${group}.cpp)
 	target_include_directories(${group_obj} PRIVATE ${root_dir})
 	target_compile_definitions(${group_obj} PRIVATE TEST_SOURCE_DIR="${root_dir}")
-	target_link_libraries(${group_obj} PRIVATE blib-core)
+	target_link_directories(${group_obj} PRIVATE ${blib_test_group_link_dirs_${group}})
+	target_link_libraries(${group_obj} PRIVATE blib-core ${blib_test_group_libs_${group}})
 	set_target_properties(${group_obj} PROPERTIES FOLDER "blib/tests/${group}")
 
 	# Standalone executable for this group: main + group objects
@@ -37,20 +45,25 @@ foreach(group ${blib_test_groups})
 		$<TARGET_OBJECTS:blib_test_main>
 		$<TARGET_OBJECTS:${group_obj}>
 	)
-	target_link_libraries(${group_exe} PRIVATE blib-core)
+	target_link_directories(${group_exe} PRIVATE ${blib_test_group_link_dirs_${group}})
+	target_link_libraries(${group_exe} PRIVATE blib-core ${blib_test_group_libs_${group}})
 	set_target_properties(${group_exe} PROPERTIES FOLDER "blib/tests/${group}")
 	add_test(NAME ${group_exe} COMMAND ${group_exe})
 	list(APPEND blib_test_group_exes ${group_exe})
 endforeach()
 
 # Aggregate executable: runs every group in one process
-# (convenience only — a crash in one group kills the whole run)
+# (convenience only — a crash in one group kills the whole run).
+# Линкует все доп. библиотеки групп (сейчас — blib-graphics + assimp
+# для skinmesh)
 add_executable(blib_test_all)
 target_sources(blib_test_all PRIVATE $<TARGET_OBJECTS:blib_test_main>)
 foreach(group ${blib_test_groups})
 	target_sources(blib_test_all PRIVATE $<TARGET_OBJECTS:blib_test_${group}_obj>)
 endforeach()
-target_link_libraries(blib_test_all PRIVATE blib-core)
+target_link_directories(blib_test_all PRIVATE ${assimp_lib})
+target_link_libraries(blib_test_all PRIVATE blib-core blib-graphics
+	debug assimpd debug zlibstaticd optimized assimp optimized zlibstatic)
 set_target_properties(blib_test_all PROPERTIES FOLDER "blib/tests")
 add_test(NAME blib_test_all COMMAND blib_test_all)
 

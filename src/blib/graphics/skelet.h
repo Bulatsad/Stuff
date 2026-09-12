@@ -32,6 +32,15 @@ namespace blib
             // при другой bind-позе меш деформируется неверно
             bool isCompatibleWith(_In const blib::graphics::Skelet& other) const;
 
+            // Перенос bind-позы скина: копирует offsetMatrix (inverse
+            // bind) из другого скелета для всех одноимённых костей.
+            // Используется force-подменой мешей, когда скелеты не
+            // совпадают: меш чужого рига после этого рендерится как
+            // нативно скиннутый к ТЕКУЩЕМУ скелету (пропорции следуют
+            // текущему ригу, швы на суставах не расходятся при
+            // анимации). Кости без пары остаются как есть
+            void adoptOffsetMatricesFrom(_In const blib::graphics::Skelet& other);
+
             // Есть ли узел с таким именем среди костей или элементов их
             // FBX-цепочек (валидация каналов внешних анимаций)
             bool hasNodeName(_In const std::string& nodeName) const;
