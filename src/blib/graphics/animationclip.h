@@ -4,6 +4,7 @@
 
 #include <blib/core/console/console.h>
 #include <blib/graphics/vector.h>
+#include <blib/graphics/transformMatrix.h>
 #include <blib/core/math/quaternion.h>
 #include <blib/core/math/vector.h>
 
@@ -145,6 +146,25 @@ namespace blib
         class __blib_graphics_api AnimationClip
         {
         public:
+            // Элемент цепочки трансформа кости из файла анимации:
+            // либо сэмпл канала (channelIndex < channels.size()), либо
+            // bind-трансформ узла (channelIndex == channels.size())
+            struct BoneChainElement
+            {
+                size_t channelIndex = 0;
+                blib::graphics::TransformMatrix bindTransform;
+            };
+
+            // Привязка клипа к скелету: для каждой анимируемой кости —
+            // цепочка узлов файла анимации. Пустой список — привязки
+            // нет: клип применяется по цепочкам самого скелета
+            // (анимация из файла модели)
+            struct BoneChain
+            {
+                size_t boneIndex = 0;
+                std::vector<BoneChainElement> elements;
+            };
+
             std::string name;
             double tickPerSecond;
             double durationTicks;
@@ -153,9 +173,15 @@ namespace blib
             
             std::vector<blib::graphics::AnimationChannel> channels;
 
+            // Привязка к костям (см. Skelet::bindClipToSkeleton):
+            // нужна, когда FBX-декомпозиция файла анимации отличается
+            // от файла модели (каналы лежат на других узлах)
+            std::vector<BoneChain> boneChains;
+
             bool loadFromAssimp(const aiAnimation* panim)
             {
                 this->channels.resize(panim->mNumChannels);
+                this->boneChains.clear();
                 this->name = panim->mName.C_Str();
                 this->durationTicks = panim->mDuration;
                 this->tickPerSecond = panim->mTicksPerSecond;

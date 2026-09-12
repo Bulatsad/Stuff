@@ -24,6 +24,15 @@ namespace blib
             bool selectAnimation(const std::string& animationName);
             bool playAnimation();
 
+            /**
+             * Подмена мешей (skin) у существующего скелета. Новый файл
+             * обязан содержать полностью совпадающий скелет
+             * (Skelet::isCompatibleWith), иначе отказ. Скелет, аниматор
+             * и состояние плейбека не трогаются; при ошибке модель
+             * остаётся без изменений.
+             */
+            bool replaceMeshesFromAssimp(_In const aiScene* paiscene, _In const std::string& filename);
+
             blib::graphics::Skelet& getSkelet();
             const blib::graphics::Skelet& getSkelet() const;
             blib::graphics::Animator& getAnimator();

@@ -1,6 +1,38 @@
 #include <blib/graphics/skinmodel.h>
 
+#include <blib/core/console/console.h>
 #include <blib/core/folder.h>
+
+namespace
+{
+    // Загрузка мешей и материалов сцены против заданного скелета.
+    // Меши заполняются через resize (Mesh владеет сырым ctx-указателем,
+    // копирование недопустимо), при ошибке outMeshes может содержать
+    // частично загруженные меши — вызывающий отбрасывает вектор
+    bool loadMeshesFromAssimp(
+        _In const aiScene* paiscene,
+        _In const std::string& filename,
+        _In const blib::graphics::Skelet& skelet,
+        _Out std::vector<blib::graphics::SkinMesh>& outMeshes)
+    {
+        outMeshes.resize(paiscene->mNumMeshes);
+        for (size_t i = 0; i < outMeshes.size(); ++i)
+        {
+            if (!(outMeshes[i].loadFromAssimpMesh(paiscene->mMeshes[i], skelet)))
+            {
+                return false;
+            }
+
+            if (!(filename.empty()) && (paiscene->mNumMaterials > 0) && (paiscene->mMeshes[i]->mMaterialIndex < paiscene->mNumMaterials))
+            {
+                blib::core::Folder folder(filename);
+                outMeshes[i].mesh.material.loadFromAssimpMaterial(paiscene->mMaterials[paiscene->mMeshes[i]->mMaterialIndex], folder, paiscene);
+            }
+        }
+
+        return true;
+    }
+}
 
 bool blib::graphics::SkinModel::loadFromAssimp(const aiScene* paiscene, const std::string& filename, const aiScene* panimationScene)
 {
@@ -14,21 +46,45 @@ bool blib::graphics::SkinModel::loadFromAssimp(const aiScene* paiscene, const st
         return false;
     }
 
-    this->meshes.resize(paiscene->mNumMeshes);
-    for (size_t i = 0; i < this->meshes.size(); ++i)
-    {
-        if (!(this->meshes[i].loadFromAssimpMesh(paiscene->mMeshes[i], this->skelet)))
-        {
-            return false;
-        }
+    return loadMeshesFromAssimp(paiscene, filename, this->skelet, this->meshes);
+}
 
-        if (!(filename.empty()) && (paiscene->mNumMaterials > 0) && (paiscene->mMeshes[i]->mMaterialIndex < paiscene->mNumMaterials))
-        {
-            blib::core::Folder folder(filename);
-            this->meshes[i].mesh.material.loadFromAssimpMaterial(paiscene->mMaterials[paiscene->mMeshes[i]->mMaterialIndex], folder);
-        }
+bool blib::graphics::SkinModel::replaceMeshesFromAssimp(_In const aiScene* paiscene, _In const std::string& filename)
+{
+    // Файл без мешей (например, Mixamo animation FBX без скина) не
+    // может заменить скин — иначе модель осталась бы без геометрии
+    if (__blib_unlikely(paiscene->mNumMeshes == 0))
+    {
+        __blib_log_error("skin '%s' contains no meshes", filename.c_str());
+        return false;
     }
 
+    // Скелет из нового файла — только для проверки совместимости:
+    // скиннинг выполняется offset-матрицами текущего скелета, поэтому
+    // bind-поза обязана совпадать
+    blib::graphics::Skelet candidateSkelet;
+    if (!(candidateSkelet.loadFromAssimp(paiscene)))
+    {
+        __blib_log_error("skin '%s': failed to load skeleton for compatibility check", filename.c_str());
+        return false;
+    }
+
+    if (!(candidateSkelet.isCompatibleWith(this->skelet)))
+    {
+        __blib_log_error("skin '%s' is not compatible with current skeleton", filename.c_str());
+        return false;
+    }
+
+    // Загрузка во временный вектор: при ошибке текущие меши не тронуты
+    std::vector<blib::graphics::SkinMesh> newMeshes;
+    if (!(loadMeshesFromAssimp(paiscene, filename, this->skelet, newMeshes)))
+    {
+        __blib_log_error("skin '%s': failed to load meshes", filename.c_str());
+        return false;
+    }
+
+    // Старые меши уничтожаются вместе с временным вектором
+    this->meshes.swap(newMeshes);
     return true;
 }
 

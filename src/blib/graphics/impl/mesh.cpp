@@ -24,6 +24,10 @@ struct oglMeshContext
     GLuint vao;
     GLuint vbos[(GLuint)MeshAttributeNames::vbCount];
     GLuint faces; //ebo
+    // Контекст рендера, в котором созданы GL-ресурсы (запоминается в
+    // bake). Нужен деструктору для их освобождения — по аналогии с
+    // Material::pRenderContext
+    blib::graphics::RenderContext* renderContext = nullptr;
 };
 
 #define __blib_this_context(_this) (static_cast<oglMeshContext*>(_this->ctx))
@@ -242,6 +246,10 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderContext& ctx) const
 
     this->material.bake(ctx);
 
+    // Контекст, в котором созданы GL-ресурсы: нужен деструктору для
+    // их освобождения (см. ~Mesh)
+    __blib_this_context(this)->renderContext = &ctx;
+
     this->baked = true;
 }
 
@@ -256,10 +264,23 @@ blib::graphics::Mesh::Mesh()
 blib::graphics::Mesh::~Mesh()
 {
     // Симметрично конструктору: возвращаем память контекста
-    // глобальному аллокатору (GL-ресурсы VBO/VAO сейчас не
-    // освобождаются — см. TODO в bake)
+    // глобальному аллокатору. GL-ресурсы (VAO/VBO/EBO) освобождаются,
+    // если они создавались (bake) и контекст рендера ещё жив —
+    // порядок разрушения гарантирует вызывающий (модель выгружается
+    // до окна/таргета)
     if (this->ctx)
     {
+        oglMeshContext* meshCtx = __blib_this_context(this);
+        if (meshCtx->renderContext &&
+            meshCtx->renderContext->api.ogl.ext.__blib_glDeleteVertexArrays &&
+            meshCtx->renderContext->api.ogl.ext.__blib_glDeleteBuffers)
+        {
+            meshCtx->renderContext->api.ogl.ext.__blib_glDeleteVertexArrays(1, &meshCtx->vao);
+            meshCtx->renderContext->api.ogl.ext.__blib_glDeleteBuffers(static_cast<GLsizei>(MeshAttributeNames::vbCount), meshCtx->vbos);
+            meshCtx->renderContext->api.ogl.ext.__blib_glDeleteBuffers(1, &meshCtx->faces);
+            meshCtx->renderContext = nullptr;
+        }
+
         blib::memory::GlobalAllocator::instance().deallocate(this->ctx, sizeof(oglMeshContext));
         this->ctx = nullptr;
     }

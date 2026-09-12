@@ -5,6 +5,7 @@
 #include <assimp/scene.h>
 
 #include <blib/graphics/animationclip.h>
+#include <blib/graphics/skelet.h>
 
 #include <string>
 #include <vector>
@@ -43,6 +44,19 @@ namespace blib
             }
 
             bool loadFromAssimp(const aiScene* paiscene);
+
+            // Добавить клипы из внешней сцены к текущему списку, не
+            // сбрасывая текущий клип/время/воспроизведение. fallbackName
+            // используется для безымянных и дублирующихся клипов, а
+            // также как имя единственного клипа файла (у Mixamo клипы
+            // часто называются "mixamo.com" — имя файла информативнее).
+            // Если задан skelet, каналы клипов привязываются к его
+            // костям (см. Skelet::bindClipToSkeleton)
+            bool appendFromAssimp(
+                _In const aiScene* paiscene,
+                _In const blib::graphics::Skelet* skelet,
+                _In const std::string& fallbackName);
+
             bool selectAnimation(const std::string& animationName);
             bool play();
             bool pause();

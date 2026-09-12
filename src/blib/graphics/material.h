@@ -5,12 +5,15 @@
 #include <assimp/material.h>
 
 #include <blib/config.h>
+#include <blib/utilmacro.h>
 
 #include <blib/core/folder.h>
 #include <blib/graphics/vector.h>
 #include <blib/graphics/texture.h>
 #include <blib/graphics/image.h>
 #include <blib/graphics/rendercontext.h>
+
+struct aiScene;
 
 namespace blib
 {
@@ -50,8 +53,8 @@ namespace blib
             float m_transparencyFactor = 1.0f;
             float m_alphaTest = 0.0f;
 
-            void loadFromAssimpMaterial(const aiMaterial* pmaterial, const blib::core::Folder& folder);
-            MaterialError loadDiffuseTextureFromAssimp(const aiMaterial* pmaterial, const blib::core::Folder& folder);
+            void loadFromAssimpMaterial(_In const aiMaterial* pmaterial, _In const blib::core::Folder& folder, _In_opt const aiScene* scene);
+            MaterialError loadDiffuseTextureFromAssimp(_In const aiMaterial* pmaterial, _In const blib::core::Folder& folder, _In_opt const aiScene* scene);
             bool bake(blib::graphics::RenderContext& ctx);
 
             // Возвращает GL-текстуру диффуза, если она была создана

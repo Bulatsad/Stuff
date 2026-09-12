@@ -92,8 +92,9 @@ namespace modelviewer
         constexpr float hierarchyHeightFraction = 0.65f;
         constexpr float consoleWidth = 900.0f;
         constexpr float consoleHeight = 340.0f;
-        // Ширина двух кнопок верхней панели (Open + Browse) с отступами
-        constexpr float modelBarButtonsWidth = 210.0f;
+        // Ширина кнопок верхней панели (Open + Browse + Change Skin +
+        // Add Animation) с отступами
+        constexpr float modelBarButtonsWidth = 420.0f;
 
         // Путь к модели: буфер ввода в верхней панели
         constexpr size_t modelPathBufferSize = 512;
@@ -107,9 +108,17 @@ namespace modelviewer
         constexpr const char* pathInputLabel = "Path";
         constexpr const char* openButtonLabel = "Open";
         constexpr const char* browseButtonLabel = "Browse...";
+        constexpr const char* changeSkinButtonLabel = "Change Skin...";
+        constexpr const char* addAnimationButtonLabel = "Add Animation...";
         constexpr const char* fileDialogTitle = "Open 3D model";
+        constexpr const char* skinFileDialogTitle = "Change skin (same skeleton)";
+        constexpr const char* animationFileDialogTitle = "Add animation";
         constexpr const char* modelFileFilter =
             "3D Models (*.md5mesh;*.fbx;*.obj;*.dae)\0*.md5mesh;*.fbx;*.obj;*.dae\0All Files (*.*)\0*.*\0";
+        constexpr const char* skinFileFilter =
+            "Skinned Models (*.fbx;*.dae;*.obj)\0*.fbx;*.dae;*.obj\0All Files (*.*)\0*.*\0";
+        constexpr const char* animationFileFilter =
+            "Animations (*.fbx;*.dae)\0*.fbx;*.dae\0All Files (*.*)\0*.*\0";
 
         // Цвета скелета
         constexpr buint8 skeletonGrayComponent = 120;
@@ -547,7 +556,7 @@ namespace modelviewer
         this->impl->animationPanel.setAnimatorComponent(nullptr);
     }
 
-    void ViewerCore::browseModelFile()
+    bool ViewerCore::browseFile(_In const char* title, _In const char* filter, _Out char* outPath, size_t outSize)
     {
         // Стандартный диалог выбора файла (Win32). Буфер MAX_PATH —
         // системная константа
@@ -556,17 +565,95 @@ namespace modelviewer
         ZeroMemory(&ofn, sizeof(ofn));
         ofn.lStructSize = sizeof(ofn);
         ofn.hwndOwner = __blib_render_window_context(this->impl->window.__getCtx())->hwnd;
-        ofn.lpstrFilter = modelFileFilter;
+        ofn.lpstrFilter = filter;
         ofn.lpstrFile = pathBuffer;
         ofn.nMaxFile = MAX_PATH;
-        ofn.lpstrTitle = fileDialogTitle;
+        ofn.lpstrTitle = title;
         ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
 
-        if (GetOpenFileNameA(&ofn))
+        if (!GetOpenFileNameA(&ofn))
         {
-            // Путь показываем в поле ввода и сразу загружаем
-            strncpy_s(this->impl->modelPathBuffer, modelPathBufferSize, pathBuffer, _TRUNCATE);
+            return false;
+        }
+
+        strncpy_s(outPath, outSize, pathBuffer, _TRUNCATE);
+        return true;
+    }
+
+    void ViewerCore::browseModelFile()
+    {
+        // Путь показываем в поле ввода и сразу загружаем
+        if (this->browseFile(fileDialogTitle, modelFileFilter, this->impl->modelPathBuffer, modelPathBufferSize))
+        {
             this->loadModel(std::string(this->impl->modelPathBuffer));
+        }
+    }
+
+    void ViewerCore::changeSkin()
+    {
+        if (this->impl->modelEntity == beng::invalidEntity)
+        {
+            __blib_log_warning("change skin: no model loaded");
+            return;
+        }
+
+        char pathBuffer[MAX_PATH] = "";
+        if (!this->browseFile(skinFileDialogTitle, skinFileFilter, pathBuffer, MAX_PATH))
+        {
+            return;
+        }
+
+        beng::SkinnedMeshComponent* meshComp =
+            this->impl->scene.tryGetComponent<beng::SkinnedMeshComponent>(this->impl->modelEntity);
+        if (__blib_unlikely(!meshComp || !meshComp->getModel()))
+        {
+            __blib_log_error("change skin: model component is not available");
+            return;
+        }
+
+        // Скелет, аниматор и плейбек не трогаются — панели остаются
+        // привязанными к тем же объектам, выбранная кость сохраняется
+        meshComp->loadSkinFromFile(std::string(pathBuffer));
+    }
+
+    void ViewerCore::addAnimation()
+    {
+        if (this->impl->modelEntity == beng::invalidEntity)
+        {
+            __blib_log_warning("add animation: no model loaded");
+            return;
+        }
+
+        char pathBuffer[MAX_PATH] = "";
+        if (!this->browseFile(animationFileDialogTitle, animationFileFilter, pathBuffer, MAX_PATH))
+        {
+            return;
+        }
+
+        beng::SkinnedMeshComponent* meshComp =
+            this->impl->scene.tryGetComponent<beng::SkinnedMeshComponent>(this->impl->modelEntity);
+        if (__blib_unlikely(!meshComp || !meshComp->getModel()))
+        {
+            __blib_log_error("add animation: model component is not available");
+            return;
+        }
+
+        if (!meshComp->loadAnimationsFromFile(std::string(pathBuffer)))
+        {
+            return;
+        }
+
+        // Сразу выбираем последний добавленный клип и запускаем его
+        beng::AnimatorComponent* animComp =
+            this->impl->scene.tryGetComponent<beng::AnimatorComponent>(this->impl->modelEntity);
+        if (animComp)
+        {
+            const std::vector<blib::graphics::AnimationClip>& animations = animComp->getAnimations();
+            if (!animations.empty())
+            {
+                animComp->selectAnimation(animations.back().name);
+                animComp->play();
+            }
         }
     }
 
@@ -694,6 +781,12 @@ namespace modelviewer
             ImGui::SameLine();
             const bool browseClicked = ImGui::Button(browseButtonLabel);
 
+            ImGui::SameLine();
+            const bool changeSkinClicked = ImGui::Button(changeSkinButtonLabel);
+
+            ImGui::SameLine();
+            const bool addAnimationClicked = ImGui::Button(addAnimationButtonLabel);
+
             if ((enterPressed || openClicked) && this->impl->modelPathBuffer[0] != '\0')
             {
                 this->loadModel(std::string(this->impl->modelPathBuffer));
@@ -701,6 +794,14 @@ namespace modelviewer
             if (browseClicked)
             {
                 this->browseModelFile();
+            }
+            if (changeSkinClicked)
+            {
+                this->changeSkin();
+            }
+            if (addAnimationClicked)
+            {
+                this->addAnimation();
             }
         }
         ImGui::End();

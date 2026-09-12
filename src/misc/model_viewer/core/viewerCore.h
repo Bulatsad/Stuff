@@ -32,7 +32,14 @@ namespace modelviewer
         void unloadModel();
 
         // Диалог выбора файла (Win32) — см. .cpp
+        bool browseFile(_In const char* title, _In const char* filter, _Out char* outPath, size_t outSize);
         void browseModelFile();
+
+        // Смена мешей (skin) с сохранением скелета и анимаций (см. .cpp)
+        void changeSkin();
+
+        // Добавление внешних анимаций к текущей модели (см. .cpp)
+        void addAnimation();
 
         // Отладочные слои поверх сцены (в тот же FBO)
         void drawSkeleton();

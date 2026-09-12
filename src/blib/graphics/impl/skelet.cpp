@@ -6,6 +6,28 @@
 
 namespace
 {
+    // Допуск сравнения элементов inverse bind матриц: у одинаковых
+    // ригов (например, Mixamo) значения совпадают с точностью до
+    // float-погрешности
+    constexpr float skeletonCompatibilityEpsilon = 1e-4f;
+
+    // Поэлементное сравнение матриц с допуском
+    bool matricesNearEqual(_In const blib::graphics::TransformMatrix& lhs, _In const blib::graphics::TransformMatrix& rhs)
+    {
+        for (size_t i = 0; i < 4; ++i)
+        {
+            for (size_t j = 0; j < 4; ++j)
+            {
+                const float diff = lhs.data[i][j] - rhs.data[i][j];
+                if (diff > skeletonCompatibilityEpsilon || diff < -skeletonCompatibilityEpsilon)
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     // Конвертация aiMatrix4x4 в TransformMatrix с тем же порядком
     // элементов, что используется в остальных загрузчиках Assimp
     blib::graphics::TransformMatrix transformFromAssimp(const aiMatrix4x4& m)
@@ -34,6 +56,55 @@ namespace
             }
         }
         return nullptr;
+    }
+
+    // Суффикс узлов FBX-декомпозиции трансформа кости
+    constexpr const char* decomposedNodePrefix = "_$AssimpFbx$_";
+
+    // Поиск узла сцены по имени (обход в глубину)
+    const aiNode* findNodeByName(const aiNode* node, const std::string& name)
+    {
+        if (!node)
+        {
+            return nullptr;
+        }
+
+        if (name == node->mName.C_Str())
+        {
+            return node;
+        }
+
+        for (unsigned int i = 0; i < node->mNumChildren; ++i)
+        {
+            const aiNode* found = findNodeByName(node->mChildren[i], name);
+            if (found)
+            {
+                return found;
+            }
+        }
+
+        return nullptr;
+    }
+
+    // Элемент привязки: канал по имени узла (если есть) + bind-трансформ
+    blib::graphics::AnimationClip::BoneChainElement makeBoneChainElement(
+        _In const blib::graphics::AnimationClip& clip,
+        _In const aiNode* node)
+    {
+        blib::graphics::AnimationClip::BoneChainElement element;
+        element.channelIndex = clip.channels.size();
+
+        for (size_t i = 0; i < clip.channels.size(); ++i)
+        {
+            if (clip.channels[i].boneName == node->mName.C_Str())
+            {
+                element.channelIndex = i;
+                break;
+            }
+        }
+
+        element.bindTransform = transformFromAssimp(node->mTransformation);
+        return element;
     }
 }
 
@@ -65,6 +136,66 @@ size_t blib::graphics::Skelet::findBoneIndex(const std::string& name) const
             return i;
     }
     return this->boneStorage.size();
+}
+
+bool blib::graphics::Skelet::isCompatibleWith(_In const blib::graphics::Skelet& other) const
+{
+    if (this->boneStorage.size() != other.boneStorage.size())
+    {
+        __blib_log_error("skeleton mismatch: bone count %zu vs %zu",
+            this->boneStorage.size(), other.boneStorage.size());
+        return false;
+    }
+
+    for (const blib::graphics::Bone& bone : this->boneStorage)
+    {
+        const blib::graphics::Bone* otherBone = other.find(bone.name);
+        if (__blib_unlikely(!otherBone))
+        {
+            __blib_log_error("skeleton mismatch: bone '%s' not found in other skeleton", bone.name.c_str());
+            return false;
+        }
+
+        const blib::graphics::IHierarchal* parent = bone.getParent();
+        const blib::graphics::IHierarchal* otherParent = otherBone->getParent();
+        const std::string parentName = parent ? static_cast<const blib::graphics::Bone*>(parent)->name : std::string();
+        const std::string otherParentName = otherParent ? static_cast<const blib::graphics::Bone*>(otherParent)->name : std::string();
+        if (parentName != otherParentName)
+        {
+            __blib_log_error("skeleton mismatch: bone '%s' has parent '%s' vs '%s'",
+                bone.name.c_str(), parentName.c_str(), otherParentName.c_str());
+            return false;
+        }
+
+        if (__blib_unlikely(!matricesNearEqual(bone.offsetMatrix, otherBone->offsetMatrix)))
+        {
+            __blib_log_error("skeleton mismatch: bone '%s' inverse bind matrix differs", bone.name.c_str());
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool blib::graphics::Skelet::hasNodeName(_In const std::string& nodeName) const
+{
+    for (const blib::graphics::Bone& bone : this->boneStorage)
+    {
+        if (bone.name == nodeName)
+        {
+            return true;
+        }
+
+        for (const blib::graphics::BoneChainElement& element : bone.chain)
+        {
+            if (element.nodeName == nodeName)
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 bool blib::graphics::Skelet::makeBoneTree(const aiNode* pbone)
@@ -491,28 +622,98 @@ void blib::graphics::Skelet::computeBindPose()
     }
 }
 
+void blib::graphics::Skelet::bindClipToSkeleton(_In blib::graphics::AnimationClip& clip, _In const aiScene* animationScene) const
+{
+    clip.boneChains.clear();
+
+    if (__blib_unlikely(!animationScene || !animationScene->mRootNode))
+    {
+        return;
+    }
+
+    for (size_t boneIndex = 0; boneIndex < this->boneStorage.size(); ++boneIndex)
+    {
+        const blib::graphics::Bone& bone = this->boneStorage[boneIndex];
+
+        // Кость анимируется, если канал лежит на ней самой или на
+        // узлах её FBX-декомпозиции ("<имя>_$AssimpFbx$_...")
+        bool hasChannel = false;
+        const std::string decomposedPrefix = bone.name + decomposedNodePrefix;
+        for (const blib::graphics::AnimationChannel& channel : clip.channels)
+        {
+            if (channel.boneName == bone.name ||
+                channel.boneName.compare(0, decomposedPrefix.size(), decomposedPrefix) == 0)
+            {
+                hasChannel = true;
+                break;
+            }
+        }
+        if (!hasChannel)
+        {
+            continue;
+        }
+
+        const aiNode* boneNode = findNodeByName(animationScene->mRootNode, bone.name);
+        if (__blib_unlikely(!boneNode))
+        {
+            __blib_log_warning("animation: node '%s' not found in animation scene, bone skipped", bone.name.c_str());
+            continue;
+        }
+
+        // Цепочка узлов файла анимации: от внешнего узла к собственной
+        // кости (как в loadDefaultPoseFromNodes — до кости-предка или
+        // корня сцены, трансформ которого не входит в локальный)
+        std::vector<const aiNode*> chainNodes;
+        const aiNode* parent = boneNode->mParent;
+        while (parent && parent != animationScene->mRootNode)
+        {
+            if (this->find(parent->mName.C_Str()))
+            {
+                break;
+            }
+            chainNodes.push_back(parent);
+            parent = parent->mParent;
+        }
+
+        blib::graphics::AnimationClip::BoneChain boneChain;
+        boneChain.boneIndex = boneIndex;
+        for (size_t i = chainNodes.size(); i > 0; --i)
+        {
+            boneChain.elements.push_back(makeBoneChainElement(clip, chainNodes[i - 1]));
+        }
+        boneChain.elements.push_back(makeBoneChainElement(clip, boneNode));
+
+        clip.boneChains.push_back(boneChain);
+    }
+}
+
 void blib::graphics::Skelet::applyClip(const blib::graphics::AnimationClip& clip, double timeTicks)
 {
-    // Каналы анимации хранят трансформы относительно родительской
-    // кости. У FBX трансформ кости разложен по цепочке узлов, а каналы
-    // лежат на узлах цепочки — локальный трансформ собирается из неё:
-    // каждый элемент подменяется сэмплом канала с именем его узла
-    // (канала нет — остаётся bind-матрица элемента)
-    for (blib::graphics::Bone& bone : this->boneStorage)
+    if (!(clip.boneChains.empty()))
     {
-        if (!(bone.chain.empty()))
+        // Клип привязан к костям по дереву файла анимации: его
+        // FBX-декомпозиция может отличаться от модели, поэтому
+        // локальный трансформ собирается по цепочке узлов самого
+        // файла анимации (сэмпл канала или bind-трансформ узла)
+        for (const blib::graphics::AnimationClip::BoneChain& boneChain : clip.boneChains)
         {
-            blib::graphics::TransformMatrix local = blib::graphics::Identity;
-            for (const blib::graphics::BoneChainElement& element : bone.chain)
+            if (__blib_unlikely(boneChain.boneIndex >= this->boneStorage.size()))
             {
-                const blib::graphics::AnimationChannel* channel = findChannel(clip, element.nodeName);
-                if (channel)
+                continue;
+            }
+
+            blib::graphics::TransformMatrix local = blib::graphics::Identity;
+            for (const blib::graphics::AnimationClip::BoneChainElement& element : boneChain.elements)
+            {
+                if (element.channelIndex < clip.channels.size())
                 {
+                    const blib::graphics::AnimationChannel& channel = clip.channels[element.channelIndex];
+
                     blib::graphics::Vector3f position;
                     blib::math::Quaternion<double> rotation;
                     blib::graphics::Vector3f scale;
 
-                    if (channel->sample(timeTicks, position, rotation, scale))
+                    if (channel.sample(timeTicks, position, rotation, scale))
                     {
                         local = blib::graphics::mul(local, blib::graphics::composeMatrix(position, rotation, scale));
                         continue;
@@ -521,28 +722,63 @@ void blib::graphics::Skelet::applyClip(const blib::graphics::AnimationClip& clip
 
                 local = blib::graphics::mul(local, element.bindTransform);
             }
-            bone.localTransform = local;
-            continue;
-        }
 
-        // Кость без известной цепочки (или без узла сцены): канал
-        // ищется по имени самой кости, как раньше
-        const blib::graphics::AnimationChannel* channel = findChannel(clip, bone.name);
-        if (!channel)
+            this->boneStorage[boneChain.boneIndex].localTransform = local;
+        }
+    }
+    else
+    {
+        // Каналы анимации хранят трансформы относительно родительской
+        // кости. У FBX трансформ кости разложен по цепочке узлов, а каналы
+        // лежат на узлах цепочки — локальный трансформ собирается из неё:
+        // каждый элемент подменяется сэмплом канала с именем его узла
+        // (канала нет — остаётся bind-матрица элемента)
+        for (blib::graphics::Bone& bone : this->boneStorage)
         {
-            continue;
+            if (!(bone.chain.empty()))
+            {
+                blib::graphics::TransformMatrix local = blib::graphics::Identity;
+                for (const blib::graphics::BoneChainElement& element : bone.chain)
+                {
+                    const blib::graphics::AnimationChannel* channel = findChannel(clip, element.nodeName);
+                    if (channel)
+                    {
+                        blib::graphics::Vector3f position;
+                        blib::math::Quaternion<double> rotation;
+                        blib::graphics::Vector3f scale;
+
+                        if (channel->sample(timeTicks, position, rotation, scale))
+                        {
+                            local = blib::graphics::mul(local, blib::graphics::composeMatrix(position, rotation, scale));
+                            continue;
+                        }
+                    }
+
+                    local = blib::graphics::mul(local, element.bindTransform);
+                }
+                bone.localTransform = local;
+                continue;
+            }
+
+            // Кость без известной цепочки (или без узла сцены): канал
+            // ищется по имени самой кости, как раньше
+            const blib::graphics::AnimationChannel* channel = findChannel(clip, bone.name);
+            if (!channel)
+            {
+                continue;
+            }
+
+            blib::graphics::Vector3f position;
+            blib::math::Quaternion<double> rotation;
+            blib::graphics::Vector3f scale;
+
+            if (!(channel->sample(timeTicks, position, rotation, scale)))
+            {
+                continue;
+            }
+
+            bone.localTransform = blib::graphics::composeMatrix(position, rotation, scale);
         }
-
-        blib::graphics::Vector3f position;
-        blib::math::Quaternion<double> rotation;
-        blib::graphics::Vector3f scale;
-
-        if (!(channel->sample(timeTicks, position, rotation, scale)))
-        {
-            continue;
-        }
-
-        bone.localTransform = blib::graphics::composeMatrix(position, rotation, scale);
     }
 
     // bones without animated channels keep their bind local transforms,

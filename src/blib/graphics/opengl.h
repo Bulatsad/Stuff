@@ -66,6 +66,8 @@ typedef void (__blib_gl_calling_convension* __blib_gl_signature_glTranslatef)(GL
 //EXT
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glGenBuffers)(GLsizei n, GLuint* buffers);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glGenVertexArrays)(GLsizei n, GLuint* arrays);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDeleteBuffers)(GLsizei n, const GLuint* buffers);
+typedef void (__blib_gl_calling_convension* __blib_gl_signature_glDeleteVertexArrays)(GLsizei n, const GLuint* arrays);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glBindVertexArray)(GLuint array);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glBindBuffer)(GLenum target, GLuint buffer);
 typedef void (__blib_gl_calling_convension* __blib_gl_signature_glBufferData)(GLenum target,GLsizeiptr size,const void* data,GLenum usage);
@@ -133,6 +135,8 @@ namespace blib
             __blib_gl_signature_glEnableVertexAttribArray __blib_glEnableVertexAttribArray = nullptr;
             __blib_gl_signature_glVertexAttribPointer __blib_glVertexAttribPointer  = nullptr;
             __blib_gl_signature_glVertexAttribIPointer __blib_glVertexAttribIPointer  = nullptr;
+            __blib_gl_signature_glDeleteBuffers __blib_glDeleteBuffers = nullptr;
+            __blib_gl_signature_glDeleteVertexArrays __blib_glDeleteVertexArrays = nullptr;
             __blib_gl_signature_glCreateProgram __blib_gl_glCreateProgram = nullptr;
             __blib_gl_signature_glAttachShader __blib_gl_glAttachShader = nullptr;
             __blib_gl_signature_glDetachShader __blib_gl_glDetachShader = nullptr;

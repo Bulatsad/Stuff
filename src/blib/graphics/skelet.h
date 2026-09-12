@@ -25,6 +25,17 @@ namespace blib
             const blib::graphics::Bone* find(const std::string& name) const;
             size_t findBoneIndex(const std::string& name) const;
 
+            // Полное совпадение скелетов: число костей, имена, иерархия
+            // (имя родителя) и inverse bind матрицы (offsetMatrix) с
+            // допуском. Требуется для подмены мешей (skin) у текущего
+            // скелета: скиннинг использует его offset-матрицы, поэтому
+            // при другой bind-позе меш деформируется неверно
+            bool isCompatibleWith(_In const blib::graphics::Skelet& other) const;
+
+            // Есть ли узел с таким именем среди костей или элементов их
+            // FBX-цепочек (валидация каналов внешних анимаций)
+            bool hasNodeName(_In const std::string& nodeName) const;
+
             bool makeBoneTree(const aiNode* pbone);
             bool loadDefaultPoseFromArmature(const aiNode* pbone);
 
@@ -36,6 +47,13 @@ namespace blib
             void computeBindPose();
 
             void applyClip(const blib::graphics::AnimationClip& clip, double timeTicks);
+
+            // Построить привязку каналов клипа к костям скелета по
+            // сцене файла анимации: для каждой анимируемой кости —
+            // цепочка узлов с bind-трансформами и индексами каналов.
+            // Нужна, когда FBX-декомпозиция файла анимации отличается
+            // от файла модели (каналы лежат на других узлах)
+            void bindClipToSkeleton(_In blib::graphics::AnimationClip& clip, _In const aiScene* animationScene) const;
 
             std::vector<blib::graphics::Bone>& getBoneStorage();
             const std::vector<blib::graphics::Bone>& getBoneStorage() const;
