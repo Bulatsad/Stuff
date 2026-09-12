@@ -20,7 +20,7 @@
 
 - Зависимости: `beng-core` → `blib-core` (+ `blib-system` транзитивно), без графики; `beng-client`/`beng-editor` → `blib-graphics`.
 - Frame-API и «lib + тонкий exe»: ядро не владеет главным циклом (см. ARCHITECTURE.md).
-- Что НЕ в этом доке: правила кодирования (AGENTS.md), план развития (ARCHITECTURE.md), детали графики и ассетов (будет `src/blib/graphics/GRAPHICS.md`).
+- Что НЕ в этом доке: правила кодирования (AGENTS.md), план развития (ARCHITECTURE.md), детали графики и ассетов (см. `src/blib/graphics/GRAPHICS.md`).
 
 ---
 
@@ -108,8 +108,7 @@
 
 ## TODO
 
-- [ ] `GRAPHICS.md` (blib/graphics): Mesh/Material/Texture, владение GL, Assimp-загрузка, скелет и каналы — детали, вынесенные из этого дока.
-- [ ] Фаза 2 модульных доков: `MODEL_VIEWER.md`, `SYSTEM.md`, `CORE.md`, `SOUND.md`, `NETWORK.md`, `CLIENT.md`, `EDITOR.md`, `GRAVELANDS.md`.
+- [ ] Фаза 2 модульных доков beng: `MODEL_VIEWER.md`, `CLIENT.md`, `EDITOR.md`, `GRAVELANDS.md`.
 - [ ] `beng-server` — не реализован (см. ARCHITECTURE.md).
 - [ ] `Application`, рефлексия компонентов, `ResourceManager` — не реализованы (must-требования ARCHITECTURE.md).
 - [ ] `ComponentTypeRegistry` не thread-safe — регистрация типов строго до запуска цикла.
@@ -121,5 +120,5 @@
 - `AGENTS.md` — правила проекта и конвенции.
 - `ARCHITECTURE.md` — слои, требования к beng, roadmap.
 - `ERROR_HANDLING_ARCHITECTURE.md` — обработка ошибок.
+- `src/blib/BLIB.md` — карта blib; `src/blib/graphics/GRAPHICS.md` — рендер и скелетная анимация; `src/blib/system/SYSTEM.md` — память и потоки.
 - `src/blib/system/memory/AUTO_DEBUG_ALLOCATOR.md` — пример модульного дока; аллокатор.
-- (план) `src/blib/graphics/GRAPHICS.md` — графика и скелетная анимация.

@@ -1,5 +1,7 @@
 # Автоматический Debug Allocator
 
+> См. также: `../SYSTEM.md` (карта blib-system), `../../BLIB.md` (философия blib).
+
 ## Обзор изменений
 
 Интегрирован **автоматический debug wrapping** для `DefaultAllocator`. Теперь в debug сборках все аллокации автоматически защищены от типичных ошибок работы с памятью, **без изменения кода пользователя**.
@@ -8,7 +10,7 @@
 
 ## Как это работает
 
-### В Debug сборках (_DEBUG определён):
+### В Debug сборках (`BLIB_DEBUG` определён — из `_DEBUG` MSVC или `-DBLIB_DEBUG` GCC/Clang):
 
 ```cpp
 // defaultAllocator.h
@@ -70,7 +72,7 @@ alloc.deallocate(buffer, 64);  // ABORT! Detected overflow
 ## Управление поведением
 
 ### По умолчанию:
-- Debug build (`_DEBUG`) → автоматически включён DebugAllocator
+- Debug build (`BLIB_DEBUG` — выводится из `_DEBUG` MSVC или `-DBLIB_DEBUG` GCC/Clang) → автоматически включён DebugAllocator
 - Release build → выключен
 
 ### Принудительное отключение в debug:
@@ -141,7 +143,7 @@ Debug:
    - Конструктор `Allocator()` использует traits вместо hardcoded значения
    - Поддержка stateful DefaultAllocator в debug
 
-3. **src/test/autoDebugExample.cpp** (NEW)
+3. **src/blib/test/autoDebugExample.cpp** (NEW)
    - Примеры автоматического debug wrapping
    - Демонстрация workflow
 

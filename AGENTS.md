@@ -35,9 +35,16 @@
 
 | Модуль | Документ |
 |--------|----------|
+| blib (общая карта и философия) | `src/blib/BLIB.md` |
+| blib-system (память, потоки) | `src/blib/system/SYSTEM.md` |
+| blib-core (math, console, streams, алгоритмы) | `src/blib/core/CORE.md` |
+| blib-graphics (рендер, ассеты, скелет/анимация) | `src/blib/graphics/GRAPHICS.md` |
+| blib-sound (WinMM) | `src/blib/sound/SOUND.md` |
+| blib-network (winsock) | `src/blib/network/NETWORK.md` |
+| blib/test (фреймворк и группы тестов) | `src/blib/test/TESTING.md` |
 | beng (ядро / клиент / эдитор) | `src/beng/BENG.md` |
 
-Индекс пополняется при создании новых доков (`GRAPHICS.md`, `SYSTEM.md`, `CORE.md`, ...). При изменении кода модуля — обязательно обновлять его док (см. «Документация модулей» в строгих правилах ниже).
+Индекс пополняется при создании новых доков (`MODEL_VIEWER.md`, `GRAVELANDS.md`, `CLIENT.md`, `EDITOR.md`, ...). При изменении кода модуля — обязательно обновлять его док (см. «Документация модулей» в строгих правилах ниже).
 
 ## Project Structure
 
