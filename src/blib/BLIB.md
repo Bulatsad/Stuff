@@ -18,7 +18,7 @@
 ## Философия и сквозные конвенции
 
 1. **Слоистая зависимость:** `blib-system` → `blib-core` → `{blib-graphics, blib-sound, blib-network}`. Нижний модуль не знает о верхнем.
-2. **Свои типы и макросы** вместо стандартных: целые (`buint8`…`buint64`, `bint8`…`bint64`), SAL-аннотации, branch hints, коды ошибок. Строгие правила (без `new`/`throw`/smart pointers/`printf`) — в AGENTS.md.
+2. **Свои типы и макросы** вместо стандартных: целые (`buint8`…`buint64`, `bint8`…`bint64`), плавающие (`bfloat` = 4 байта, `bdouble` = 8 байт), SAL-аннотации, branch hints, коды ошибок. Строгие правила (без `new`/`throw`/smart pointers/`printf`) — в AGENTS.md.
 3. **Память — только через `GlobalAllocator`** (или аллокаторы поверх него). Bootstrap-исключения самого аллокатора помечены в коде. Детали — `system/SYSTEM.md`.
 4. **Логирование — только через `Console`** (`__blib_log_*`), но сам `blib-system` не может зависеть от `blib-core` и пишет в `stderr` напрямую — архитектурное исключение.
 5. **Ошибки — enum-кодами** на модуль (`None = 0`), через `__blib_return_error`; фатальные — `__blib_fatal`. См. `ERROR_HANDLING_ARCHITECTURE.md`.
@@ -29,7 +29,7 @@
 | Файл | Что даёт |
 |------|----------|
 | `config.h` | `BLIB_DEBUG` (из `_DEBUG` MSVC или `-DBLIB_DEBUG` GCC/Clang), платформенные макросы, per-module API-макросы (`__blib_core_api`, `__blib_graphics_api`, …), `__blib_unlikely/likely`, `__blib_return_error`, `__blib_fatal`, `__blib_max_bones = 100`, `__blib_default_cache_size = 64`, `__blib_unsafe`, `__blib_render_api_opengl` |
-| `blibint.h` | `buint8`…`buint64`, `bint8`…`bint64`, `*Max`-константы |
+| `blibint.h` | `buint8`…`buint64`, `bint8`…`bint64`, `bfloat`/`bdouble` (static_assert 4/8 байт), `*Max`-константы |
 | `utilmacro.h` | SAL-макросы `_In/_Out/_In_opt/_Out_opt` (пустые), `__blib_override` |
 | `inline.h` | `__blib_force_inline`, `__blib_noinline`, `__blib_inline`, `__blib_private_func` (= `static`) |
 | `align.h` | `__blib_cache_size`, `__blib_align`, `__blib_cache_aligned`, `__blib_thread_safe` (маркер, не используется) |
@@ -41,7 +41,7 @@
 | Модуль | Назначение | Зависимости | Док |
 |--------|------------|-------------|-----|
 | `blib-system` | Нижний уровень: память (GlobalAllocator, Allocator, pool/debug/malloc, SBO), потоки и синхронизация (RWLocker, MutexLocker, SPSC/MPSC очереди) | только базовые заголовки | `system/SYSTEM.md` |
-| `blib-core` | Переносимое ядро: math, console, streams, string/folder, алгоритмы (hash, compression, DFT/FFT), PDL, iterator/linkedList, endian | `blib-system` | `core/CORE.md` |
+| `blib-core` | Переносимое ядро: math, console, streams, string/folder, JSON, алгоритмы (hash, compression, DFT/FFT), PDL, iterator/linkedList, endian | `blib-system` | `core/CORE.md` |
 | `blib-graphics` | OpenGL/WGL, Win32-окно, ассеты (mesh/material/texture/skin), камеры, ImGui, консольное окно; **Windows-only** | `blib-core`, `Opengl32`, Assimp, ImGui, stb | `graphics/GRAPHICS.md` |
 | `blib-sound` | Запись/воспроизведение звука (WinMM); **Windows-only, недоделан** | `blib-core`, `Winmm` | `sound/SOUND.md` |
 | `blib-network` | TCP/UDP сокеты (winsock); **Windows-only, недоделан** | `blib-core`, `Ws2_32` | `network/NETWORK.md` |

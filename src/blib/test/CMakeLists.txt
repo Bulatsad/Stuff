@@ -16,7 +16,7 @@ target_link_libraries(blib_test_main PRIVATE blib-core)
 set_target_properties(blib_test_main PROPERTIES FOLDER "blib/tests")
 
 # Test group list: group name == file suffix test<group>.cpp
-set(blib_test_groups angle matrix pdl quaternion vector allocator iterator stream binary compression hash circlequeue console skinmesh)
+set(blib_test_groups angle matrix pdl quaternion vector allocator iterator stream binary compression hash circlequeue console skinmesh json)
 
 # Дополнительные библиотеки групп (помимо обязательного blib-core).
 # skinmesh строит фикстурные Assimp-сцены и зовёт SkinMesh/Skelet —

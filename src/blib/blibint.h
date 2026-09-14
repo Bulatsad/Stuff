@@ -14,6 +14,12 @@ static_assert(sizeof(int16_t)  == 2, "incorrect base datatype size");
 static_assert(sizeof(int32_t)  == 4, "incorrect base datatype size");
 static_assert(sizeof(int64_t)  == 8, "incorrect base datatype size");
 
+// IEEE-754 требования: bfloat == 4 байта (float), bdouble == 8 байт (double).
+// JSON-сериализатор (blib::core::json) и математика полагаются на эти размеры
+// (форматирование/разбор чисел через std::to_chars/from_chars).
+static_assert(sizeof(float)  == 4, "incorrect base datatype size");
+static_assert(sizeof(double) == 8, "incorrect base datatype size");
+
 typedef uint8_t  buint8;
 typedef uint16_t buint16;
 typedef uint32_t buint32;
@@ -23,6 +29,9 @@ typedef int8_t   bint8;
 typedef int16_t  bint16;
 typedef int32_t  bint32;
 typedef int64_t  bint64;
+
+typedef float  bfloat;
+typedef double bdouble;
 
 constexpr bint8  bint8Max  = UINT8_MAX;
 constexpr bint16 bint16Max = UINT8_MAX;

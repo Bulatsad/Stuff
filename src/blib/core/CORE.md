@@ -22,6 +22,7 @@
 | Консоль и логи | `src/blib/core/console/console.h`, `impl/console.cpp`; макросы `__blib_log_*` в `console.h` |
 | Потоки ввода-вывода | `istream.h`, `ostream.h`, `memoryStream.h`, `fileStream.h`, `sliceStream.h`, `stdStreamAdapter.h` |
 | Бинарный ввод-вывод, endian | `binaryReader.h`, `binaryWriter.h`, `endian.h` |
+| JSON (DOM, парсер, writer) | `json/json.h`, `json/impl/json.cpp` |
 | Строки/папки | `string.h`, `folder.h/.cpp` |
 | Hash | `algorithm/hash/md5Hasher.h`, `crc32Hasher.h`, `ihasher.h` |
 | Сжатие | `algorithm/compression/huffmanCompressor.h`, `icompressor.h` |
@@ -73,6 +74,15 @@
 
 ---
 
+## JSON (`blib::core::json`)
+
+- **`JsonValue`** — DOM-узел с value-семантикой (deep copy + noexcept move), типы `JsonType`: Null/Bool/Number/String/Array/Object. Фабрики `makeArray()/makeObject()`; массив: `pushBack/remove/clear/operator[]`; объект: `has/get/set/remove` (ключи — `const char*`, порядок вставки, O(n) поиск). `operator==` — глубокое сравнение, объекты без учёта порядка ключей, числа — целые как целые (со смешанной знаковостью — как double), иначе как double.
+- **Числа** хранятся как `bint64`/`buint64`/`bdouble` (+ флаги isInteger/numUnsigned) — точный round-trip; `-0` сохраняет знак. Форматирование/разбор — `std::to_chars`/`from_chars` (shortest round-trip, locale-independent; нужен MSVC ≥ 2019 16.4).
+- **`JsonParser`** — строгий RFC 8259, читает `IInputStream` побайтово (без буферизации, non-seekable OK) от текущей позиции; trailing-данные — `TrailingData`; глубина ≤ `jsonMaxDepth` (512). `parse(const char*, size_t)` — поверх `SliceStream`. `getErrorOffset()` — байтовое смещение ошибки. Строки: все эскейпы, `\uXXXX` + суррогатные пары → UTF-8, сырые байты ≥ 0x80 валидируются как UTF-8 (overlong/суррогаты/`> U+10FFFF` отклоняются).
+- **`JsonWriter`** — компактный вывод при `indentSpaces == 0`, иначе pretty; пустые контейнеры всегда `[]`/`{}`; эскейпит `"`, `\`, управляющие (`\u00XX`), валидирует UTF-8 на записи. `JsonValue::writeTo` — эквивалент writer'а.
+- **Память — строго GlobalAllocator:** контейнеры — `std::basic_string`/`std::vector` со `StdAllocatorAdapter`, указывающим на `blib::memory::Allocator` документа. **Инвариант стабильного адреса:** аллокатор живёт в heap (через `GlobalAllocator`), корень поддерева владеет им (`ownsAlloc`), узлы держат невладеющий указатель — поэтому перемещения узлов (реаллокации векторов) безопасны. Глубокое копирование — один свежий аллокатор на дерево; move — перенос указателей. Неудача выделения аллокатора/узла в конструкторах — `__blib_fatal`; в парсере — `JsonError::AllocationFailed`. `std`-контейнеры при OOM бросают `bad_alloc` (не ловим).
+- Ошибки — `JsonError` (None = 0), `__blib_unlikely` + `__blib_return_error` + лог через Console с байтовым смещением.
+
 ## Строки, папки, утилиты
 
 - `string.h`: `StringList`, `split`, `replace`, шаблонный `contains`. **Нюанс:** `split` сдвигает позицию на 1, а не на длину разделителя (для многобуквенных разделителей поведение нестандартное).
@@ -123,6 +133,7 @@
 ## Подводные камни
 
 - Матричная конвенция и два `operator*`/`mul` — главный источник ошибок в math (см. выше).
+- **JSON:** переносить узел-корень после того, как из него извлечены ссылки (`get()`, `operator[]`) — ссылки протухают после move; число-токен в парсере читает «вперёд» один байт-разделитель (pushback); `as*` на несовпадающем типе — документированное UB.
 - `Console::logFormat`-строки обрезаются на 512 байтах; передача `std::string` в varargs — UB (см. предупреждение в `console.h`).
 - `InputStream` move-only: для lvalue-источника нужен copy-ctor, для rvalue — move (проверка `static_assert`); владеемый поток всегда heap через GlobalAllocator.
 - `MemoryStream` — исключение из правила аллокаций: данные в `std::vector` (стандартный аллокатор), это задокументировано в его шапке.
