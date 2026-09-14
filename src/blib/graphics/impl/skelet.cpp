@@ -138,6 +138,27 @@ size_t blib::graphics::Skelet::findBoneIndex(const std::string& name) const
     return this->boneStorage.size();
 }
 
+bool blib::graphics::Skelet::getBonePosition(_In const std::string& name, _Out blib::graphics::Vector3f& outPosition) const
+{
+    const size_t index = this->findBoneIndex(name);
+    if (__blib_unlikely(index >= this->boneStorage.size()))
+    {
+        return false;
+    }
+
+    // ВАЖНО: позиция кости — трансляция globalTransform (global =
+    // parent.global * local, обновляется updateTransforms при applyClip).
+    // НЕ finalMatrices: finalMatrices[i] = global * offsetMatrix, где
+    // offsetMatrix — INVERSE BIND — трансляция такой матрицы это не
+    // позиция кости, а «дельта» относительно bind-позы (почти ноль)
+    const blib::graphics::TransformMatrix& globalMatrix = this->boneStorage[index].globalTransform;
+    outPosition = blib::graphics::Vector3f(
+        globalMatrix.data[0][3],
+        globalMatrix.data[1][3],
+        globalMatrix.data[2][3]);
+    return true;
+}
+
 bool blib::graphics::Skelet::isCompatibleWith(_In const blib::graphics::Skelet& other) const
 {
     if (this->boneStorage.size() != other.boneStorage.size())

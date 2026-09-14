@@ -2,11 +2,14 @@
 #include <gravelands/client/core/isometricTileset.h>
 
 #include <beng/client/components/animatorComponent.h>
+#include <beng/client/components/blobShadowComponent.h>
 #include <beng/client/components/meshRenderComponent.h>
 #include <beng/client/components/skinnedMeshComponent.h>
 #include <beng/client/systems/animationSystem.h>
+#include <beng/client/systems/blobShadowSystem.h>
 #include <beng/client/systems/renderSystem.h>
 #include <beng/components/transform.h>
+#include <beng/core/componentPool.h>
 #include <beng/core/scene.h>
 #include <beng/core/time.h>
 #include <beng/systems/transformSystem.h>
@@ -183,6 +186,10 @@ namespace gravelands
         constexpr float dancerYawDegrees = -45.0f;
         constexpr float dancerOutlineWidth = 0.25f;
         constexpr float dancerShadowRadius = 8.0f;
+
+        // Кость, за которой следует тень танцора (root-motion танца
+        // живёт в позе; система пробует также Hips/mixamorig:Hips)
+        constexpr const char* dancerShadowBoneName = "mixamorig:Hips";
     }
 
     // Процедурная текстура blob-тени (фаза 7): радиальный градиент
@@ -370,6 +377,7 @@ namespace gravelands
         beng::Scene scene;
         beng::TransformSystem transformSystem;
         beng::AnimationSystem animationSystem;
+        beng::BlobShadowSystem blobShadowSystem;
         beng::RenderSystem renderSystem;
 
         // Сущности мира (для отладочных клавиш и статуса в оверлее)
@@ -398,6 +406,7 @@ namespace gravelands
             , scene()
             , transformSystem()
             , animationSystem()
+            , blobShadowSystem()
             , renderSystem()
             , time()
             , lightAzimuthDeg(defaultLightAzimuthDeg)
@@ -461,9 +470,11 @@ namespace gravelands
         impl->scene.registerComponentType<beng::SkinnedMeshComponent>();
         impl->scene.registerComponentType<beng::AnimatorComponent>();
         impl->scene.registerComponentType<beng::MeshRenderComponent>();
+        impl->scene.registerComponentType<beng::BlobShadowComponent>();
 
         impl->scene.addSystem(&impl->transformSystem);
         impl->scene.addSystem(&impl->animationSystem);
+        impl->scene.addSystem(&impl->blobShadowSystem);
         impl->scene.addSystem(&impl->renderSystem);
 
         impl->renderSystem.setRenderTarget(&impl->renderTarget);
@@ -856,7 +867,8 @@ namespace gravelands
             }
         }
 
-        // --- Blob-тени (слой Shadow): под сферой, деревьями и танцором.
+        // --- Blob-тени (слой Shadow): под сферой и деревьями.
+        // Тень танцора создаётся в loadDancerModel (нужна цель).
         // Блендинг и запрет записи глубины делает RenderSystem для
         // всего слоя Shadow (см. beng RenderSystem::drawLayer)
         {
@@ -874,20 +886,6 @@ namespace gravelands
 
                 impl->scene.getComponent<beng::TransformComponent>(impl->sphereShadowEntity)
                     .setLocalPosition(blib::math::Vector<float, 3>(0.0f, shadowHeightOffset, 0.0f));
-            }
-
-            {
-                blib::graphics::BlobShadow shadow;
-                shadow.create(dancerShadowRadius, shadowImage);
-
-                impl->dancerShadowEntity = impl->scene.createEntity();
-                impl->scene.addComponent<beng::TransformComponent>(impl->dancerShadowEntity, &impl->scene);
-                impl->scene.addComponent<beng::MeshRenderComponent>(
-                    impl->dancerShadowEntity, shadow.takeMesh(), beng::RenderLayer::Shadow);
-
-                impl->scene.getComponent<beng::TransformComponent>(impl->dancerShadowEntity)
-                    .setLocalPosition(blib::math::Vector<float, 3>(
-                        dancerPositionX, shadowHeightOffset, dancerPositionZ));
             }
 
             for (buint32 i = 0; i < testTreeCount; ++i)
@@ -959,6 +957,24 @@ namespace gravelands
         }
 
         impl->dancerEntity = entity;
+
+        // Тень танцора (слой Shadow): следует за костью таза через
+        // BlobShadowSystem — root-motion анимации двигает модель,
+        // тень проецируется от источника света на землю
+        {
+            blib::graphics::Image shadowImage;
+            generateShadowImage(shadowImage);
+
+            blib::graphics::BlobShadow shadow;
+            shadow.create(dancerShadowRadius, shadowImage);
+
+            impl->dancerShadowEntity = impl->scene.createEntity();
+            impl->scene.addComponent<beng::TransformComponent>(impl->dancerShadowEntity, &impl->scene);
+            impl->scene.addComponent<beng::MeshRenderComponent>(
+                impl->dancerShadowEntity, shadow.takeMesh(), beng::RenderLayer::Shadow);
+            impl->scene.addComponent<beng::BlobShadowComponent>(
+                impl->dancerShadowEntity, entity, dancerShadowBoneName, shadowHeightOffset);
+        }
 
         __blib_log_info("dancer model loaded: %s", modelPath.c_str());
     }

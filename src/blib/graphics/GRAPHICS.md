@@ -148,6 +148,7 @@
 - `isCompatibleWith(other)` — полное совпадение скелетов: число костей, имена, имена родителей, `offsetMatrix` с допуском `1e-4` (для подмены скина).
 - `adoptOffsetMatricesFrom(other)` — перенос inverse-bind на одноимённые кости (retarget кожи на текущий риг; force-подмена мешей); кости без пары не трогаются; повторный вызов идемпотентен.
 - `hasNodeName(name)` — есть ли узел среди костей/цепочек.
+- `getBonePosition(name, out)` — позиция кости в model-space для привязки эффектов к позе (blob-тени — см. BlobShadowSystem в beng-client); false, если кость не найдена. Требует `computeBindPose`/`applyClip`. **Грабли:** позиция — трансляция `globalTransform` кости, а НЕ `finalMatrices` (`finalMatrices = global * inverse-bind` — «дельта» от bind-позы, почти ноль).
 - `bindClipToSkeleton(clip, animationScene)` — строит `clip.boneChains` по дереву файла анимации; обязателен, когда декомпозиция внешнего FBX отличается от модели.
 
 ### AnimationChannel / AnimationClip (`animationclip.h`)

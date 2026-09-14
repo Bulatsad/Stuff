@@ -45,6 +45,7 @@
 
 - **Матрицы хранятся по столбцам** (`data[столбец][строка]`), несмотря на комментарий «stores matrix as array of lines(rows)». Трансляция — `data[0..2][3]`.
 - **Два пути умножения матриц**: `Matrix::operator*` и свободный `transformMatrix.h::mul()` реализованы с разным порядком индексов. В коде смешаны оба; при написании нового кода — не смешивать и сверяться с вызывающими.
+- **`Matrix::operator*` вычисляет ТРАНСПОНИРОВАННОЕ произведение** (`res(i,j) = Σ lhs(k,j)·rhs(i,k)` = `lhsᵀ·rhs`). Трансформировать ТОЧКИ через него нельзя — теряется трансляция (проверено на BlobShadowSystem, тень «съезжала» в ноль). Для точек — `blib::math::rotate(vector, quaternion)` + ручное масштабирование, либо `TransformComponent::getWorldPosition/getWorldRotation/getWorldScale` (beng). Латентный баг: `TransformComponent::updateWorldMatrix` умножает `parentMatrix * worldMatrix` тем же транспонированным оператором — parent-иерархии рендерятся неверно (в текущих сценах parent не используется).
 - `normalize` нулевого вектора делит на ноль (тест — только smoke); `magnitude` аккумулирует во `float` независимо от `Type`.
 - Assimp-конверсии (`Vector3f::loadFromAssimp`, `Quaternion::loadFromAssimp`) существуют только при `COMPILE_ASSIMP_COMPATIBLE`.
 

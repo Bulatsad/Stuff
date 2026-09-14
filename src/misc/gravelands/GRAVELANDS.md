@@ -55,12 +55,14 @@
 |--------|-----------|------------------|
 | Тайлы (сетка 10×10 квадратов на XZ, шахматная текстура) | `Transform` + `MeshRenderComponent` (`IsometricTileset::buildMesh()`) | `Ground` |
 | Тени (сфера r=30, танцор r=8, деревья r=16; радиальный градиент, подъём 0.5) | `Transform` + `MeshRenderComponent` (`BlobShadow::takeMesh()`) | `Shadow` |
+| Привязка тени танцора к root-motion (строго под моделью) | `BlobShadowComponent` + `BlobShadowSystem` (кость `mixamorig:Hips`) | — |
 | Деревья (3 квада 40×70, процедурная текстура, alpha-test, поворот к камере) | `Transform` + `MeshRenderComponent` (`SpritePlane::takeMesh()`) | `AlphaTested` |
 | Сфера (r=25, шахматка, Toon + контур 0.6) | `Transform` + `MeshRenderComponent` (`Sphere::takeMesh()`) | `Opaque` |
 | Танцор (`resources\Hip Hop Dancing.fbx`, масштаб 0.1, позиция (0,0,60)) | `Transform` + `SkinnedMeshComponent` + `AnimatorComponent` | `Opaque` (скиннинг) |
 
 - **Камера** (`blib::graphics::IsometricCamera`): ракурс фиксирован (pitch 55°, yaw 45°, FOV 30° — лёгкая перспектива); WASD двигает `target` камеры в плоскости земли; `Add`/`Subtract` — зум. После изменений обязателен `camera.update()`.
 - **Поворот плоскостей к камере**: направление **к** камере (`camera.getPosition() - getTarget()`), `yaw = atan2(-dir.x, dir.z)` (конвенция `rotateY`: локальная +Z → `(-sin(yaw), 0, cos(yaw))`, см. GRAPHICS.md/SpritePlane).
+- **Тень танцора** следует за root-motion анимации и лежит **строго под моделью** (без смещения от источника света — blob-тень по определению «прижимает» объект к земле): `BlobShadowSystem` читает позицию кости таза (`mixamorig:Hips`, fallback «Hips»/подстрока) в model-space, переводит в мир и ставит тень на `(x, groundOffset, z)`. Стрелки света на тень не влияют (свет действует на toon-освещение).
 - **Отладочное управление (клавиши):** `N` — раскраска нормалями; `M` — сфера unlit/toon; `O` — контур сферы; **стрелки** — азимут/элевация света; `[`/`]` — интенсивность; **F5** — `hotreload` (перекомпиляция шейдеров, `registerGraphicsConsoleCommands()`); `P` — пост-пасс.
 - **Оверлей** — полупрозрачное ImGui-окно в углу (без рамок/ввода): параметры света/камеры + список клавиш. Паттерн вьювера: WndProc-хук + сцена → back-буфер (пост-пасс или `blitToBackbuffer`), ImGui поверх, `swapBuffers`.
 - **Пути контента** резолвятся из cwd → каталога exe → подъёмом по родителям (`resolveContentPath`).

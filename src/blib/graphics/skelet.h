@@ -25,6 +25,15 @@ namespace blib
             const blib::graphics::Bone* find(const std::string& name) const;
             size_t findBoneIndex(const std::string& name) const;
 
+            // Позиция кости по имени в model-space (трансляция
+            // globalTransform кости — обновляется при applyClip) —
+            // привязка эффектов (blob-тени, точки крепления) к
+            // анимированной позе. ВАЖНО: это НЕ трансляция
+            // finalMatrices (там global * inverse-bind — «дельта»
+            // от bind-позы). Требует computeBindPose/applyClip.
+            // Возвращает false, если кость с таким именем не найдена
+            bool getBonePosition(_In const std::string& name, _Out blib::graphics::Vector3f& outPosition) const;
+
             // Полное совпадение скелетов: число костей, имена, иерархия
             // (имя родителя) и inverse bind матрицы (offsetMatrix) с
             // допуском. Требуется для подмены мешей (skin) у текущего
