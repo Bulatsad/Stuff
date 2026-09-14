@@ -103,7 +103,7 @@ ctest --test-dir ../build -C Debug
 ## Ключевые паттерны кода
 
 ### Именование
-- Свои целочисленные типы: `buint8`, `bint16`, `buint32` и т.д. (см. `src/blib/blibint.h`)
+- Свои целочисленные типы: `buint8`, `bint16`, `buint32` и т.д., плавающие: `bfloat` (4 байта), `bdouble` (8 байт) (см. `src/blib/blibint.h`)
 - Макросы атрибутов: `_In`, `_Out`, `__blib_override`, `__blib_api`, `__beng_api`
 - Классы графики в неймспейсе `beng::graphics` и `blib::graphics`
 
@@ -134,12 +134,34 @@ ctest --test-dir ../build -C Debug
 - Пути — относительно корня `src/`: `<blib/...>`, `<beng/...>`, `<imgui/...>`
 - Исключение: вендорный код в `thirdparty/` (живёт по своим правилам, см. ниже)
 
+### Типы данных (СТРОГО)
+- **Только blib-типы** из `blibint.h`: `buint8/16/32/64`, `bint8/16/32/64`, `bfloat`, `bdouble` (+ константы `buint32Max`, `bint8Max` и т.д.)
+- Голые встроенные типы (`int`, `unsigned`, `long`, `float`, `double`, `size_t` и т.п.) в коде проекта **запрещены**
+- Исключения: `thirdparty/`, границы с внешними API (OpenGL, Assimp, ImGui, системные вызовы — конвертация на границе) и тесты
+
 ### Аллокации памяти (СТРОГО)
 - **`::new` / new-выражения СТРОГО ЗАПРЕЩЕНЫ во всём проекте** — любая выделяющая память форма `new`/`new[]`/`delete`/`delete[]` недопустима
 - Вся динамическая память — **только через `blib::memory::GlobalAllocator`** (`GlobalAllocator::instance().allocate()/deallocate()`) или аллокаторы, которые сами работают через него (DefaultAllocator, Allocator и т.д.)
 - **Placement new разрешён** — он не выделяет память, только конструирует объект в уже выделенной области (`new (ptr) T(...)`)
 - **Единственное исключение (bootstrap)**: внутренняя реализация `GlobalAllocator` — системный `::operator new/delete` внутри `allocate()/deallocate()` и создание внутренних объектов (RWLocker, LeakTracker, StatsCollector), т.к. через самого себя аллоцировать нельзя (nullptr lock, нереентерабельный SRWLOCK, самоссылка трекера). Такие места обязаны быть помечены комментарием `// bootstrap exception`
 - Свободные `malloc/free` — только в `MallocAllocator` (обёртка над libc для C-совместимости)
+
+### STL-контейнеры (СТРОГО)
+- **Каждый std-контейнер** (`vector`, `list`, `map`, `unordered_map`, `basic_string` и т.д.) **обязан указывать blib-аллокатор** через `blib::memory::StdAllocatorAdapter<T>` в списке аргументов шаблона
+- По умолчанию — **`DefaultAllocator`** (прокси к `GlobalAllocator`; в debug-сборке — `DebugAllocator` с guard bytes). Любой другой аллокатор blib (`PoolAllocator` и т.д.) — только при реальной потребности
+- Пример (канон из `src/beng/core/scene.h`):
+
+```cpp
+// Аллокатор служебных контейнеров. Объявлен ПЕРЕД контейнерами:
+// они хранят указатель на него. По умолчанию — DefaultAllocator
+// (прокси к GlobalAllocator).
+blib::memory::Allocator containerAllocator;
+
+std::vector<buint32, blib::memory::StdAllocatorAdapter<buint32>> ids{
+    blib::memory::StdAllocatorAdapter<buint32>(&containerAllocator) };
+```
+
+- ВАЖНО: `StdAllocatorAdapter` хранит указатель и **не владеет** аллокатором — `Allocator` обязан жить дольше всех контейнеров, которые на него ссылаются
 
 ### Логирование и консоль (СТРОГО)
 - Весь лог, дебаг-вывод и пользовательский ввод — **только через `blib::console::Console::instance()`** и макросы:
