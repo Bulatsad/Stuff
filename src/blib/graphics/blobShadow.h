@@ -49,6 +49,12 @@ namespace blib
 
             const blib::graphics::Mesh& getMesh() const;
 
+            // Передать владение мешем наружу (NPR/ECS: меш уходит в
+            // рендер-компонент, см. MeshRenderComponent; блендинг
+            // слоя Shadow делает RenderSystem). После вызова объект
+            // пуст и не пригоден для отрисовки
+            blib::graphics::Mesh takeMesh();
+
             // Release IDrawable api. Включает блендинг и запрещает
             // запись глубины на время отрисовки, затем восстанавливает
             virtual void draw(RenderContext& ctx) const override;

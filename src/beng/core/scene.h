@@ -242,6 +242,16 @@ namespace beng
         template<typename T>
         const ComponentPool<T>& getComponentPool() const;
 
+        /**
+         * Получить пул компонентов без fatal: nullptr, если тип
+         * не зарегистрирован в сцене. Для систем, работающих с
+         * компонентом опционально (например, RenderSystem в сценах
+         * без статических мешей) — см. getComponentPool для
+         * строгого варианта.
+         */
+        template<typename T>
+        ComponentPool<T>* tryGetComponentPool();
+
         // ========== System Management ==========
 
         /**

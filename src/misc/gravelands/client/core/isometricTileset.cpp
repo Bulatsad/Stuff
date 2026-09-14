@@ -23,8 +23,10 @@ namespace gravelands
         constexpr buint8 checkerDarkComponent = 120;
     }
 
-    IsometricTileset::IsometricTileset()
+    blib::graphics::Mesh IsometricTileset::buildMesh()
     {
+        blib::graphics::Mesh mesh;
+
         // Вершин на тайл (квадрат: 4 угла) и треугольников на тайл
         const buint32 verticesPerTile = 4;
         const buint32 facesPerTile = 2;
@@ -125,11 +127,8 @@ namespace gravelands
         }
 
         mesh.material.diffuseImage = checkerImage;
-    }
 
-    void IsometricTileset::draw(_In blib::graphics::IRenderTarget& target)
-    {
-        target.draw(mesh);
+        return mesh;
     }
 
 } // namespace gravelands

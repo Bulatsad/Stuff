@@ -2,6 +2,7 @@
 #include <gravelands/client/core/isometricTileset.h>
 
 #include <beng/client/components/animatorComponent.h>
+#include <beng/client/components/meshRenderComponent.h>
 #include <beng/client/components/skinnedMeshComponent.h>
 #include <beng/client/systems/animationSystem.h>
 #include <beng/client/systems/renderSystem.h>
@@ -361,21 +362,24 @@ namespace gravelands
         blib::graphics::IsometricCamera camera;
         blib::graphics::PostProcess postProcess;
         bool postEnabled;
-        gravelands::IsometricTileset tileset;
-        blib::graphics::Sphere testSphere;
-        blib::graphics::BlobShadow sphereShadow;
-        blib::graphics::BlobShadow treeShadows[testTreeCount];
-        blib::graphics::SpritePlane testTrees[testTreeCount];
 
-        // Рендер-ECS (фаза 9): сцена со скелетной моделью. Объявлены
-        // ПОСЛЕ графических объектов — разрушаются РАНЬШЕ окна/таргета
-        // (модель освобождает GL-ресурсы при живом контексте)
+        // Весь мир — в ECS-сцене: отрисовка идёт ТОЛЬКО через
+        // scene.update() (RenderSystem). Объявлена ПОСЛЕ графических
+        // объектов — разрушается РАНЬШЕ окна/таргета (меши освобождают
+        // GL-ресурсы при живом контексте)
         beng::Scene scene;
         beng::TransformSystem transformSystem;
         beng::AnimationSystem animationSystem;
         beng::RenderSystem renderSystem;
+
+        // Сущности мира (для отладочных клавиш и статуса в оверлее)
+        beng::EntityID sphereEntity = beng::invalidEntity;
+        beng::EntityID sphereShadowEntity = beng::invalidEntity;
+        beng::EntityID dancerShadowEntity = beng::invalidEntity;
+        beng::EntityID treeEntities[testTreeCount] = {};
+        beng::EntityID treeShadowEntities[testTreeCount] = {};
         beng::EntityID dancerEntity = beng::invalidEntity;
-        blib::graphics::BlobShadow dancerShadow;
+
         beng::Time time;
 
         // Состояние отладочного управления светом (фаза 4): азимут
@@ -391,96 +395,15 @@ namespace gravelands
             , camera()
             , postProcess()
             , postEnabled(true)
-            , tileset()
-            , testSphere()
-            , sphereShadow()
-            , treeShadows()
-            , testTrees()
             , scene()
             , transformSystem()
             , animationSystem()
             , renderSystem()
-            , dancerEntity(beng::invalidEntity)
-            , dancerShadow()
             , time()
             , lightAzimuthDeg(defaultLightAzimuthDeg)
             , lightElevationDeg(defaultLightElevationDeg)
             , lightIntensity(defaultLightIntensity)
         {
-            // Сфера-«персонаж» в центре сетки, стоит на земле
-            // (центр поднят на радиус над плоскостью y = 0)
-            this->testSphere.createSpere(testSphereRadius, testSphereSegments,
-                blib::graphics::Color(testSphereColorR, testSphereColorG, testSphereColorB, testSphereColorA));
-            this->testSphere.setPosition(0.0f, testSphereRadius, 0.0f);
-
-            // Шахматная текстура по UV: unlit покажет узор, toon —
-            // узор + свет. Клетка (x, y) — светлая при чётной сумме
-            blib::graphics::Image sphereTexture;
-            sphereTexture.create(testSphereTextureSize, testSphereTextureSize,
-                blib::graphics::Color(testSphereColorR, testSphereColorG, testSphereColorB, testSphereColorA));
-            for (buint16 y = 0; y < testSphereTextureSize; ++y)
-            {
-                for (buint16 x = 0; x < testSphereTextureSize; ++x)
-                {
-                    if ((x + y) % 2 != 0)
-                    {
-                        // ВАЖНО: Image::operator[] — [колонка][строка]
-                        sphereTexture[x][y] =
-                            blib::graphics::Color(testSphereDarkR, testSphereDarkG, testSphereDarkB, testSphereColorA);
-                    }
-                }
-            }
-            this->testSphere.getMesh().material.diffuseImage = sphereTexture;
-
-            // Toon-режим материала сферы (мягкий свет — фаза 4);
-            // тайлы остаются unlit (чистое альбедо, как рисованные фоны)
-            this->testSphere.getMesh().material.shadingMode = blib::graphics::ShadingMode::Toon;
-
-            // Контур сферы (inverted hull, фаза 8): тонкая тёмная кайма.
-            // Статика и плоскости — без контура (обводка в текстуре).
-            // TODO: толщина должна масштабироваться от размера объекта
-            // и дистанции камеры (актуально для реальных моделей, фаза 9)
-            {
-                blib::graphics::Material& sphereMaterial = this->testSphere.getMesh().material;
-                sphereMaterial.outlineEnabled = true;
-                sphereMaterial.outlineWidth = 0.6f;
-            }
-
-            // Плоскости-«деревья» (фаза 5): общая процедурная текстура,
-            // поворот к камере ставится в initialize(), нога в земле
-            // (центр поднят на половину высоты)
-            blib::graphics::Image treeImage;
-            generateTreeImage(treeImage);
-
-            for (buint32 i = 0; i < testTreeCount; ++i)
-            {
-                this->testTrees[i].create(testTreeWidth, testTreeHeight, treeImage);
-                this->testTrees[i].setPosition(
-                    testTreePositions[i][0],
-                    testTreeHeight * 0.5f,
-                    testTreePositions[i][1]);
-            }
-
-            // Blob-тени (фаза 7): общий радиальный градиент, тени
-            // прижаты к земле с небольшим подъёмом (z-fighting)
-            blib::graphics::Image shadowImage;
-            generateShadowImage(shadowImage);
-
-            this->sphereShadow.create(sphereShadowRadius, shadowImage);
-            this->sphereShadow.setPosition(0.0f, shadowHeightOffset, 0.0f);
-
-            for (buint32 i = 0; i < testTreeCount; ++i)
-            {
-                this->treeShadows[i].create(treeShadowRadius, shadowImage);
-                this->treeShadows[i].setPosition(
-                    testTreePositions[i][0],
-                    shadowHeightOffset,
-                    testTreePositions[i][1]);
-            }
-
-            // Тень «танцора» (фаза 9) — под скелетной моделью
-            this->dancerShadow.create(dancerShadowRadius, shadowImage);
-            this->dancerShadow.setPosition(dancerPositionX, shadowHeightOffset, dancerPositionZ);
         }
     };
 
@@ -516,28 +439,6 @@ namespace gravelands
 
         impl->renderTarget.rc.setCamera(&impl->camera);
 
-        // Разворот плоскостей-«деревьев» к камере. Конвенция rotateY
-        // в движке: локальная нормаль +Z после поворота уходит в
-        // (-sin(yaw), 0, cos(yaw)) — поэтому yaw = atan2(-dir.x, dir.z)
-        // из направления К камере (позиция камеры → цель). BUG-FIX:
-        // раньше бралось target - position (направление ОТ камеры) —
-        // плоскости смотрели от камеры на 180°, что маскировалось
-        // отсутствием culling (дерево симметричное); с culling задняя
-        // грань отсекается и плоскости исчезали
-        {
-            blib::graphics::Vector3f cameraDirection = impl->camera.getPosition() - impl->camera.getTarget();
-            cameraDirection.y = 0.0f;
-            cameraDirection = blib::math::normalize(cameraDirection);
-
-            const float treeYawDegrees =
-                blib::math::atan2(-cameraDirection.x, cameraDirection.z) * treeRadToDeg;
-
-            for (buint32 i = 0; i < testTreeCount; ++i)
-            {
-                impl->testTrees[i].setRotation(0.0f, treeYawDegrees, 0.0f);
-            }
-        }
-
         // Пост-пасс (фаза 6): дефолты класса + параметры проекции
         // из конфигурации камеры (линеаризация глубины в шейдере)
         {
@@ -552,17 +453,23 @@ namespace gravelands
         blib::graphics::registerGraphicsConsoleCommands();
 
         // Рендер-ECS (beng-client, фаза 9): сцена + системы анимации
-        // и отрисовки скелетных моделей. Регистрация типов — строго
-        // до запуска цикла (реестр не thread-safe, см. BENG.md)
+        // и отрисовки. ВЕСЬ мир строится сущностями и рисуется только
+        // через scene.update() (инвариант — см. BENG.md «beng-client»).
+        // Регистрация типов — строго до запуска цикла (реестр не
+        // thread-safe, см. BENG.md)
         impl->scene.registerComponentType<beng::TransformComponent>();
         impl->scene.registerComponentType<beng::SkinnedMeshComponent>();
         impl->scene.registerComponentType<beng::AnimatorComponent>();
+        impl->scene.registerComponentType<beng::MeshRenderComponent>();
 
         impl->scene.addSystem(&impl->transformSystem);
         impl->scene.addSystem(&impl->animationSystem);
         impl->scene.addSystem(&impl->renderSystem);
 
         impl->renderSystem.setRenderTarget(&impl->renderTarget);
+
+        // Мир: тайлы, сфера, деревья, тени (сущности + слои рендера)
+        setupWorld();
 
         // Скелетная модель с анимацией (Mixamo-FBX)
         loadDancerModel();
@@ -637,46 +544,35 @@ namespace gravelands
         // M — переключение сферы unlit/toon (сравнение до/после света)
         if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::M))
         {
-            blib::graphics::Material& sphereMaterial = impl->testSphere.getMesh().material;
-            sphereMaterial.shadingMode =
-                sphereMaterial.shadingMode == blib::graphics::ShadingMode::Toon
-                ? blib::graphics::ShadingMode::Unlit
-                : blib::graphics::ShadingMode::Toon;
+            if (impl->sphereEntity != beng::invalidEntity)
+            {
+                blib::graphics::Material& sphereMaterial =
+                    impl->scene.getComponent<beng::MeshRenderComponent>(impl->sphereEntity).getMesh().material;
+                sphereMaterial.shadingMode =
+                    sphereMaterial.shadingMode == blib::graphics::ShadingMode::Toon
+                    ? blib::graphics::ShadingMode::Unlit
+                    : blib::graphics::ShadingMode::Toon;
+            }
         }
 
         // O — включение/выключение контура сферы (inverted hull, фаза 8)
         if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::O))
         {
-            blib::graphics::Material& sphereMaterial = impl->testSphere.getMesh().material;
-            sphereMaterial.outlineEnabled = !sphereMaterial.outlineEnabled;
+            if (impl->sphereEntity != beng::invalidEntity)
+            {
+                blib::graphics::Material& sphereMaterial =
+                    impl->scene.getComponent<beng::MeshRenderComponent>(impl->sphereEntity).getMesh().material;
+                sphereMaterial.outlineEnabled = !sphereMaterial.outlineEnabled;
+            }
         }
 
         updateCamera(deltaTime);
         updateLight(deltaTime);
 
+        // Единственная точка отрисовки мира: вся сцена (тайлы, тени,
+        // плоскости, сфера, скелетная модель) рисуется RenderSystem'ом
+        // внутри scene.update() по слоям (см. RenderLayer)
         impl->renderTarget.clear(blib::graphics::Color::Black);
-        impl->tileset.draw(impl->renderTarget);
-
-        // Blob-тени: ПОСЛЕ земли, ДО плоскостей и персонажей.
-        // Блендинг/глубина управляются внутри BlobShadow::draw
-        impl->renderTarget.draw(impl->sphereShadow);
-        impl->renderTarget.draw(impl->dancerShadow);
-        for (buint32 i = 0; i < testTreeCount; ++i)
-        {
-            impl->renderTarget.draw(impl->treeShadows[i]);
-        }
-
-        // Рисованные плоскости (alpha-test, unlit): сортировка не нужна,
-        // видимость решает depth-test
-        for (buint32 i = 0; i < testTreeCount; ++i)
-        {
-            impl->renderTarget.draw(impl->testTrees[i]);
-        }
-
-        impl->renderTarget.draw(impl->testSphere);
-
-        // Рендер-ECS: TransformSystem → AnimationSystem → RenderSystem
-        // обновляют и рисуют скелетную модель (после ручных примитивов)
         impl->scene.update(deltaTime);
 
         // Презентация сцены: либо пост-пасс (дымка/grading/виньетка
@@ -842,18 +738,176 @@ namespace gravelands
         ImGui::Text("light azimuth: %.0f deg", static_cast<double>(impl->lightAzimuthDeg));
         ImGui::Text("light elevation: %.0f deg", static_cast<double>(impl->lightElevationDeg));
         ImGui::Text("light intensity: %.2f", static_cast<double>(impl->lightIntensity));
-        ImGui::Text("sphere shading: %s",
-            impl->testSphere.getMesh().material.shadingMode == blib::graphics::ShadingMode::Toon
-            ? "toon" : "unlit");
+
+        if (impl->sphereEntity != beng::invalidEntity)
+        {
+            const blib::graphics::Material& sphereMaterial =
+                impl->scene.getComponent<beng::MeshRenderComponent>(impl->sphereEntity).getMesh().material;
+            ImGui::Text("sphere shading: %s",
+                sphereMaterial.shadingMode == blib::graphics::ShadingMode::Toon ? "toon" : "unlit");
+            ImGui::Text("sphere outline: %s", sphereMaterial.outlineEnabled ? "on" : "off");
+        }
+
         ImGui::Text("normals view: %s", impl->renderTarget.rc.showNormals ? "on" : "off");
         ImGui::Text("post-process: %s", impl->postEnabled ? "on" : "off");
-        ImGui::Text("sphere outline: %s",
-            impl->testSphere.getMesh().material.outlineEnabled ? "on" : "off");
         ImGui::Text("dancer model: %s",
             impl->dancerEntity != beng::invalidEntity ? "loaded" : "not loaded");
         ImGui::Text("camera distance: %.0f", static_cast<double>(impl->camera.getDistance()));
 
         ImGui::End();
+    }
+
+    void ClientCore::setupWorld()
+    {
+        // -------------------------------------------------------------
+        // Мир строится сущностями: вся отрисовка — только через
+        // scene.update() (RenderSystem рисует по слоям, см. RenderLayer
+        // в beng-client и BENG.md «beng-client»)
+        // -------------------------------------------------------------
+
+        // --- Земля: сетка тайлов (слой Ground) ---
+        {
+            const beng::EntityID entity = impl->scene.createEntity();
+            impl->scene.addComponent<beng::TransformComponent>(entity, &impl->scene);
+            impl->scene.addComponent<beng::MeshRenderComponent>(
+                entity, gravelands::IsometricTileset::buildMesh(), beng::RenderLayer::Ground);
+        }
+
+        // --- Тестовая сфера (слой Opaque): toon + контур + шахматка ---
+        {
+            // Сфера генерируется примитивом blib; текстура заменяется
+            // на шахматную (unlit показывает узор, toon — узор + свет)
+            blib::graphics::Sphere sphere;
+            sphere.createSpere(testSphereRadius, testSphereSegments,
+                blib::graphics::Color(testSphereColorR, testSphereColorG, testSphereColorB, testSphereColorA));
+
+            blib::graphics::Image sphereTexture;
+            sphereTexture.create(testSphereTextureSize, testSphereTextureSize,
+                blib::graphics::Color(testSphereColorR, testSphereColorG, testSphereColorB, testSphereColorA));
+            for (buint16 y = 0; y < testSphereTextureSize; ++y)
+            {
+                for (buint16 x = 0; x < testSphereTextureSize; ++x)
+                {
+                    if ((x + y) % 2 != 0)
+                    {
+                        // ВАЖНО: Image::operator[] — [колонка][строка]
+                        sphereTexture[x][y] =
+                            blib::graphics::Color(testSphereDarkR, testSphereDarkG, testSphereDarkB, testSphereColorA);
+                    }
+                }
+            }
+            sphere.getMesh().material.diffuseImage = sphereTexture;
+
+            impl->sphereEntity = impl->scene.createEntity();
+            impl->scene.addComponent<beng::TransformComponent>(impl->sphereEntity, &impl->scene);
+            beng::MeshRenderComponent& meshComp = impl->scene.addComponent<beng::MeshRenderComponent>(
+                impl->sphereEntity, sphere.takeMesh(), beng::RenderLayer::Opaque);
+
+            beng::TransformComponent& transform =
+                impl->scene.getComponent<beng::TransformComponent>(impl->sphereEntity);
+            transform.setLocalPosition(blib::math::Vector<float, 3>(0.0f, testSphereRadius, 0.0f));
+
+            // NPR: мягкий toon + тонкий контур (inverted hull).
+            // TODO: толщина контура должна масштабироваться от размера
+            // объекта и дистанции камеры (актуально для моделей)
+            blib::graphics::Material& material = meshComp.getMesh().material;
+            material.shadingMode = blib::graphics::ShadingMode::Toon;
+            material.outlineEnabled = true;
+            material.outlineWidth = 0.6f;
+        }
+
+        // --- Деревья (слой AlphaTested): развёрнуты к камере ---
+        {
+            // Конвенция rotateY: локальная нормаль +Z после поворота
+            // уходит в (-sin(yaw), 0, cos(yaw)) — yaw = atan2(-dir.x, dir.z)
+            // из направления К камере (позиция камеры → цель).
+            // BUG-FIX: раньше бралось target - position — плоскости
+            // смотрели от камеры на 180° (маскировалось отсутствием
+            // culling; с culling задняя грань отсекается)
+            blib::graphics::Vector3f cameraDirection = impl->camera.getPosition() - impl->camera.getTarget();
+            cameraDirection.y = 0.0f;
+            cameraDirection = blib::math::normalize(cameraDirection);
+
+            const float treeYawDegrees =
+                blib::math::atan2(-cameraDirection.x, cameraDirection.z) * treeRadToDeg;
+            const blib::math::Quaternion<float> treeRotation(
+                blib::math::AngleDegreef(treeYawDegrees),
+                blib::math::Vector<float, 3>(0.0f, 1.0f, 0.0f));
+
+            blib::graphics::Image treeImage;
+            generateTreeImage(treeImage);
+
+            for (buint32 i = 0; i < testTreeCount; ++i)
+            {
+                blib::graphics::SpritePlane plane;
+                plane.create(testTreeWidth, testTreeHeight, treeImage);
+
+                impl->treeEntities[i] = impl->scene.createEntity();
+                impl->scene.addComponent<beng::TransformComponent>(impl->treeEntities[i], &impl->scene);
+                impl->scene.addComponent<beng::MeshRenderComponent>(
+                    impl->treeEntities[i], plane.takeMesh(), beng::RenderLayer::AlphaTested);
+
+                beng::TransformComponent& transform =
+                    impl->scene.getComponent<beng::TransformComponent>(impl->treeEntities[i]);
+                // Нога в земле: центр поднят на половину высоты
+                transform.setLocalPosition(blib::math::Vector<float, 3>(
+                    testTreePositions[i][0], testTreeHeight * 0.5f, testTreePositions[i][1]));
+                transform.setLocalRotation(treeRotation);
+            }
+        }
+
+        // --- Blob-тени (слой Shadow): под сферой, деревьями и танцором.
+        // Блендинг и запрет записи глубины делает RenderSystem для
+        // всего слоя Shadow (см. beng RenderSystem::drawLayer)
+        {
+            blib::graphics::Image shadowImage;
+            generateShadowImage(shadowImage);
+
+            {
+                blib::graphics::BlobShadow shadow;
+                shadow.create(sphereShadowRadius, shadowImage);
+
+                impl->sphereShadowEntity = impl->scene.createEntity();
+                impl->scene.addComponent<beng::TransformComponent>(impl->sphereShadowEntity, &impl->scene);
+                impl->scene.addComponent<beng::MeshRenderComponent>(
+                    impl->sphereShadowEntity, shadow.takeMesh(), beng::RenderLayer::Shadow);
+
+                impl->scene.getComponent<beng::TransformComponent>(impl->sphereShadowEntity)
+                    .setLocalPosition(blib::math::Vector<float, 3>(0.0f, shadowHeightOffset, 0.0f));
+            }
+
+            {
+                blib::graphics::BlobShadow shadow;
+                shadow.create(dancerShadowRadius, shadowImage);
+
+                impl->dancerShadowEntity = impl->scene.createEntity();
+                impl->scene.addComponent<beng::TransformComponent>(impl->dancerShadowEntity, &impl->scene);
+                impl->scene.addComponent<beng::MeshRenderComponent>(
+                    impl->dancerShadowEntity, shadow.takeMesh(), beng::RenderLayer::Shadow);
+
+                impl->scene.getComponent<beng::TransformComponent>(impl->dancerShadowEntity)
+                    .setLocalPosition(blib::math::Vector<float, 3>(
+                        dancerPositionX, shadowHeightOffset, dancerPositionZ));
+            }
+
+            for (buint32 i = 0; i < testTreeCount; ++i)
+            {
+                blib::graphics::BlobShadow shadow;
+                shadow.create(treeShadowRadius, shadowImage);
+
+                impl->treeShadowEntities[i] = impl->scene.createEntity();
+                impl->scene.addComponent<beng::TransformComponent>(impl->treeShadowEntities[i], &impl->scene);
+                impl->scene.addComponent<beng::MeshRenderComponent>(
+                    impl->treeShadowEntities[i], shadow.takeMesh(), beng::RenderLayer::Shadow);
+
+                impl->scene.getComponent<beng::TransformComponent>(impl->treeShadowEntities[i])
+                    .setLocalPosition(blib::math::Vector<float, 3>(
+                        testTreePositions[i][0], shadowHeightOffset, testTreePositions[i][1]));
+            }
+        }
+
+        __blib_log_info("world scene built: %u entities",
+            static_cast<unsigned int>(impl->scene.getEntityCount()));
     }
 
     void ClientCore::loadDancerModel()

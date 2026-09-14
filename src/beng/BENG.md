@@ -37,6 +37,7 @@
 | Transform + иерархия | `src/beng/components/transform.h/.cpp` |
 | TransformSystem | `src/beng/systems/transformSystem.h/.cpp` |
 | Скелетная модель (владеет `SkinModel`) | `src/beng/client/components/skinnedMeshComponent.h/.cpp` |
+| Статический меш (`Mesh` + слой рендера) | `src/beng/client/components/meshRenderComponent.h/.cpp` |
 | Анимация (состояние плейбека) | `src/beng/client/components/animatorComponent.h/.cpp` |
 | Продвижение и применение анимации | `src/beng/client/systems/animationSystem.h/.cpp` |
 | Отрисовка сцены | `src/beng/client/systems/renderSystem.h/.cpp` |
@@ -69,10 +70,12 @@
 
 ### beng-client
 
+- **ИНВАРИАНТ — единый ECS-рендер:** вся отрисовка мира идёт ТОЛЬКО через `Scene`: создать сцену → добавить объекты на сцену (сущности с рендер-компонентами) → отрисовать сцену (`scene.update()`, рисует `RenderSystem`). Прямые вызовы `renderTarget.draw(...)` вне RenderSystem запрещены. Пост-процессинг (пасс над FBO после сцены) и свет (`RenderContext`) — состояние презентации, не объекты мира (могут жить в приложении).
 - `SkinnedMeshComponent` — **владеет** `blib::graphics::SkinModel` (GlobalAllocator + placement new; `unload()` идемпотентен; `getModel()` может быть nullptr). `loadFromFile` пересоздаёт модель.
+- `MeshRenderComponent` — **владеет** `blib::graphics::Mesh` по значению (move-only: меш передаётся из билдера/примитива, напр. `Sphere::takeMesh()`); `RenderLayer {Ground, Shadow, AlphaTested, Opaque}` задаёт порядок/поведение. ComponentPool не двигает компоненты — move-only член безопасен. Пулы RenderSystem берёт через `Scene::tryGetComponentPool` — сцены без статики (вьювер) работают как раньше.
 - `AnimatorComponent` — **не владеет** аниматором: хранит указатель на `Animator` внутри `SkinModel` + `loop`/`poseDirty`. При выгрузке модели указатель обязан быть снят (`setAnimator(nullptr)` или уничтожение сущности) — иначе висячий указатель.
 - `AnimationSystem` (приоритет -50): играет → `SkinModel::update(dt_ms)` (время в миллисекундах!); нециклическая доиграла → `pause()`; пауза + `poseDirty` (выбор клипа/скраб) → `update(0)` + сброс флага.
-- `RenderSystem` (приоритет 100): `TransformComponent::getWorldMatrix()` → `model->setTransform(...)` → `renderTarget->draw(*model)`. Без таргета — no-op; таргетом не владеет.
+- `RenderSystem` (приоритет 100) — единственная точка отрисовки мира. Порядок слоёв фиксирован: `Ground` → `Shadow` (альфа-блендинг, запись глубины выключена) → `AlphaTested` → `Opaque` (включая `SkinnedMeshComponent`). Трансформации — из `TransformComponent::getWorldMatrix()`; без таргета — no-op; таргетом не владеет.
 
 ### beng-editor (панели)
 

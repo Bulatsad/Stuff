@@ -240,4 +240,11 @@ namespace beng
         return *static_cast<const ComponentPool<T>*>(componentPools[typeId]);
     }
 
+    template<typename T>
+    ComponentPool<T>* Scene::tryGetComponentPool()
+    {
+        ComponentType typeId = ComponentTypeRegistry::getTypeId<T>();
+        return static_cast<ComponentPool<T>*>(componentPools[typeId]);
+    }
+
 } // namespace beng

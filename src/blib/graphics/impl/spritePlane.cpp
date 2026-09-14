@@ -80,6 +80,13 @@ namespace blib
             return this->mesh;
         }
 
+        blib::graphics::Mesh SpritePlane::takeMesh()
+        {
+            // Move-конструктор Mesh передаёт владение ctx (источник
+            // обнуляется) — после вызова плоскость пуста
+            return std::move(this->mesh);
+        }
+
         void SpritePlane::draw(RenderContext& ctx) const
         {
             // Трансформ плоскости синхронизируется в меш: позиция

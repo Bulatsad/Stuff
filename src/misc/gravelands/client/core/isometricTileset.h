@@ -3,38 +3,30 @@
 #include <blib/utilmacro.h>
 
 #include <blib/graphics/mesh.h>
-#include <blib/graphics/rendertarget.h>
 
 namespace gravelands
 {
     /**
-     * IsometricTileset — сетка тайлов-квадратов на плоскости XZ.
+     * IsometricTileset — билдер меша сетки тайлов.
      * 
      * Назначение:
-     * - Рендерит сетку 10x10 квадратов одним Mesh (вершины, нормали,
-     *   текстурные координаты и грани собираются в конструкторе);
-     *   «ромб» на экране — результат наклонной проекции изокамеры
-     *   (blib::graphics::IsometricCamera), а не форма самого тайла
-     * - draw() отдаёт меш в рендер-таргет
-     * 
-     * Временная визуализация мира: позже тайлы переедут в ECS
-     * (рендер-компоненты beng-client), см. ARCHITECTURE.md.
+     * - Собирает меш сетки 10x10 квадратов на плоскости XZ одним
+     *   Mesh (вершины, нормали, текстурные координаты, грани и
+     *   шахматная текстура); «ромб» на экране — результат наклонной
+     *   проекции изокамеры (blib::graphics::IsometricCamera), а не
+     *   форма самого тайла
+     * - Меш передаётся в ECS-рендер: вся отрисовка мира идёт через
+     *   сцену (MeshRenderComponent, слой Ground) — см. BENG.md
      */
     class IsometricTileset
     {
     public:
-        IsometricTileset();
-
         /**
-         * Нарисовать сетку в рендер-таргет.
+         * Собрать меш сетки тайлов.
          * 
-         * @param target Рендер-таргет (владеет контекстом камеры)
+         * @return Меш (move-only): передаётся в рендер-компонент
          */
-        void draw(_In blib::graphics::IRenderTarget& target);
-
-    private:
-        // Собранный меш сетки (квадраты на земле, шахматная текстура)
-        blib::graphics::Mesh mesh;
+        static blib::graphics::Mesh buildMesh();
     };
 
 } // namespace gravelands

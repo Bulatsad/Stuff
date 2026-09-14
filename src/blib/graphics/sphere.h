@@ -29,6 +29,11 @@ namespace blib
             // по смыслу — владеет GL-ресурсами, см. GRAPHICS.md)
             const blib::graphics::Mesh& getMesh() const;
 
+            // Передать владение мешем наружу (NPR/ECS: меш уходит в
+            // рендер-компонент, см. MeshRenderComponent). После вызова
+            // объект пуст и не пригоден для отрисовки
+            blib::graphics::Mesh takeMesh();
+
             // Release IDrawable api
             virtual void draw(RenderContext& ctx) const override;
         };

@@ -89,8 +89,9 @@
 
 - UDP-канал для снапшотов (на старте — только TCP).
 - Сетевая репликация компонентов на базе рефлексии.
-- `MeshRenderComponent` и 3D-контент с изометрической камерой
-  (спрайтовая изометрия — первый этап).
+- 3D-контент с изометрической камерой — **начато**: `MeshRenderComponent` +
+  `RenderLayer` реализованы, весь мир рисуется единым путём через
+  `RenderSystem` (см. BENG.md, «beng-client»); свет в ECS — позже.
 - Hot-reload игровой DLL в эдиторе (не на старте).
 
 ### Паттерн «lib + тонкий exe»
@@ -161,7 +162,7 @@ core-библиотеку — см. раздел про эдитор.
 |----------|-----------|-------------|
 | `Scene`, `Entity`, пулы, `ISystem` | beng-core | есть |
 | `TransformComponent`, `TransformSystem` | beng-core | есть |
-| `CameraComponent`, `SpriteRenderComponent` | beng-client | рендер-представление |
+| `CameraComponent`, `MeshRenderComponent` (слои `RenderLayer`) | beng-client | рендер-представление; **вся отрисовка — только через Scene/RenderSystem** (см. BENG.md) |
 | `ResourceManager` (меш/текстура/звук) | beng-client | кеш по ключам |
 | `UnitComponent`, `InventoryComponent`, `SkillComponent` | gravelands-common | определения, не логика |
 | `MovementSystem`, `CombatSystem`, `LootSystem` | gravelands-server-core | только сервер |
@@ -271,8 +272,9 @@ src/
    UI (ImGui), звук.
 5. **beng-editor + gravelands-editor**: панели, вьюпорт, Inspector через
    рефлексию, сериализация сцен, PIE (in-process хостинг, loopback TCP).
-6. **Опционально**: 3D-меши с изокамерой (`MeshRenderComponent`,
-   контент-плейсхолдеры из obj_spider), UDP-канал, hot-reload плагина.
+6. **Опционально**: UDP-канал, hot-reload плагина. *(3D-меши с изокамерой —
+   сделано раньше плана: `MeshRenderComponent` + слои `RenderLayer`, единый
+   ECS-рендер; контент-плейсхолдеры из obj_spider — опционально.)*
 
 ---
 

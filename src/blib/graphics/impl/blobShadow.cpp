@@ -72,6 +72,13 @@ namespace blib
             return this->mesh;
         }
 
+        blib::graphics::Mesh BlobShadow::takeMesh()
+        {
+            // Move-конструктор Mesh передаёт владение ctx (источник
+            // обнуляется) — после вызова тень пуста
+            return std::move(this->mesh);
+        }
+
         void BlobShadow::draw(RenderContext& ctx) const
         {
             // Трансформ тени синхронизируется в меш (позиция задаётся

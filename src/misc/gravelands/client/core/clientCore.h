@@ -64,6 +64,13 @@ namespace gravelands
         void drawOverlay();
 
         /**
+         * Построение тестового мира сущностями (тайлы, сфера, деревья,
+         * тени): вся отрисовка — только через Scene (см. setupWorld).
+         * Из initialize().
+         */
+        void setupWorld();
+
+        /**
          * Загрузка тестовой скелетной модели-«танцора» (фаза 9):
          * ECS-сущность со SkinnedMeshComponent/AnimatorComponent,
          * NPR-материалы, запуск анимации. Из initialize().

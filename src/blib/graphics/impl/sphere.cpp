@@ -120,6 +120,13 @@ namespace blib
             return this->sphereMesh;
         }
 
+        blib::graphics::Mesh Sphere::takeMesh()
+        {
+            // Move-конструктор Mesh передаёт владение ctx (источник
+            // обнуляется) — после вызова сфера пуста
+            return std::move(this->sphereMesh);
+        }
+
         void Sphere::draw(RenderContext& ctx) const
         {
             // Трансформ сферы (ITransformable) синхронизируется в меш:
