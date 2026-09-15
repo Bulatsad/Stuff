@@ -178,12 +178,17 @@ namespace gravelands
 
         // Тестовая скелетная модель-«танцор» (фаза 9): Mixamo-FBX
         // с анимацией. Масштаб: Mixamo ~180 ед. роста → 0.1 (~18 ед.
-        // сетки). Поворот — к камере, конвенция rotateY (см. SpritePlane)
+        // сетки). Поворот — к камере КВАТЕРНИОНОМ (см. ниже)
         constexpr const char* dancerModelPath = "resources\\Hip Hop Dancing.fbx";
         constexpr float dancerScale = 0.1f;
         constexpr float dancerPositionX = 0.0f;
         constexpr float dancerPositionZ = 60.0f;
-        constexpr float dancerYawDegrees = -45.0f;
+
+        // Поворот танцора к камере КВАТЕРНИОНОМ (стандартная конвенция:
+        // угол θ вокруг +Y отображает +Z в (sinθ, 0, cosθ); камера на
+        // +X+Z → +45°). Если модель в FBX смотрит фронтом в −Z — танцор
+        // окажется спиной к камере, тогда вернуть знак (см. CORE.md)
+        constexpr float dancerYawDegrees = 45.0f;
         constexpr float dancerOutlineWidth = 0.25f;
         constexpr float dancerShadowRadius = 8.0f;
 
@@ -829,18 +834,21 @@ namespace gravelands
 
         // --- Деревья (слой AlphaTested): развёрнуты к камере ---
         {
-            // Конвенция rotateY: локальная нормаль +Z после поворота
-            // уходит в (-sin(yaw), 0, cos(yaw)) — yaw = atan2(-dir.x, dir.z)
-            // из направления К камере (позиция камеры → цель).
-            // BUG-FIX: раньше бралось target - position — плоскости
-            // смотрели от камеры на 180° (маскировалось отсутствием
-            // culling; с culling задняя грань отсекается)
+            // ВАЖНО — конвенция поворота: TransformComponent вращает
+            // КВАТЕРНИОНОМ (стандартная конвенция: поворот на угол θ
+            // вокруг +Y отображает локальную +Z в (sinθ, 0, cosθ)).
+            // yaw = atan2(dir.x, dir.z), dir — направление К камере.
+            // НЕ путать с Euler-функциями rotateY/rotateZ (blib-graphics):
+            // у них знак угла противоположный (+Z → (-sinθ, 0, cosθ)) —
+            // при переносе ориентации с Euler на кватернионы менять знак
+            // (иначе плоскость встаёт ребром к камере и отсекается
+            // culling'ом) — см. CORE.md «Грабли math»
             blib::graphics::Vector3f cameraDirection = impl->camera.getPosition() - impl->camera.getTarget();
             cameraDirection.y = 0.0f;
             cameraDirection = blib::math::normalize(cameraDirection);
 
             const float treeYawDegrees =
-                blib::math::atan2(-cameraDirection.x, cameraDirection.z) * treeRadToDeg;
+                blib::math::atan2(cameraDirection.x, cameraDirection.z) * treeRadToDeg;
             const blib::math::Quaternion<float> treeRotation(
                 blib::math::AngleDegreef(treeYawDegrees),
                 blib::math::Vector<float, 3>(0.0f, 1.0f, 0.0f));
@@ -938,7 +946,7 @@ namespace gravelands
         }
 
         // Размещение: масштаб Mixamo-модели (~180 ед. роста) → ~18 ед.
-        // сетки; поворот к камере (конвенция rotateY, см. SpritePlane)
+        // сетки; поворот к камере кватернионом (см. dancerYawDegrees)
         beng::TransformComponent& transform = impl->scene.getComponent<beng::TransformComponent>(entity);
         transform.setLocalPosition(blib::math::Vector<float, 3>(dancerPositionX, 0.0f, dancerPositionZ));
         transform.setLocalScale(blib::math::Vector<float, 3>(dancerScale, dancerScale, dancerScale));
