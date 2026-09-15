@@ -18,6 +18,16 @@ set_target_properties(blib_test_main PROPERTIES FOLDER "blib/tests")
 # Test group list: group name == file suffix test<group>.cpp
 set(blib_test_groups angle matrix pdl quaternion vector allocator iterator stream binary compression hash circlequeue console skinmesh json)
 
+# Per-group source lists (по умолчанию — src/impl/test<group>.cpp).
+# Группа json разбита на файлы по зонам ответственности:
+# DOM/интеграция (testjson.cpp), парсер (testjsonParser.cpp), writer (testjsonWriter.cpp);
+# общие хелперы — jsonTestUtils.h (header-only, не компилируется отдельно).
+set(blib_test_group_sources_json
+	src/impl/testjson.cpp
+	src/impl/testjsonParser.cpp
+	src/impl/testjsonWriter.cpp
+)
+
 # Дополнительные библиотеки групп (помимо обязательного blib-core).
 # skinmesh строит фикстурные Assimp-сцены и зовёт SkinMesh/Skelet —
 # нужен blib-graphics (PUBLIC тянет blib-core + Opengl32) и prebuilt
@@ -29,9 +39,16 @@ set(blib_test_group_link_dirs_skinmesh ${assimp_lib})
 set(blib_test_group_exes)
 
 foreach(group ${blib_test_groups})
+	# Источники группы: явный список либо src/impl/test<group>.cpp
+	if(DEFINED blib_test_group_sources_${group})
+		set(group_sources ${blib_test_group_sources_${group}})
+	else()
+		set(group_sources src/impl/test${group}.cpp)
+	endif()
+
 	# OBJECT library holding the group's tests
 	set(group_obj blib_test_${group}_obj)
-	add_library(${group_obj} OBJECT src/impl/test${group}.cpp)
+	add_library(${group_obj} OBJECT ${group_sources})
 	target_include_directories(${group_obj} PRIVATE ${root_dir})
 	target_compile_definitions(${group_obj} PRIVATE TEST_SOURCE_DIR="${root_dir}")
 	target_link_directories(${group_obj} PRIVATE ${blib_test_group_link_dirs_${group}})

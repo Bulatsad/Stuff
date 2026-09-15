@@ -48,6 +48,7 @@ namespace json
         InvalidUnicode,    // невалидный \uXXXX или суррогатная пара
         InvalidUtf8,       // невалидная UTF-8-последовательность
         NumberOutOfRange,  // число не представимо в bint64/buint64/bdouble
+                           // (при записи — в т.ч. неконечные NaN/±Inf)
         TrailingData,      // данные после корневого значения (строгий режим)
         MaxDepthExceeded,  // превышена jsonMaxDepth
         AllocationFailed,  // не удалось выделить память под узел
@@ -336,6 +337,20 @@ namespace json
          */
         buint64 getErrorOffset() const;
 
+#ifdef BLIB_BUILD_TESTS
+        /**
+         * Только для тестов (сборка с дефайном BLIB_BUILD_TESTS): подменить
+         * аллокатор документа, через который идут все аллокации дерева.
+         * nullptr — вернуться к аллокатору по умолчанию (GlobalAllocator).
+         *
+         * Инъецированный аллокатор парсером НЕ освобождается и не передаётся
+         * во владение результата — время жизни обеспечивает вызывающий.
+         * Используется тестами для проверки JsonError::AllocationFailed:
+         * реальный OOM в CI не воспроизводим.
+         */
+        void setDocumentAllocatorForTests(_In_opt blib::memory::Allocator* alloc);
+#endif
+
     private:
         // Состояние разбора; определён в impl/json.cpp
         struct ParseContext;
@@ -362,6 +377,10 @@ namespace json
         void skipWhitespace(_In ParseContext& ctx, _Out bool& hasByte, _Out buint8& b);
 
         buint64 errorOffset; // смещение последней ошибки (0 — успех)
+
+#ifdef BLIB_BUILD_TESTS
+        blib::memory::Allocator* testDocumentAllocator; // инъецированный аллокатор (nullptr — по умолчанию)
+#endif
     };
 
     /**
@@ -372,7 +391,9 @@ namespace json
      *   иначе pretty с заданным отступом
      * - Строки: эскейпинг ", \, управляющих символов (< 0x20 — \uXXXX),
      *   сырые байты >= 0x80 валидируются как UTF-8
-     * - Числа: std::to_chars (shortest round-trip, locale-independent)
+     * - Числа: std::to_chars (shortest round-trip, locale-independent);
+     *   неконечные (NaN/±Inf) отклоняются с JsonError::NumberOutOfRange
+     *   (RFC 8259 их не допускает)
      * - Пустые контейнеры: [] / {} (без внутренних переносов)
      * - Не thread-safe
      */

@@ -6,6 +6,7 @@
 #include <new>
 #include <cstring>
 #include <cstdlib>
+#include <cmath>
 #include <limits>
 #include <charconv>
 #include <system_error>
@@ -812,6 +813,9 @@ struct JsonParser::ParseContext
 
 JsonParser::JsonParser()
     : errorOffset(0)
+#ifdef BLIB_BUILD_TESTS
+    , testDocumentAllocator(nullptr)
+#endif
 {
 }
 
@@ -831,6 +835,10 @@ JsonError JsonParser::parse(_In blib::core::IInputStream& in, _Out JsonValue& ou
     // с общим аллокатором, а по завершении владение передаётся результату
     JsonValue doc;
     ctx.alloc = doc.alloc;
+#ifdef BLIB_BUILD_TESTS
+    if (this->testDocumentAllocator)
+        ctx.alloc = this->testDocumentAllocator;
+#endif
 
     bool hasByte = false;
     buint8 b = 0;
@@ -860,7 +868,18 @@ JsonError JsonParser::parse(_In blib::core::IInputStream& in, _Out JsonValue& ou
 
     // Успех: дерево уходит в out, владение аллокатором — следом
     out = std::move(parsed);
-    out.ownsAlloc = 1;
+#ifdef BLIB_BUILD_TESTS
+    if (this->testDocumentAllocator)
+    {
+        // Инъецированный тестом аллокатор остаётся во владении вызывающего:
+        // out ссылается на него без владения
+        out.ownsAlloc = 0;
+    }
+    else
+#endif
+    {
+        out.ownsAlloc = 1;
+    }
     doc.alloc = nullptr;
     doc.ownsAlloc = 0;
 
@@ -877,6 +896,13 @@ buint64 JsonParser::getErrorOffset() const
 {
     return this->errorOffset;
 }
+
+#ifdef BLIB_BUILD_TESTS
+void JsonParser::setDocumentAllocatorForTests(_In_opt blib::memory::Allocator* alloc)
+{
+    this->testDocumentAllocator = alloc;
+}
+#endif
 
 bool JsonParser::readByte(_In ParseContext& ctx, _Out buint8& b)
 {
@@ -1584,6 +1610,10 @@ JsonError JsonWriter::writeNumber(_In WriteContext& ctx, _In const JsonValue& va
     }
     else
     {
+        // RFC 8259 не допускает неконечных чисел: to_chars выдал бы
+        // "nan"/"inf" — невалидный JSON со сломанным round-trip
+        if (__blib_unlikely(!std::isfinite(value.realValue)))
+            __blib_return_error(JsonError::NumberOutOfRange, "JsonWriter: non-finite number is not representable in JSON");
         result = std::to_chars(buffer, buffer + jsonNumberBufferSize, value.realValue);
     }
 

@@ -77,4 +77,11 @@ blib_add_module(blib-core
 
 blib_configure_module(blib-core blib_core_export)
 
+# Тест-хуки (например, JsonParser::setDocumentAllocatorForTests) компилируются
+# только при BUILD_TESTS. Дефайн PUBLIC: тестовые группы видят хуки в заголовках
+# через link-interface blib-core
+if(BUILD_TESTS)
+	target_compile_definitions(blib-core PUBLIC BLIB_BUILD_TESTS)
+endif()
+
 target_link_libraries(blib-core PUBLIC blib-system)

@@ -31,7 +31,7 @@
 
 ## Группы тестов
 
-Список групп — в `src/blib/test/CMakeLists.txt` (имя группы = суффикс `src/impl/test<group>.cpp`):
+Список групп — в `src/blib/test/CMakeLists.txt` (имя группы = суффикс `src/impl/test<group>.cpp`; исключение — группа `json`, разбитая на несколько файлов через `blib_test_group_sources_<group>`):
 
 | Группа | Что покрывает |
 |--------|---------------|
@@ -48,10 +48,10 @@
 | `hash` | MD5 (RFC 1321) и CRC32: векторы, потоковость, границы |
 | `circlequeue` | SPSC и MPSC очереди (roundtrip, переполнение, многопоточные стрессы) |
 | `console` | токенизация, cvar/команды, `execute`, история, автодополнение, `ConsoleOutput` |
-| `json` | `JsonValue` (конструкторы, мутация, deep copy/move, сравнение), парсер (примитивы, числа/границы int64/uint64, строки/эскейпы/суррогаты/UTF-8, вложенность), writer (компактный и pretty), round-trip, все коды `JsonError`, `getErrorOffset()`, потоки, отсутствие утечек (статистика GlobalAllocator) |
+| `json` | `JsonValue` (конструкторы всех типов + SFINAE-интегральный шаблон, мутация, deep copy/move, сравнение со смешанной знаковостью, self-assign), парсер (примитивы, числа/границы int64/uint64, overflow→double, токены 128/129+ символов, строки/эскейпы/суррогаты/UTF-8-ошибки, вложенность/граница глубины 512/513, дубликаты ключей, BOM), writer (компактный и pretty, chunk-границы отступа 16/17/20, эскейпы `\b\f\r`/`\u00XX`, UTF-8-валидация на выходе, NaN/Inf → `NumberOutOfRange`), round-trip и идемпотентность, все коды `JsonError` (включая `AllocationFailed` через тест-хук `setDocumentAllocatorForTests`), `getErrorOffset()`, потоки с троттлингом/сбоями, отсутствие утечек (статистика GlobalAllocator). Файлы: `testjson.cpp` (DOM+интеграция), `testjsonParser.cpp`, `testjsonWriter.cpp`, общие хелперы — `jsonTestUtils.h` |
 | `skinmesh` | `SkinMesh::loadFromAssimpMesh` (remap весов на предка, отброс+ренормализация, строгий режим, лимит 4 слотов) и `Skelet::adoptOffsetMatricesFrom` (перенос inverse-bind, идемпотентность) — на фикстурных aiScene/aiBone |
 
-Группы `allocator` и `circlequeue` фактически тестируют `blib-system`; `skinmesh` — `blib-graphics` (per-group libs: `blib_test_group_libs_<group>`); остальные — `blib-core`. beng переиспользует `blib_test_main` (`src/beng/test/`, группы `registry componentPool scene entity transform time dialogWindow`); группа `dialogWindow` линкует `beng-editor` (per-group libs — переменная `beng_test_group_libs_<group>` в `src/beng/test/CMakeLists.txt`) и тестирует `DialogWindow` на **headless-ядре ImGui**: живой контекст (`CreateContext`/`NewFrame`/`EndFrame`) без бэкенда/окна/GL, шрифтовый атлас строится вручную (`io.Fonts->GetTexDataAsRGBA32`), ввод подаётся через `io.AddKeyEvent`/`AddMousePosEvent`/`AddMouseButtonEvent`. Проверка состояния попапа — через internals `ImGui::FindWindowByName` + `window->Active` (публичный `IsPopupOpen` читает `g.CurrentWindow` и вне окон неприменим — ID попапа завязан на окно-хост `DialogWindow`).
+Группы `allocator` и `circlequeue` фактически тестируют `blib-system`; `skinmesh` — `blib-graphics` (per-group libs: `blib_test_group_libs_<group>`); остальные — `blib-core`. При `BUILD_TESTS=ON` blib-core получает PUBLIC-дефайн `BLIB_BUILD_TESTS`, который включает тест-хуки (например, `JsonParser::setDocumentAllocatorForTests` — инъекция сбоящего аллокатора для проверки `AllocationFailed`; покрывается только отказ на первой аллокации — отказ на N-й уводит в `std::bad_alloc` из std-контейнеров). beng переиспользует `blib_test_main` (`src/beng/test/`, группы `registry componentPool scene entity transform time dialogWindow`); группа `dialogWindow` линкует `beng-editor` (per-group libs — переменная `beng_test_group_libs_<group>` в `src/beng/test/CMakeLists.txt`) и тестирует `DialogWindow` на **headless-ядре ImGui**: живой контекст (`CreateContext`/`NewFrame`/`EndFrame`) без бэкенда/окна/GL, шрифтовый атлас строится вручную (`io.Fonts->GetTexDataAsRGBA32`), ввод подаётся через `io.AddKeyEvent`/`AddMousePosEvent`/`AddMouseButtonEvent`. Проверка состояния попапа — через internals `ImGui::FindWindowByName` + `window->Active` (публичный `IsPopupOpen` читает `g.CurrentWindow` и вне окон неприменим — ID попапа завязан на окно-хост `DialogWindow`).
 
 ---
 
