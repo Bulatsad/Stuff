@@ -1,62 +1,96 @@
 #include <blib/test/src/test.h>
 
-#include <beng/core/component.h>
+#include <beng/core/scene.h>
 
-// Локальные типы компонентов для тестов реестра.
-// Имена уникальны в рамках процесса: реестр типов глобален,
-// а все группы линкуются в агрегатный beng_test_all.
+// Локальные типы компонентов для тестов таблицы типов Scene.
+// Имя типа — статический член класса (идентичность типа в сцене);
+// имена уникальны в рамках процесса — реестр типов теперь per-scene.
 struct RegistryTestComponentA : public beng::IComponent
 {
+    static constexpr const char* componentTypeName = "test.RegistryA";
 };
 
 struct RegistryTestComponentB : public beng::IComponent
 {
+    static constexpr const char* componentTypeName = "test.RegistryB";
 };
 
-BLIB_TEST_CASE("registry: getTypeId returns stable id for the same type")
+BLIB_TEST_CASE("registry: isRegisteredComponentType reflects registration state")
 {
-    beng::ComponentType id1 = beng::ComponentTypeRegistry::getTypeId<RegistryTestComponentA>();
-    beng::ComponentType id2 = beng::ComponentTypeRegistry::getTypeId<RegistryTestComponentA>();
+    beng::Scene scene;
 
-    BLIB_TEST_CHECK(id1 == id2);
+    // До регистрации — не зарегистрирован
+    BLIB_TEST_CHECK(!scene.isRegisteredComponentType<RegistryTestComponentA>());
+    BLIB_TEST_CHECK(!scene.isRegisteredComponentType<RegistryTestComponentB>());
+
+    scene.registerComponentType<RegistryTestComponentA>();
+
+    BLIB_TEST_CHECK(scene.isRegisteredComponentType<RegistryTestComponentA>());
+    BLIB_TEST_CHECK(!scene.isRegisteredComponentType<RegistryTestComponentB>());
 }
 
-BLIB_TEST_CASE("registry: different types get different ids")
+BLIB_TEST_CASE("registry: guard pattern makes registration idempotent")
 {
-    beng::ComponentType idA = beng::ComponentTypeRegistry::getTypeId<RegistryTestComponentA>();
-    beng::ComponentType idB = beng::ComponentTypeRegistry::getTypeId<RegistryTestComponentB>();
+    beng::Scene scene;
 
-    BLIB_TEST_CHECK(idA != idB);
+    // Повторная регистрация имени в сцене — fatal (abort), поэтому
+    // идемпотентность достигается guard-паттерном; повторный вызов
+    // под guard не выполняется и не роняет процесс
+    if (!scene.isRegisteredComponentType<RegistryTestComponentA>())
+    {
+        scene.registerComponentType<RegistryTestComponentA>();
+    }
+    if (!scene.isRegisteredComponentType<RegistryTestComponentA>())
+    {
+        scene.registerComponentType<RegistryTestComponentA>();
+    }
+
+    BLIB_TEST_CHECK(scene.isRegisteredComponentType<RegistryTestComponentA>());
 }
 
-BLIB_TEST_CASE("registry: ids are issued sequentially without gaps")
+BLIB_TEST_CASE("registry: different types get distinct pools in one scene")
 {
-    // Реестр глобален, поэтому проверяем относительный порядок:
-    // следующий зарегистрированный тип получает следующий по порядку ID
-    beng::ComponentType idA = beng::ComponentTypeRegistry::getTypeId<RegistryTestComponentA>();
-    beng::ComponentType idB = beng::ComponentTypeRegistry::getTypeId<RegistryTestComponentB>();
+    beng::Scene scene;
+    scene.registerComponentType<RegistryTestComponentA>();
+    scene.registerComponentType<RegistryTestComponentB>();
 
-    BLIB_TEST_CHECK(idB == static_cast<beng::ComponentType>(idA + 1) ||
-        idA == static_cast<beng::ComponentType>(idB + 1));
+    beng::ComponentPool<RegistryTestComponentA>& poolA =
+        scene.getComponentPool<RegistryTestComponentA>();
+    beng::ComponentPool<RegistryTestComponentB>& poolB =
+        scene.getComponentPool<RegistryTestComponentB>();
+
+    // Пул каждого типа свой: шаблонный резолв по имени не перепутал типы
+    BLIB_TEST_CHECK(static_cast<void*>(&poolA) != static_cast<void*>(&poolB));
 }
 
-BLIB_TEST_CASE("registry: isRegistered reflects registration state")
+BLIB_TEST_CASE("registry: registration is per-scene")
 {
-    beng::ComponentType idA = beng::ComponentTypeRegistry::getTypeId<RegistryTestComponentA>();
+    beng::Scene sceneOne;
+    beng::Scene sceneTwo;
 
-    BLIB_TEST_CHECK(beng::ComponentTypeRegistry::isRegistered(idA));
+    // Тип регистрируется только для текущей сцены — глобального реестра нет
+    sceneOne.registerComponentType<RegistryTestComponentA>();
+    BLIB_TEST_CHECK(sceneOne.isRegisteredComponentType<RegistryTestComponentA>());
+    BLIB_TEST_CHECK(!sceneTwo.isRegisteredComponentType<RegistryTestComponentA>());
 
-    // Невалидный и выходящий за лимит ID — не зарегистрированы
-    BLIB_TEST_CHECK(!beng::ComponentTypeRegistry::isRegistered(beng::invalidComponentType));
-    BLIB_TEST_CHECK(!beng::ComponentTypeRegistry::isRegistered(beng::maxComponentTypes));
+    // Та же регистрация в другой сцене — легальна (словарь типов свой)
+    sceneTwo.registerComponentType<RegistryTestComponentA>();
+    BLIB_TEST_CHECK(sceneTwo.isRegisteredComponentType<RegistryTestComponentA>());
 }
 
-BLIB_TEST_CASE("registry: registered count grows with new types")
+BLIB_TEST_CASE("registry: masks of two scenes with same types are independent")
 {
-    buint8 before = beng::ComponentTypeRegistry::getRegisteredCount();
-    beng::ComponentTypeRegistry::getTypeId<RegistryTestComponentA>();
-    beng::ComponentTypeRegistry::getTypeId<RegistryTestComponentB>();
-    buint8 after = beng::ComponentTypeRegistry::getRegisteredCount();
+    beng::Scene sceneOne;
+    beng::Scene sceneTwo;
 
-    BLIB_TEST_CHECK(after >= before);
+    sceneOne.registerComponentType<RegistryTestComponentA>();
+    sceneTwo.registerComponentType<RegistryTestComponentA>();
+
+    beng::EntityID idOne = sceneOne.createEntity();
+    sceneOne.addComponent<RegistryTestComponentA>(idOne);
+
+    // Во второй сцене тип зарегистрирован, но у Entity компонента нет
+    beng::EntityID idTwo = sceneTwo.createEntity();
+    BLIB_TEST_CHECK(sceneOne.hasComponent<RegistryTestComponentA>(idOne));
+    BLIB_TEST_CHECK(!sceneTwo.hasComponent<RegistryTestComponentA>(idTwo));
 }

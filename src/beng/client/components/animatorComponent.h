@@ -4,7 +4,7 @@
 #include <vector>
 
 #include <beng/config.h>
-#include <beng/core/component.h>
+#include <beng/core/icomponent.h>
 
 #include <blib/graphics/animator.h>
 
@@ -33,6 +33,10 @@ namespace beng
         bool poseDirty;
 
     public:
+        // Стабильное имя типа — идентичность типа в таблице типов Scene
+        // (регистрация, резолв в шаблонных методах, будущий save/load)
+        static constexpr const char* componentTypeName = "beng.Animator";
+
         AnimatorComponent();
 
         /**

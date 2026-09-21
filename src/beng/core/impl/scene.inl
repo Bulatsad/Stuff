@@ -10,7 +10,7 @@ namespace beng
     template<typename T>
     bool Scene::hasComponent(EntityID entityId) const
     {
-        ComponentType typeId = ComponentTypeRegistry::getTypeId<T>();
+        ComponentType typeId = getTypeId<T>();
         return getComponentBit(entityId, typeId);
     }
 
@@ -24,7 +24,7 @@ namespace beng
                 static_cast<unsigned long long>(entityId));
         }
 
-        ComponentType typeId = ComponentTypeRegistry::getTypeId<T>();
+        ComponentType typeId = getTypeId<T>();
 
         // Проверка что компонент ещё не существует
         if (__blib_unlikely(getComponentBit(entityId, typeId)))
@@ -58,7 +58,7 @@ namespace beng
         if (__blib_unlikely(component == nullptr))
         {
             __blib_fatal("Component type %d not found on Entity %llu",
-                static_cast<int>(ComponentTypeRegistry::getTypeId<T>()),
+                static_cast<int>(getTypeId<T>()),
                 static_cast<unsigned long long>(entityId));
         }
         return *component;
@@ -71,7 +71,7 @@ namespace beng
         if (__blib_unlikely(component == nullptr))
         {
             __blib_fatal("Component type %d not found on Entity %llu",
-                static_cast<int>(ComponentTypeRegistry::getTypeId<T>()),
+                static_cast<int>(getTypeId<T>()),
                 static_cast<unsigned long long>(entityId));
         }
         return *component;
@@ -86,7 +86,12 @@ namespace beng
             return nullptr;
         }
 
-        ComponentType typeId = ComponentTypeRegistry::getTypeId<T>();
+        // Не-fatal резолв: тип может быть не зарегистрирован в сцене
+        ComponentType typeId = findTypeId<T>();
+        if (typeId == invalidComponentType)
+        {
+            return nullptr;
+        }
 
         // Проверить бит маски (дешёвая проверка до обращения к пулу)
         if (!getComponentBit(entityId, typeId))
@@ -108,7 +113,12 @@ namespace beng
             return nullptr;
         }
 
-        ComponentType typeId = ComponentTypeRegistry::getTypeId<T>();
+        // Не-fatal резолв: тип может быть не зарегистрирован в сцене
+        ComponentType typeId = findTypeId<T>();
+        if (typeId == invalidComponentType)
+        {
+            return nullptr;
+        }
 
         // Проверить бит маски (дешёвая проверка до обращения к пулу)
         if (!getComponentBit(entityId, typeId))
@@ -133,7 +143,7 @@ namespace beng
                 // Несоответствие маски и пула — fatal error
                 __blib_fatal("Component mask inconsistency for Entity %llu type %d",
                     static_cast<unsigned long long>(entityId),
-                    static_cast<int>(ComponentTypeRegistry::getTypeId<T>()));
+                    static_cast<int>(getTypeId<T>()));
             }
             return *component;
         }
@@ -153,7 +163,7 @@ namespace beng
             return;
         }
 
-        ComponentType typeId = ComponentTypeRegistry::getTypeId<T>();
+        ComponentType typeId = getTypeId<T>();
 
         // Компонента нет — no-op
         if (!getComponentBit(entityId, typeId))
@@ -172,21 +182,40 @@ namespace beng
     template<typename T>
     void Scene::registerComponentType(buint32 chunkSize)
     {
-        ComponentType typeId = ComponentTypeRegistry::getTypeId<T>();
+        static_assert(std::is_base_of<IComponent, T>::value,
+            "Component type T must inherit from beng::IComponent");
+        static_assert(HasComponentTypeName<T>::value,
+            "Component must declare 'static constexpr const char* componentTypeName' "
+            "(stable type name used for registration)");
 
-        // Проверка что тип ещё не зарегистрирован
-        if (componentPools[typeId] != nullptr)
+        const char* name = T::componentTypeName;
+
+        // Проверка коллизии имени через словарь типов сцены.
+        // Ключ строится с аллокатором сцены: StdAllocatorAdapter без
+        // дефолтного конструктора, неявная конверсия невозможна.
+        ComponentTypeNameString key(name, blib::memory::StdAllocatorAdapter<char>(&containerAllocator));
+        if (__blib_unlikely(typeIdByName.count(key) != 0))
         {
-            __blib_log_warning("Component type %d already registered in Scene",
-                static_cast<int>(typeId));
-            return;
+            __blib_fatal("Component type '%s' already registered in Scene "
+                "(guard with isRegisteredComponentType<T>() before registering)",
+                name);
         }
+
+        // Проверка лимита типов на сцену (ширина ComponentMask)
+        if (__blib_unlikely(typeNames.size() >= maxComponentTypes))
+        {
+            __blib_fatal("Component type limit exceeded for Scene (max %d types)",
+                static_cast<int>(maxComponentTypes));
+        }
+
+        // Локальный ID типа: индекс в таблицах сцены, бит в ComponentMask
+        ComponentType typeId = static_cast<ComponentType>(typeNames.size());
 
         // Выделить память для ComponentPool<T> через GlobalAllocator
         void* mem = blib::memory::GlobalAllocator::instance().allocate(sizeof(ComponentPool<T>));
         if (__blib_unlikely(mem == nullptr))
         {
-            __blib_fatal("Failed to allocate ComponentPool for type %d", static_cast<int>(typeId));
+            __blib_fatal("Failed to allocate ComponentPool for type '%s'", name);
         }
 
         // Placement new — создать ComponentPool<T>
@@ -208,14 +237,61 @@ namespace beng
             static_cast<ComponentPool<T>*>(ptr)->destroy(entityId);
         };
 
-        __blib_log_info("Registered component pool for type %d (chunk size: %u)",
-            static_cast<int>(typeId), static_cast<unsigned int>(chunkSize));
+        // Записать имя в таблицу типов (горячий путь резолва) и в
+        // словарь (проверка регистрации + будущий load по имени)
+        typeNames.push_back(name);
+        typeIdByName.emplace(std::move(key), typeId);
+
+        __blib_log_info("Registered component type '%s' in Scene (typeId %d, chunk size: %u)",
+            name, static_cast<int>(typeId), static_cast<unsigned int>(chunkSize));
+    }
+
+    template<typename T>
+    bool Scene::isRegisteredComponentType() const
+    {
+        static_assert(HasComponentTypeName<T>::value,
+            "Component must declare 'static constexpr const char* componentTypeName' "
+            "(stable type name used for registration)");
+
+        return findTypeId<T>() != invalidComponentType;
+    }
+
+    template<typename T>
+    ComponentType Scene::findTypeId() const
+    {
+        static_assert(HasComponentTypeName<T>::value,
+            "Component must declare 'static constexpr const char* componentTypeName' "
+            "(stable type name used for registration)");
+
+        const char* name = T::componentTypeName;
+        const ComponentType count = static_cast<ComponentType>(typeNames.size());
+        for (ComponentType id = 0; id < count; ++id)
+        {
+            if (std::strcmp(typeNames[id], name) == 0)
+            {
+                return id;
+            }
+        }
+        return invalidComponentType;
+    }
+
+    template<typename T>
+    ComponentType Scene::getTypeId() const
+    {
+        const ComponentType typeId = findTypeId<T>();
+        if (__blib_unlikely(typeId == invalidComponentType))
+        {
+            __blib_fatal("Component type '%s' not registered in Scene "
+                "(call scene.registerComponentType<T>() first)",
+                T::componentTypeName);
+        }
+        return typeId;
     }
 
     template<typename T>
     ComponentPool<T>& Scene::getComponentPool()
     {
-        ComponentType typeId = ComponentTypeRegistry::getTypeId<T>();
+        ComponentType typeId = getTypeId<T>();
 
         if (__blib_unlikely(componentPools[typeId] == nullptr))
         {
@@ -229,7 +305,7 @@ namespace beng
     template<typename T>
     const ComponentPool<T>& Scene::getComponentPool() const
     {
-        ComponentType typeId = ComponentTypeRegistry::getTypeId<T>();
+        ComponentType typeId = getTypeId<T>();
 
         if (__blib_unlikely(componentPools[typeId] == nullptr))
         {
@@ -243,7 +319,13 @@ namespace beng
     template<typename T>
     ComponentPool<T>* Scene::tryGetComponentPool()
     {
-        ComponentType typeId = ComponentTypeRegistry::getTypeId<T>();
+        // Не-fatal резолв: nullptr если тип не зарегистрирован в сцене
+        // (RenderSystem и другие системы с опциональными компонентами)
+        ComponentType typeId = findTypeId<T>();
+        if (typeId == invalidComponentType)
+        {
+            return nullptr;
+        }
         return static_cast<ComponentPool<T>*>(componentPools[typeId]);
     }
 

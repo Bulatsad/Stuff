@@ -1,7 +1,7 @@
 #pragma once
 
 #include <beng/config.h>
-#include <beng/core/component.h>
+#include <beng/core/icomponent.h>
 #include <beng/core/componentPool.h>
 #include <beng/core/system.h>
 
@@ -14,6 +14,8 @@
 #include <unordered_map>
 #include <utility>
 #include <algorithm>
+#include <string>
+#include <cstring>
 #include <cstdlib>
 
 namespace beng
@@ -38,7 +40,9 @@ namespace beng
      * Использование:
      *   Scene scene;
      *   
-     *   // Регистрация типов компонентов
+     *   // Регистрация типов компонентов (только для этой сцены).
+     *   // Имя типа берётся из T::componentTypeName; коллизия имени
+     *   // в одной сцене — fatal (guard: isRegisteredComponentType<T>).
      *   scene.registerComponentType<TransformComponent>();
      *   
      *   // Создание Entity
@@ -59,7 +63,9 @@ namespace beng
      * - Entity ID не переиспользуются после destroy (валидны до конца жизни Scene)
      * - Некопируем и неперемещаем: контейнеры держат указатель на собственный
      *   containerAllocator, переезд объекта оставил бы висячие ссылки
-     * - Максимум maxComponentTypes (componentMaskBits) типов компонентов
+     * - Максимум maxComponentTypes (componentMaskBits) типов компонентов на сцену
+     * - Типы компонентов регистрируются ТОЛЬКО через эту сцену (глобального
+     *   реестра нет): имя типа — его идентичность (T::componentTypeName)
      */
     class __beng_api Scene
     {
@@ -204,21 +210,44 @@ namespace beng
         // ========== Component Pool Management ==========
 
         /**
-         * Зарегистрировать тип компонента (создать пул).
+         * Зарегистрировать тип компонента в сцене (создать пул).
          * 
-         * @tparam T Тип компонента (должен наследоваться от IComponent)
+         * @tparam T Тип компонента (должен наследоваться от IComponent
+         *         и объявлять static constexpr componentTypeName)
          * @param chunkSize Размер chunk для PoolAllocator (по умолчанию из config)
          * 
          * Проверки:
-         * - Если тип уже зарегистрирован → warning (no-op)
+         * - Имя типа (T::componentTypeName) уже зарегистрировано в сцене →
+         *   fatal error (коллизия имени; guard — isRegisteredComponentType<T>)
+         * - Превышение лимита maxComponentTypes на сцену → fatal error
          * - Создаёт ComponentPool<T> через GlobalAllocator
+         * 
+         * Имя типа регистрируется в словаре сцены (typeIdByName) и получает
+         * локальный ComponentType — индекс, задающий бит в ComponentMask.
          * 
          * Использование:
          *   scene.registerComponentType<TransformComponent>();
          *   scene.registerComponentType<PhysicsComponent>(256); // custom chunk size
+         * 
+         *   // Идемпотентная регистрация из инициализации:
+         *   if (!scene.isRegisteredComponentType<PhysicsComponent>()) {
+         *       scene.registerComponentType<PhysicsComponent>();
+         *   }
          */
         template<typename T>
         void registerComponentType(buint32 chunkSize = defaultComponentPoolChunkSize);
+
+        /**
+         * Проверить, зарегистрирован ли тип компонента в сцене.
+         * 
+         * @tparam T Тип компонента
+         * @return true если имя типа есть в таблице типов сцены
+         * 
+         * Guard для идемпотентной регистрации (повторная регистрация
+         * имени в одной сцене — fatal, см. registerComponentType).
+         */
+        template<typename T>
+        bool isRegisteredComponentType() const;
 
         /**
          * Получить пул компонентов заданного типа.
@@ -298,6 +327,17 @@ namespace beng
     private:
         // ========== Component Mask Helpers ==========
 
+        // Найти локальный ComponentType для типа T в этой сцене.
+        // Линейный скан таблицы имён (≤ maxComponentTypes записей, без
+        // аллокаций — горячий путь шаблонных методов сцены).
+        // invalidComponentType если имя T не зарегистрировано в сцене.
+        template<typename T>
+        ComponentType findTypeId() const;
+
+        // Строгий вариант findTypeId: fatal error если тип не зарегистрирован.
+        template<typename T>
+        ComponentType getTypeId() const;
+
         // Установить/сбросить бит в маске компонентов Entity.
         // fatal error при невалидном typeId или отсутствующей Entity.
         void setComponentBit(EntityID entityId, ComponentType typeId, bool value);
@@ -344,6 +384,28 @@ namespace beng
         EntityID nextEntityId;
 
         // ========== Component Pools ==========
+
+        // Тип строкового ключа словаря типов. Аллокатор blib — правило STL:
+        // строки-ключи аллоцируют через containerAllocator (GlobalAllocator).
+        using ComponentTypeNameString = std::basic_string<char, std::char_traits<char>,
+            blib::memory::StdAllocatorAdapter<char>>;
+
+        // Словарь имён типов: стабильное имя → локальный ComponentType.
+        // Используется при регистрации (проверка коллизии имени) и в
+        // будущем save/load (резолв имени из файла). Горячий путь
+        // шаблонных методов его не трогает — там линейный скан typeNames
+        // (поиск по имени из словаря строил бы std::string-ключ и
+        // аллоцировал бы память для имён длиннее SSO).
+        std::unordered_map<ComponentTypeNameString, ComponentType,
+            std::hash<ComponentTypeNameString>, std::equal_to<ComponentTypeNameString>,
+            ContainerAllocator<std::pair<const ComponentTypeNameString, ComponentType>>> typeIdByName{
+                ContainerAllocator<std::pair<const ComponentTypeNameString, ComponentType>>(&containerAllocator) };
+
+        // Таблица имён типов: индекс (== локальный ComponentType) → имя.
+        // Имена НЕ копируются — это литералы из классов компонентов
+        // (T::componentTypeName), живущие всё время работы процесса.
+        std::vector<const char*, ContainerAllocator<const char*>> typeNames{
+            ContainerAllocator<const char*>(&containerAllocator) };
 
         // Пул на тип компонента (индекс = ComponentType, типов <= maxComponentTypes).
         // Сырые указатели type-erased: конкретный тип известен только

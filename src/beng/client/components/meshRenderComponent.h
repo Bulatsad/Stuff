@@ -1,7 +1,7 @@
 #pragma once
 
 #include <beng/config.h>
-#include <beng/core/component.h>
+#include <beng/core/icomponent.h>
 
 #include <blib/graphics/mesh.h>
 
@@ -51,6 +51,10 @@ namespace beng
         RenderLayer layer;
 
     public:
+        // Стабильное имя типа — идентичность типа в таблице типов Scene
+        // (регистрация, резолв в шаблонных методах, будущий save/load)
+        static constexpr const char* componentTypeName = "beng.MeshRender";
+
         MeshRenderComponent(blib::graphics::Mesh&& sourceMesh, RenderLayer renderLayer = RenderLayer::Opaque);
         ~MeshRenderComponent() override;
 

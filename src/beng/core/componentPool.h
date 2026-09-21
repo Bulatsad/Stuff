@@ -1,7 +1,7 @@
 #pragma once
 
 #include <beng/config.h>
-#include <beng/core/component.h>
+#include <beng/core/icomponent.h>
 #include <blib/blibint.h>
 #include <blib/utilmacro.h>
 #include <blib/system/memory/allocators/poolAllocator.h>

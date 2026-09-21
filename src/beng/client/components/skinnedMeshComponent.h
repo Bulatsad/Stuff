@@ -3,7 +3,7 @@
 #include <string>
 
 #include <beng/config.h>
-#include <beng/core/component.h>
+#include <beng/core/icomponent.h>
 
 #include <blib/graphics/skinmodel.h>
 
@@ -36,6 +36,10 @@ namespace beng
         blib::graphics::SkinModel* model;
 
     public:
+        // Стабильное имя типа — идентичность типа в таблице типов Scene
+        // (регистрация, резолв в шаблонных методах, будущий save/load)
+        static constexpr const char* componentTypeName = "beng.SkinnedMesh";
+
         SkinnedMeshComponent();
         ~SkinnedMeshComponent() override;
 

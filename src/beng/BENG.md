@@ -30,7 +30,7 @@
 |-----------|-----|
 | ECS: сущности/компоненты/системы | `src/beng/core/scene.h` + `src/beng/core/impl/scene.inl` |
 | Пул компонентов | `src/beng/core/componentPool.h` |
-| Базовый компонент, реестр типов | `src/beng/core/component.h` |
+| Базовый интерфейс компонента (+ трейт имени типа) | `src/beng/core/icomponent.h` |
 | Интерфейс системы, приоритеты | `src/beng/core/system.h` |
 | Лимиты и базовые типы ECS | `src/beng/config.h` |
 | Время кадра | `src/beng/core/time.h/.cpp` |
@@ -54,8 +54,11 @@
 
 ### beng-core (ECS)
 
-- Типы (`config.h`): `EntityID = buint64`, `invalidEntity = 0`; `ComponentType = buint8`, `ComponentMask = buint64`, лимит **64 типа** компонентов.
-- **Регистрация типов обязательна:** `scene.registerComponentType<T>()`. `getComponentPool<T>()`/`addComponent<T>()` без регистрации — fatal. Регистрация — строго до запуска цикла (реестр типов не thread-safe).
+- Типы (`config.h`): `EntityID = buint64`, `invalidEntity = 0`; `ComponentType = buint8` — **локальный индекс типа в Scene** (бит в `ComponentMask`, слот в таблице пулов сцены), лимит **64 типа на сцену**.
+- **Регистрация типов — только per-scene, через `scene.registerComponentType<T>()`.** Глобального реестра нет. Имя типа (`static constexpr const char* componentTypeName` — обязательно у каждого компонента, трейт `HasComponentTypeName<T>`) — стабильная **идентичность типа внутри сцены**: по нему тип регистрируется и резолвится всеми шаблонными методами сцены.
+- **Коллизия имени в сцене — fatal** (повторная регистрация имени): guard-паттерн `if (!scene.isRegisteredComponentType<T>()) scene.registerComponentType<T>();` для идемпотентности. `getComponentPool<T>()`/`addComponent<T>()` без регистрации — fatal; `tryGetComponentPool<T>()`/`tryGetComponent<T>()` — не-fatal (nullptr, контракт для систем с опциональными компонентами).
+- **Регистрация — строго до запуска цикла** (Scene не thread-safe). Горячий путь резолва `T → ComponentType` — линейный скан таблицы имён (`≤ maxComponentTypes` strcmp, без аллокаций); словарь `typeIdByName` (строка → ID, ключи через blib-аллокатор) используется при регистрации и в будущем save/load по именам.
+- Имена типов не копируются сценой: это литералы из классов компонентов, живущие весь процесс. Имена уникальны по конвенции (префикс модуля: `beng.*`, `gravelands.*`).
 - **Владение:** `ComponentPool<T>` хранит компоненты через `PoolAllocator`; `destroyEntity`/`removeComponent` вызывают `~T()`. Компонент, владеющий ресурсом, освобождает его в деструкторе (пример: `SkinnedMeshComponent` → `SkinModel`).
 - Указатель на компонент стабилен, пока компонент жив: `destroy` другого компонента двигает только `Entry` (swap-and-pop).
 - Служебные контейнеры — через `StdAllocatorAdapter` (GlobalAllocator), без `::operator new`.
@@ -119,7 +122,7 @@
 - [ ] Фаза 2 модульных доков beng: `MODEL_VIEWER.md`, `CLIENT.md`, `EDITOR.md` (`GRAVELANDS.md` — готов, см. `misc/gravelands`).
 - [ ] `beng-server` — не реализован (см. ARCHITECTURE.md).
 - [ ] `Application`, рефлексия компонентов, `ResourceManager` — не реализованы (must-требования ARCHITECTURE.md).
-- [ ] `ComponentTypeRegistry` не thread-safe — регистрация типов строго до запуска цикла.
+- [ ] `Scene::save`/`load` — не реализованы (типы в файле должны ссылаться по именам через `typeIdByName`; интерфейсы сериализации и тесты лежат незакоммиченными в `src/blib/core/isaveable.h` и др.).
 
 ---
 

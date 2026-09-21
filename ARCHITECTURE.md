@@ -200,6 +200,11 @@ gravelands-editor.exe
    (CMake уже умеет `blib_build_type=blib_build_dynamic`).
 2. **Реестр типов — только явная регистрация.** Никаких static-local ID
    и `typeid()` через границу DLL. Игра экспортирует `registerGameTypes(...)`.
+   **Сделано:** глобального реестра нет — типы регистрируются явно на
+   сцену (`scene.registerComponentType<T>()`) по стабильному имени
+   (`T::componentTypeName`, литерал из класса — работает из любого модуля);
+   коллизия имени в сцене — fatal, guard — `isRegisteredComponentType<T>()`.
+   Осталось: `registerGameTypes` для эдитора (имена + рефлексия).
 3. **Стабильный интерфейс эдитор ↔ игра** (`IGameModule`): регистрация типов,
    хуки сериализации, жизненный цикл PIE.
 4. **Экспорт символов:** `__blib_api`/`__beng_api` становятся настоящими

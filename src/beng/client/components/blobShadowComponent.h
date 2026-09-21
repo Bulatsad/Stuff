@@ -3,7 +3,7 @@
 #include <string>
 
 #include <beng/config.h>
-#include <beng/core/component.h>
+#include <beng/core/icomponent.h>
 
 namespace beng
 {
@@ -32,6 +32,10 @@ namespace beng
         bool boneMissingLogged;
 
     public:
+        // Стабильное имя типа — идентичность типа в таблице типов Scene
+        // (регистрация, резолв в шаблонных методах, будущий save/load)
+        static constexpr const char* componentTypeName = "beng.BlobShadow";
+
         BlobShadowComponent(EntityID target, _In const std::string& boneName, float groundOffset);
         ~BlobShadowComponent() override = default;
 

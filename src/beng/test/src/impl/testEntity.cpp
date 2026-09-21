@@ -5,6 +5,8 @@
 // Локальный тип компонента для тестов Scene API
 struct EntityTestComponent : public beng::IComponent
 {
+    static constexpr const char* componentTypeName = "test.Entity";
+
     explicit EntityTestComponent(bint32 v)
         : value(v)
     {

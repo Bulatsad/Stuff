@@ -17,7 +17,7 @@ namespace beng
     {
         __blib_log_info("Scene destroying (%u entities, %u component types, %u systems)",
             static_cast<unsigned int>(entities.size()),
-            static_cast<unsigned int>(ComponentTypeRegistry::getRegisteredCount()),
+            static_cast<unsigned int>(typeNames.size()),
             static_cast<unsigned int>(systems.size()));
 
         clear();
@@ -252,6 +252,11 @@ namespace beng
             componentPoolDeleters[typeId] = nullptr;
             componentPoolDestroyers[typeId] = nullptr;
         }
+
+        // Очистить таблицу типов: имена (литералы — не владеем) и словарь
+        // (ключи-строки освобождают буферы через containerAllocator)
+        typeNames.clear();
+        typeIdByName.clear();
 
         // Системы не удаляем — Scene не владеет ими
         systems.clear();

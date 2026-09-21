@@ -1,7 +1,7 @@
 #pragma once
 
 #include <beng/config.h>
-#include <beng/core/component.h>
+#include <beng/core/icomponent.h>
 
 #include <blib/core/math/vector.h>
 #include <blib/core/math/quaternion.h>
@@ -58,6 +58,10 @@ namespace beng
     class __beng_api TransformComponent : public IComponent
     {
     public:
+        // Стабильное имя типа — идентичность типа в таблице типов Scene
+        // (регистрация, резолв в шаблонных методах, будущий save/load)
+        static constexpr const char* componentTypeName = "beng.Transform";
+
         /**
          * Конструктор TransformComponent.
          * 

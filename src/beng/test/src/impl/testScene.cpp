@@ -8,6 +8,8 @@
 // Локальные типы компонентов для тестов Scene
 struct SceneTestComponentA : public beng::IComponent
 {
+    static constexpr const char* componentTypeName = "test.SceneA";
+
     explicit SceneTestComponentA(bint32 v)
         : value(v)
     {
@@ -18,6 +20,8 @@ struct SceneTestComponentA : public beng::IComponent
 
 struct SceneTestComponentB : public beng::IComponent
 {
+    static constexpr const char* componentTypeName = "test.SceneB";
+
     explicit SceneTestComponentB(float v)
         : value(v)
     {
@@ -191,11 +195,26 @@ BLIB_TEST_CASE("scene: removeSystem stops its updates")
     BLIB_TEST_CHECK(callLog.size() == 1); // больше не вызывается
 }
 
-BLIB_TEST_CASE("scene: duplicate registerComponentType is a no-op")
+BLIB_TEST_CASE("scene: isRegisteredComponentType guards against duplicate registration")
 {
     beng::Scene scene;
+
+    // До регистрации тип не зарегистрирован
+    BLIB_TEST_CHECK(!scene.isRegisteredComponentType<SceneTestComponentA>());
+
     scene.registerComponentType<SceneTestComponentA>();
-    scene.registerComponentType<SceneTestComponentA>();
+
+    // После — зарегистрирован; guard-паттерн делает повторную
+    // регистрацию идемпотентной (повторная регистрация имени —
+    // fatal, проверить его в фреймворке нельзя: abort убивает процесс)
+    BLIB_TEST_CHECK(scene.isRegisteredComponentType<SceneTestComponentA>());
+    if (!scene.isRegisteredComponentType<SceneTestComponentA>())
+    {
+        scene.registerComponentType<SceneTestComponentA>();
+    }
+
+    // Другой тип в той же сцене — независимо
+    BLIB_TEST_CHECK(!scene.isRegisteredComponentType<SceneTestComponentB>());
 
     // Пул доступен и работает
     beng::EntityID id = scene.createEntity();
