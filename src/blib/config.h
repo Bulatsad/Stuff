@@ -150,3 +150,8 @@
         __blib_log_error(__VA_ARGS__); \
         std::abort(); \
     } while(0)
+
+// ---------------------------------------------------------------
+// Макрос объявления чисто виртуальной функции (вместо "= 0"):
+//   virtual void foo() __blib_pure_virtual_function;
+#define __blib_pure_virtual_function = 0

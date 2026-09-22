@@ -31,7 +31,7 @@ namespace core
          * @param size Количество байт
          * @return Фактически записано
          */
-        virtual size_t write(_In const void* data, size_t size) = 0;
+        virtual size_t write(_In const void* data, size_t size) __blib_pure_virtual_function;
     };
 
     /**

@@ -93,7 +93,7 @@ namespace blib
                  * Имя алгоритма для логирования и диагностики.
                  * Например: "Huffman", "LZ77", "Deflate".
                  */
-                virtual const char* algorithmName() const = 0;
+                virtual const char* algorithmName() const __blib_pure_virtual_function;
 
                 /**
                  * Оценка верхней границы размера сжатых данных (worst-case).
@@ -104,7 +104,7 @@ namespace blib
                  * @param inputSize Размер несжатых данных в байтах
                  * @return Максимальный размер сжатого результата в байтах (или 0)
                  */
-                virtual buint64 compressBound(buint64 inputSize) const = 0;
+                virtual buint64 compressBound(buint64 inputSize) const __blib_pure_virtual_function;
 
                 /**
                  * Проверка допустимости настроек для конкретной реализации.
@@ -115,7 +115,7 @@ namespace blib
                  * @param settings Настройки для проверки
                  * @return true если настройки допустимы
                  */
-                virtual bool validateSettings(_In const CompressionSettings& settings) const = 0;
+                virtual bool validateSettings(_In const CompressionSettings& settings) const __blib_pure_virtual_function;
 
                 // ---- Основные операции ----
 
@@ -132,7 +132,7 @@ namespace blib
                  */
                 virtual bool compress(
                     _In  blib::core::IInputStream&  decompressedInputStream,
-                    _Out blib::core::IOutputStream& compressedOutputStream) = 0;
+                    _Out blib::core::IOutputStream& compressedOutputStream) __blib_pure_virtual_function;
 
                 /**
                  * Распаковать данные из входного потока в выходной.
@@ -143,7 +143,7 @@ namespace blib
                  */
                 virtual bool decompress(
                     _In  blib::core::IInputStream&  compressedInputStream,
-                    _Out blib::core::IOutputStream& decompressedOutputStream) = 0;
+                    _Out blib::core::IOutputStream& decompressedOutputStream) __blib_pure_virtual_function;
             };
         }
     }

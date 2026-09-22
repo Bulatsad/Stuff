@@ -37,7 +37,7 @@ namespace core
         /**
          * Продвинуть итератор на один шаг вперёд (operator++).
          */
-        virtual void increment() = 0;
+        virtual void increment() __blib_pure_virtual_function;
 
         /**
          * Разыменовать итератор (operator*).
@@ -45,7 +45,7 @@ namespace core
          * ВАЖНО: объявлен const, так как const-итератор (как и const указатель)
          * всё равно должен выдавать T&, а не const T&.
          */
-        virtual T& dereference() const = 0;
+        virtual T& dereference() const __blib_pure_virtual_function;
 
         /**
          * Сравнить с другим итератором (operator==).
@@ -53,19 +53,19 @@ namespace core
          * Разнотипные итераторы (разные обёрнутые типы) всегда не равны.
          * Реализация проверяет typeid и сравнивает обёрнутые итераторы.
          */
-        virtual bool equals(const IAnyIteratorImpl& other) const = 0;
+        virtual bool equals(const IAnyIteratorImpl& other) const __blib_pure_virtual_function;
 
         /**
          * Размер конкретной реализации в байтах (sizeof обёртки).
          * Нужен AnyIterator для принятия решения inline/сheap при копировании.
          */
-        virtual size_t sizeOf() const = 0;
+        virtual size_t sizeOf() const __blib_pure_virtual_function;
 
         /**
          * Выравнивание конкретной реализации (alignof обёртки).
          * Нужно AnyIterator для проверки допустимости inline-размещения в буфере.
          */
-        virtual size_t alignmentOf() const = 0;
+        virtual size_t alignmentOf() const __blib_pure_virtual_function;
 
         /**
          * Скопировать себя в заранее подготовленный буфер dst (placement new).
@@ -73,7 +73,7 @@ namespace core
          * @param dst Указатель на буфер достаточного размера (>= sizeOf())
          *            и с корректным выравниванием (>= alignmentOf())
          */
-        virtual void cloneInto(_In void* dst) const = 0;
+        virtual void cloneInto(_In void* dst) const __blib_pure_virtual_function;
     };
 
     /**

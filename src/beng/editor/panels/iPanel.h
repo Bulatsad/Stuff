@@ -31,12 +31,12 @@ namespace beng
              * Отрисовать панель (вызывается каждый кадр внутри
              * ImGui-кадра).
              */
-            virtual void draw() = 0;
+            virtual void draw() __blib_pure_virtual_function;
 
             /**
              * Имя панели (заголовок окна, debug-вывод).
              */
-            virtual const char* getName() const = 0;
+            virtual const char* getName() const __blib_pure_virtual_function;
         };
 
     } // namespace editor

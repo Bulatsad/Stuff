@@ -24,15 +24,15 @@ namespace blib
 
             // View-матрица (камера → мир), пересчитывается при
             // каждом изменении параметров камеры
-            virtual const blib::graphics::TransformMatrix& getViewMatrix() const = 0;
+            virtual const blib::graphics::TransformMatrix& getViewMatrix() const __blib_pure_virtual_function;
 
             // Проекционная матрица (перспектива/орто)
-            virtual const blib::graphics::TransformMatrix& getProjectionMatrix() const = 0;
+            virtual const blib::graphics::TransformMatrix& getProjectionMatrix() const __blib_pure_virtual_function;
 
             // Позиция камеры в мире (нужна шейдерам: rim-light,
             // туман, спекуляр). Все реализации (Camera, OrbitCamera,
             // IsometricCamera) её имеют
-            virtual const blib::graphics::Vector3f& getPosition() const = 0;
+            virtual const blib::graphics::Vector3f& getPosition() const __blib_pure_virtual_function;
         };
     }
 }

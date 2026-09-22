@@ -51,7 +51,7 @@ namespace core
          * 
          * @return true если seek/tell осмыслены для этого потока
          */
-        virtual bool canSeek() const = 0;
+        virtual bool canSeek() const __blib_pure_virtual_function;
 
         /**
          * Переместить позицию потока.
@@ -62,14 +62,14 @@ namespace core
          *         пределы или поток не поддерживает позиционирование
          *         (позиция при этом не изменяется)
          */
-        virtual bool seek(bint64 offset, SeekOrigin origin) = 0;
+        virtual bool seek(bint64 offset, SeekOrigin origin) __blib_pure_virtual_function;
 
         /**
          * Текущая позиция потока в байтах от начала.
          * 
          * @return Текущая позиция или 0 если позиционирование не поддерживается
          */
-        virtual buint64 tell() const = 0;
+        virtual buint64 tell() const __blib_pure_virtual_function;
 
         /**
          * Полный размер потока в байтах.
@@ -77,7 +77,7 @@ namespace core
          * @return Размер в байтах или 0 если размер неизвестен/неприменим
          *         (например, для потоковых сокетов или неисчерпанного sink'а)
          */
-        virtual buint64 size() const = 0;
+        virtual buint64 size() const __blib_pure_virtual_function;
     };
 
     /**
@@ -103,7 +103,7 @@ namespace core
          * @param size   Максимальное количество байт
          * @return Фактически прочитано (0 при EOF)
          */
-        virtual size_t read(_Out void* buffer, size_t size) = 0;
+        virtual size_t read(_Out void* buffer, size_t size) __blib_pure_virtual_function;
     };
 
     /**

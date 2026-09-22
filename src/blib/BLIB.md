@@ -3,7 +3,7 @@
 > Слой: `blib`. Общая философия, карта модулей и правила сборки.
 > Не дублирует строгие правила проекта (`AGENTS.md`) и roadmap (`ARCHITECTURE.md`) — только ссылается.
 > **Обновлять при любых изменениях кода/сборки blib** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-21
+> Сверено: 2026-09-22
 
 ---
 
@@ -29,7 +29,7 @@
 
 | Файл | Что даёт |
 |------|----------|
-| `config.h` | `BLIB_DEBUG` (из `_DEBUG` MSVC или `-DBLIB_DEBUG` GCC/Clang), платформенные макросы, per-module API-макросы (`__blib_core_api`, `__blib_graphics_api`, …), `__blib_unlikely/likely`, `__blib_return_error`, `__blib_fatal`, `__blib_max_bones = 100`, `__blib_default_cache_size = 64`, `__blib_unsafe`, `__blib_render_api_opengl` |
+| `config.h` | `BLIB_DEBUG` (из `_DEBUG` MSVC или `-DBLIB_DEBUG` GCC/Clang), платформенные макросы, per-module API-макросы (`__blib_core_api`, `__blib_graphics_api`, …), `__blib_unlikely/likely`, `__blib_return_error`, `__blib_fatal`, `__blib_pure_virtual_function` (= `= 0`, объявление чисто виртуальных функций), `__blib_max_bones = 100`, `__blib_default_cache_size = 64`, `__blib_unsafe`, `__blib_render_api_opengl` |
 | `blibint.h` | `buint8`…`buint64`, `bint8`…`bint64`, `bfloat`/`bdouble` (static_assert 4/8 байт), `*Max`-константы |
 | `utilmacro.h` | SAL-макросы `_In/_Out/_In_opt/_Out_opt` (пустые), `__blib_override` |
 | `inline.h` | `__blib_force_inline`, `__blib_noinline`, `__blib_inline`, `__blib_private_func` (= `static`) |

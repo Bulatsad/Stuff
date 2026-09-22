@@ -37,14 +37,14 @@ namespace impl
          * @param size Размер в байтах
          * @return Указатель на блок или nullptr при ошибке
          */
-        virtual void* allocate(size_t size) = 0;
+        virtual void* allocate(size_t size) __blib_pure_virtual_function;
 
         /**
          * Освободить блок памяти.
          * @param ptr Указатель на блок
          * @param size Размер в байтах
          */
-        virtual void deallocate(void* ptr, size_t size) = 0;
+        virtual void deallocate(void* ptr, size_t size) __blib_pure_virtual_function;
 
         /**
          * Создать shared копию (для обычного копирования Allocator).
@@ -54,7 +54,7 @@ namespace impl
          * 
          * @return Новый экземпляр IAllocatorImpl
          */
-        virtual IAllocatorImpl* share() const = 0;
+        virtual IAllocatorImpl* share() const __blib_pure_virtual_function;
 
         /**
          * Создать независимую глубокую копию (для clone()).
@@ -64,7 +64,7 @@ namespace impl
          * 
          * @return Новый независимый экземпляр IAllocatorImpl
          */
-        virtual IAllocatorImpl* deepCopy() const = 0;
+        virtual IAllocatorImpl* deepCopy() const __blib_pure_virtual_function;
 
         /**
          * Размер конкретного объекта-реализации в байтах.
@@ -75,7 +75,7 @@ namespace impl
          * 
          * @return sizeof(конкретной обёртки)
          */
-        virtual size_t implSize() const = 0;
+        virtual size_t implSize() const __blib_pure_virtual_function;
     };
 
     /**

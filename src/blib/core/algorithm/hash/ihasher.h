@@ -73,7 +73,7 @@ namespace blib
                  * Имя алгоритма для логирования и диагностики.
                  * Например: "MD5", "SHA-1", "SHA-256".
                  */
-                virtual const char* algorithmName() const = 0;
+                virtual const char* algorithmName() const __blib_pure_virtual_function;
 
                 /**
                  * Размер дайджеста в байтах.
@@ -83,7 +83,7 @@ namespace blib
                  *
                  * @return Фиксированный размер дайджеста в байтах
                  */
-                virtual buint64 digestSize() const = 0;
+                virtual buint64 digestSize() const __blib_pure_virtual_function;
 
                 // ---- Основная операция ----
 
@@ -97,7 +97,7 @@ namespace blib
                  */
                 virtual bool hash(
                     _In  blib::core::IInputStream&  is,
-                    _Out blib::core::IOutputStream& digest) = 0;
+                    _Out blib::core::IOutputStream& digest) __blib_pure_virtual_function;
             };
         }
     }

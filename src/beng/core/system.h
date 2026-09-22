@@ -64,7 +64,7 @@ namespace beng
          * Вызывается каждый кадр из Scene::update().
          * Системы выполняются в порядке приоритета.
          */
-        virtual void update(_In Scene& scene, float deltaTime) = 0;
+        virtual void update(_In Scene& scene, float deltaTime) __blib_pure_virtual_function;
 
         /**
          * Получить приоритет выполнения системы.
@@ -87,7 +87,7 @@ namespace beng
          * 
          * @return Название системы
          */
-        virtual const char* getName() const = 0;
+        virtual const char* getName() const __blib_pure_virtual_function;
     };
 
 } // namespace beng

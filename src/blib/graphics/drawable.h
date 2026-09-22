@@ -19,7 +19,7 @@ namespace blib
         //protected:
             //friend class RenderTarget;
 
-            virtual void draw(RenderContext& ctx) const = 0;
+            virtual void draw(RenderContext& ctx) const __blib_pure_virtual_function;
         };
     }
 }
