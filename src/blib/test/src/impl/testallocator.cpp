@@ -672,6 +672,398 @@ BLIB_TEST_CASE("PoolAllocator: move assignment")
 }
 
 // ============================================================
+// 4b. PoolAllocator Iterator Tests
+// ============================================================
+// Итераторы объявлены на PoolAllocatorImpl, но тесты используют публичный
+// typedef PoolAllocator: в debug-сборке это DebugAllocator-обёртка, чей
+// begin()/end() корректирует адреса на debug-offset. Тем самым каждый кейс
+// проверяет обе ветки (release: сырые блоки; debug: offset-проброс).
+
+BLIB_TEST_CASE("PoolAllocator iterator: empty pool begin == end")
+{
+	PoolAllocator pool(64, 128);
+
+	BLIB_TEST_CHECK(pool.begin() == pool.end());
+}
+
+BLIB_TEST_CASE("PoolAllocator iterator: fully free pool begin == end")
+{
+	PoolAllocator pool(64, 128);
+
+	// Занимаем и тут же освобождаем несколько блоков - пул остаётся
+	// полностью свободным. Регрессия на out-of-bounds в ++/isFree
+	// (ранее итератор уходил за последний чанк по free list).
+	void* ptrs[5];
+	for (int i = 0; i < 5; ++i) {
+		ptrs[i] = pool.allocate(64);
+	}
+	for (int i = 0; i < 5; ++i) {
+		pool.deallocate(ptrs[i], 64);
+	}
+
+	BLIB_TEST_CHECK(pool.begin() == pool.end());
+}
+
+BLIB_TEST_CASE("PoolAllocator iterator: yields only allocated blocks")
+{
+	PoolAllocator pool(64, 4); // Маленький чанк - провоцируем несколько чанков
+	const int allocCount = 10;
+
+	void* ptrs[allocCount];
+	for (int i = 0; i < allocCount; ++i) {
+		ptrs[i] = pool.allocate(64);
+		BLIB_TEST_CHECK(ptrs[i] != nullptr);
+	}
+
+	// Собираем адреса итерации: все должны быть из множества ptrs,
+	// без дублей и свободных блоков.
+	int count = 0;
+	for (void* p : pool) {
+		bool found = false;
+		for (int i = 0; i < allocCount; ++i) {
+			if (ptrs[i] == p) {
+				found = true;
+				break;
+			}
+		}
+		BLIB_TEST_CHECK(found);
+		count++;
+	}
+	BLIB_TEST_CHECK(count == allocCount);
+
+	for (int i = 0; i < allocCount; ++i) {
+		pool.deallocate(ptrs[i], 64);
+	}
+}
+
+BLIB_TEST_CASE("PoolAllocator iterator: skips free blocks in the middle")
+{
+	PoolAllocator pool(64, 128);
+	const int allocCount = 10;
+
+	void* ptrs[allocCount];
+	for (int i = 0; i < allocCount; ++i) {
+		ptrs[i] = pool.allocate(64);
+	}
+
+	// Освобождаем 3-й и 7-й - итерация должна их пропустить.
+	pool.deallocate(ptrs[2], 64);
+	pool.deallocate(ptrs[6], 64);
+
+	int count = 0;
+	for (void* p : pool) {
+		BLIB_TEST_CHECK(p != ptrs[2]);
+		BLIB_TEST_CHECK(p != ptrs[6]);
+		count++;
+	}
+	BLIB_TEST_CHECK(count == allocCount - 2);
+
+	// Вернуть освобождённые блоки не обязательно - деструктор пула
+	// освобождает чанки целиком.
+}
+
+BLIB_TEST_CASE("PoolAllocator iterator: begin skips leading free blocks")
+{
+	PoolAllocator pool(64, 128);
+
+	// free list - LIFO: allocate() забирает блоки с конца чанка,
+	// поэтому при 5 аллокациях ptrs[0] = блок 127, ptrs[4] = блок 123.
+	void* ptrs[5];
+	for (int i = 0; i < 5; ++i) {
+		ptrs[i] = pool.allocate(64);
+	}
+
+	// Итерация идёт по возрастанию адресов, поэтому первыми занятыми
+	// блоками в её порядке идут ptrs[4] (блок 123) и ptrs[3] (блок 124).
+	// Освобождаем их - begin() должен стартовать с ptrs[2] (блок 125).
+	pool.deallocate(ptrs[4], 64);
+	pool.deallocate(ptrs[3], 64);
+
+	BLIB_TEST_CHECK(*pool.begin() == ptrs[2]);
+
+	int count = 0;
+	for (void* p : pool) {
+		static_cast<void>(p);
+		count++;
+	}
+	BLIB_TEST_CHECK(count == 3);
+}
+
+BLIB_TEST_CASE("PoolAllocator iterator: multiple chunks in chunk-major order")
+{
+	PoolAllocator pool(64, 4); // 4 блока в чанке
+
+	void* ptrs[9];
+	for (int i = 0; i < 9; ++i) {
+		ptrs[i] = pool.allocate(64);
+	}
+
+	// free list - LIFO: allocateNewChunk кладёт блоки 0..3 в голову списка,
+	// поэтому allocate() забирает блок 3, затем 2, 1, 0 (и так по чанкам).
+	// Итератор же идёт по (chunkI, blockJ) - чанк за чанком, внутри чанка
+	// по возрастанию адресов. Ожидаемая последовательность индексов ptrs
+	// (детерминирована в release и debug - offset-обёртка сдвигает все адреса
+	// одинаково):
+	const int expected[9] = { 3, 2, 1, 0, 7, 6, 5, 4, 8 };
+
+	int i = 0;
+	for (void* p : pool) {
+		BLIB_TEST_CHECK(p == ptrs[expected[i]]);
+		++i;
+	}
+	BLIB_TEST_CHECK(i == 9);
+
+	for (int i = 0; i < 9; ++i) {
+		pool.deallocate(ptrs[i], 64);
+	}
+}
+
+BLIB_TEST_CASE("PoolAllocator iterator: std algorithms via iterator_traits")
+{
+	PoolAllocator pool(64, 128);
+	const int allocCount = 8;
+
+	void* ptrs[allocCount];
+	for (int i = 0; i < allocCount; ++i) {
+		ptrs[i] = pool.allocate(64);
+	}
+	pool.deallocate(ptrs[3], 64); // Один свободный - distance должен учесть пропуск
+
+	BLIB_TEST_CHECK(std::distance(pool.begin(), pool.end()) == allocCount - 1);
+	BLIB_TEST_CHECK(std::find(pool.begin(), pool.end(), ptrs[5]) != pool.end());
+	BLIB_TEST_CHECK(std::find(pool.begin(), pool.end(), ptrs[3]) == pool.end());
+}
+
+BLIB_TEST_CASE("PoolAllocator iterator: postfix increment and !=")
+{
+	PoolAllocator pool(64, 128);
+
+	// LIFO free list: ptrs[0] = блок 127, ptrs[1] = блок 126, ptrs[2] = блок 125.
+	// Итерация по возрастанию адресов: ptrs[2], ptrs[1], ptrs[0].
+	void* ptrs[3];
+	for (int i = 0; i < 3; ++i) {
+		ptrs[i] = pool.allocate(64);
+	}
+
+	PoolAllocator::Iterator it = pool.begin();
+	BLIB_TEST_CHECK(it != pool.end());
+	BLIB_TEST_CHECK(*it == ptrs[2]);
+
+	PoolAllocator::Iterator old = it++; // Постфикс: вернуть копию, сдвинуться вперёд
+	BLIB_TEST_CHECK(*old == ptrs[2]);
+	BLIB_TEST_CHECK(*it == ptrs[1]);
+
+	++it;
+	BLIB_TEST_CHECK(*it == ptrs[0]);
+	++it;
+	BLIB_TEST_CHECK(it == pool.end());
+}
+
+BLIB_TEST_CASE("PoolAllocator iterator: const iteration")
+{
+	PoolAllocator pool(64, 128);
+
+	void* ptrs[4];
+	for (int i = 0; i < 4; ++i) {
+		ptrs[i] = pool.allocate(64);
+	}
+
+	const PoolAllocator& constPool = pool;
+	int count = 0;
+	for (const void* p : constPool) {
+		bool found = false;
+		for (int i = 0; i < 4; ++i) {
+			if (ptrs[i] == p) {
+				found = true;
+				break;
+			}
+		}
+		BLIB_TEST_CHECK(found);
+		count++;
+	}
+	BLIB_TEST_CHECK(count == 4);
+}
+
+BLIB_TEST_CASE("PoolAllocator iterator: every block deallocatable via pool")
+{
+	// Семантика *it должна совпадать с результатом allocate():
+	// в debug-сборке итератор обёртки обязан выдавать пользовательский
+	// адрес (со смещением на debug overhead), а не сырой блок.
+	PoolAllocator pool(64, 128);
+
+	void* ptrs[6];
+	for (int i = 0; i < 6; ++i) {
+		ptrs[i] = pool.allocate(64);
+	}
+	pool.deallocate(ptrs[1], 64);
+	pool.deallocate(ptrs[4], 64);
+
+	for (void* p : pool) {
+		pool.deallocate(p, 64); // Должно пройти валидацию (debug) / no-op (release)
+	}
+
+	BLIB_TEST_CHECK(pool.begin() == pool.end());
+}
+
+BLIB_TEST_CASE("PoolAllocator iterator: bitmap correctness under churn")
+{
+	// Интенсивное освобождение/повторное выделение: битмап "свободен/занят"
+	// должен держать состав итерации синхронным с реальным состоянием блоков.
+	PoolAllocator pool(64, 128);
+	const int allocCount = 20;
+
+	void* ptrs[allocCount];
+	for (int i = 0; i < allocCount; ++i) {
+		ptrs[i] = pool.allocate(64);
+	}
+
+	// Освобождаем каждый третий
+	int freedCount = 0;
+	bool freed[allocCount] = { false };
+	for (int i = 0; i < allocCount; i += 3) {
+		pool.deallocate(ptrs[i], 64);
+		freed[i] = true;
+		freedCount++;
+	}
+
+	int count = 0;
+	for (void* p : pool) {
+		bool wasFreed = false;
+		for (int i = 0; i < allocCount; ++i) {
+			if (freed[i] && ptrs[i] == p) {
+				wasFreed = true;
+				break;
+			}
+		}
+		BLIB_TEST_CHECK(!wasFreed);
+		count++;
+	}
+	BLIB_TEST_CHECK(count == allocCount - freedCount);
+
+	// Снова занимаем - освобождённые блоки переиспользуются, состав полный
+	void* reuse[allocCount];
+	for (int i = 0; i < freedCount; ++i) {
+		reuse[i] = pool.allocate(64);
+		BLIB_TEST_CHECK(reuse[i] != nullptr);
+	}
+
+	count = 0;
+	for (void* p : pool) {
+		static_cast<void>(p);
+		count++;
+	}
+	BLIB_TEST_CHECK(count == allocCount);
+
+	for (int i = 0; i < freedCount; ++i) {
+		pool.deallocate(reuse[i], 64);
+	}
+	for (int i = 0; i < allocCount; ++i) {
+		if (!freed[i]) {
+			pool.deallocate(ptrs[i], 64);
+		}
+	}
+}
+
+BLIB_TEST_CASE("PoolAllocator iterator: deallocate from different chunks")
+{
+	// Покрывает findChunkIndex: освобождаем блоки из разных чанков,
+	// итерация должна корректно пропустить каждый в своём чанке.
+	PoolAllocator pool(64, 4); // 4 блока в чанке
+
+	void* ptrs[9];
+	for (int i = 0; i < 9; ++i) {
+		ptrs[i] = pool.allocate(64);
+	}
+
+	pool.deallocate(ptrs[1], 64); // чанк 0
+	pool.deallocate(ptrs[6], 64); // чанк 1
+
+	int count = 0;
+	for (void* p : pool) {
+		BLIB_TEST_CHECK(p != ptrs[1]);
+		BLIB_TEST_CHECK(p != ptrs[6]);
+		count++;
+	}
+	BLIB_TEST_CHECK(count == 7);
+}
+
+BLIB_TEST_CASE("PoolAllocator: double-free detection (release)")
+{
+#ifdef BLIB_DEBUG_ALLOCATOR_ENABLED
+	__blib_log_info("  SKIPPED (DebugAllocator aborts on double-free before PoolAllocatorImpl)");
+#else
+	PoolAllocator pool(64, 128);
+
+	void* ptrs[3];
+	for (int i = 0; i < 3; ++i) {
+		ptrs[i] = pool.allocate(64);
+	}
+
+	// Повторный deallocate того же блока - должен быть no-op (warning в stderr),
+	// а не зациклить free list и не испортить битмап.
+	pool.deallocate(ptrs[1], 64);
+	pool.deallocate(ptrs[1], 64);
+
+	// Пул должен остаться целым: аллокация возвращает корректный блок,
+	// итерация видит ровно 2 живых.
+	void* again = pool.allocate(64);
+	BLIB_TEST_CHECK(again != nullptr);
+
+	int count = 0;
+	for (void* p : pool) {
+		bool known = false;
+		for (int i = 0; i < 3; ++i) {
+			if (ptrs[i] == p) {
+				known = true;
+				break;
+			}
+		}
+		BLIB_TEST_CHECK(known);
+		count++;
+	}
+	BLIB_TEST_CHECK(count == 3);
+
+	pool.deallocate(again, 64);
+	for (int i = 0; i < 3; ++i) {
+		if (ptrs[i] != ptrs[1]) {
+			pool.deallocate(ptrs[i], 64);
+		}
+	}
+#endif
+}
+
+BLIB_TEST_CASE("PoolAllocator: foreign pointer deallocate is ignored (release)")
+{
+#ifdef BLIB_DEBUG_ALLOCATOR_ENABLED
+	__blib_log_info("  SKIPPED (DebugAllocator aborts on invalid pointer before PoolAllocatorImpl)");
+#else
+	PoolAllocator pool(64, 128);
+
+	void* ptrs[4];
+	for (int i = 0; i < 4; ++i) {
+		ptrs[i] = pool.allocate(64);
+	}
+
+	// Чужой указатель (стековая переменная) - раньше был UB, теперь no-op.
+	// Пул не должен пострадать: итерация по-прежнему видит 4 блока,
+	// аллокация/деаллокация работают.
+	int stackVar = 0;
+	pool.deallocate(&stackVar, 64);
+
+	int count = 0;
+	for (void* p : pool) {
+		static_cast<void>(p);
+		count++;
+	}
+	BLIB_TEST_CHECK(count == 4);
+
+	void* again = pool.allocate(64);
+	BLIB_TEST_CHECK(again != nullptr);
+	pool.deallocate(again, 64);
+#endif
+}
+
+// ============================================================
 // 5. DebugAllocator Tests (Aggressive Testing)
 // ============================================================
 

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 
 #include <blib/blibint.h>
 #include <blib/system/memory/allocatorTraits.h>
@@ -46,6 +47,9 @@ namespace memory
      * - НЕ thread-safe (требуется внешняя синхронизация)
      * - Overhead: 24 (header) + 8 (front guard) + 8 (back guard) = 40 байт на аллокацию
      * - Производительность: значительно медленнее из-за проверок (только для debug!)
+     * - Итерация: begin()/end() пробрасываются в underlying (PoolAllocatorImpl),
+     *   а *it корректируется на sizeof(Header) + GUARD_SIZE, чтобы выдавать
+     *   пользовательские адреса, совместимые с deallocate()
      * 
      * Детектируемые ошибки:
      * 1. Buffer overflow - перезапись guard bytes
@@ -150,6 +154,135 @@ namespace memory
          * - Освобождает underlying память
          */
         void deallocate(void* ptr, size_t size);
+
+        /**
+         * Сдвинуть указатель на пользовательскую область блока.
+         * 
+         * Итератор underlying-аллокатора (PoolAllocatorImpl) выдаёт НАЧАЛО
+         * сырого блока (там лежит Header), а пользователь работает с адресом
+         * после Header + front guard. Эти методы приводят адрес итерации
+         * к виду, возвращаемому allocate() - чтобы *it был совместим
+         * с deallocate().
+         * 
+         * @param rawBlock Адрес начала сырого блока
+         * @return Адрес пользовательской области (как из allocate())
+         */
+        static void* toUserPtr(_In void* rawBlock)
+        {
+            return static_cast<void*>(static_cast<char*>(rawBlock) + sizeof(Header) + GUARD_SIZE);
+        }
+        static const void* toUserPtr(_In const void* rawBlock)
+        {
+            return static_cast<const void*>(static_cast<const char*>(rawBlock) + sizeof(Header) + GUARD_SIZE);
+        }
+
+        /**
+         * Iterator - forward-итератор по занятым блокам underlying-аллокатора
+         * с поправкой на debug-offset. Осмыслен только когда underlying
+         * предоставляет begin()/end() (PoolAllocatorImpl); для прочих
+         * аллокаторов класс просто не инстанцируется (ленивые шаблоны).
+         * Семантика и инвалидация - как у итератора underlying.
+         */
+        class Iterator
+        {
+        public:
+            // std-совместимые typedef'ы (см. PoolAllocatorImpl::Iterator)
+            typedef std::forward_iterator_tag iterator_category;
+            typedef void* value_type;
+            typedef std::ptrdiff_t difference_type;
+            typedef void* pointer;
+            typedef void* reference;
+
+            explicit Iterator(_In typename UnderlyingAllocator::Iterator underlyingIter)
+                : underlyingIter(underlyingIter)
+            {
+            }
+
+            void* operator*() const
+            {
+                return DebugAllocator::toUserPtr(*this->underlyingIter);
+            }
+            void* operator->() const
+            {
+                return DebugAllocator::toUserPtr(*this->underlyingIter);
+            }
+
+            Iterator& operator++()
+            {
+                ++this->underlyingIter;
+                return *this;
+            }
+            Iterator operator++(int)
+            {
+                Iterator tmp(*this);
+                ++(*this);
+                return tmp;
+            }
+
+            bool operator==(const Iterator& rhs) const { return this->underlyingIter == rhs.underlyingIter; }
+            bool operator!=(const Iterator& rhs) const { return !(*this == rhs); }
+
+        private:
+            typename UnderlyingAllocator::Iterator underlyingIter;
+        };
+
+        /**
+         * ConstIterator - константная версия Iterator (см. выше).
+         */
+        class ConstIterator
+        {
+        public:
+            // std-совместимые typedef'ы (const pointer/reference, как в LinkedList)
+            typedef std::forward_iterator_tag iterator_category;
+            typedef void* value_type;
+            typedef std::ptrdiff_t difference_type;
+            typedef const void* pointer;
+            typedef const void* reference;
+
+            explicit ConstIterator(_In typename UnderlyingAllocator::ConstIterator underlyingIter)
+                : underlyingIter(underlyingIter)
+            {
+            }
+
+            const void* operator*() const
+            {
+                return DebugAllocator::toUserPtr(*this->underlyingIter);
+            }
+            const void* operator->() const
+            {
+                return DebugAllocator::toUserPtr(*this->underlyingIter);
+            }
+
+            ConstIterator& operator++()
+            {
+                ++this->underlyingIter;
+                return *this;
+            }
+            ConstIterator operator++(int)
+            {
+                ConstIterator tmp(*this);
+                ++(*this);
+                return tmp;
+            }
+
+            bool operator==(const ConstIterator& rhs) const { return this->underlyingIter == rhs.underlyingIter; }
+            bool operator!=(const ConstIterator& rhs) const { return !(*this == rhs); }
+
+        private:
+            typename UnderlyingAllocator::ConstIterator underlyingIter;
+        };
+
+        // Итерация по занятым блокам (проброс в underlying; см. Iterator).
+        // Инстанцируются только при вызове - для аллокаторов без begin()/end()
+        // (DefaultAllocator и т.п.) никакого эффекта на компиляцию нет.
+        Iterator begin() { return Iterator(this->underlying.begin()); }
+        Iterator end() { return Iterator(this->underlying.end()); }
+
+        ConstIterator begin() const { return ConstIterator(this->underlying.begin()); }
+        ConstIterator end() const { return ConstIterator(this->underlying.end()); }
+
+        ConstIterator cbegin() const { return ConstIterator(this->underlying.cbegin()); }
+        ConstIterator cend() const { return ConstIterator(this->underlying.cend()); }
 
     private:
         // Magic numbers для детекции
