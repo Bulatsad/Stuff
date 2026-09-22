@@ -3,9 +3,18 @@
 #include <stack>
 
 #include <blib/core/console/console.h>
+#include <blib/core/verifyHelper.h>
 
 namespace
 {
+    // Ключи JSON-объекта скелета (формат сериализации)
+    constexpr const char* skeletKeyBones = "bones";
+    constexpr const char* skeletKeyParentIndex = "parentIndex";
+    constexpr const char* skeletKeyRootIndex = "rootIndex";
+
+    // Сентинел «нет родителя» / «нет корня» (пустой скелет)
+    constexpr buint64 skeletNoIndex = buint64Max;
+
     // Допуск сравнения элементов inverse bind матриц: у одинаковых
     // ригов (например, Mixamo) значения совпадают с точностью до
     // float-погрешности
@@ -850,4 +859,204 @@ const std::vector<blib::graphics::Bone>& blib::graphics::Skelet::getBoneStorage(
 const std::vector<blib::graphics::TransformMatrix>& blib::graphics::Skelet::getFinalMatrices() const
 {
     return this->finalMatrices;
+}
+
+blib::core::json::JsonValue blib::graphics::Skelet::toJson() const
+{
+    blib::core::json::JsonValue doc = blib::core::json::JsonValue::makeObject();
+
+    blib::core::json::JsonValue& bonesArr =
+        doc.set(skeletKeyBones, blib::core::json::JsonValue::makeArray());
+    for (size_t i = 0; i < this->boneStorage.size(); ++i)
+    {
+        blib::core::json::JsonValue boneObj = this->boneStorage[i].toJson();
+
+        // Индекс родителя (иерархия IHierarchal восстанавливается
+        // fromJson по этим индексам; указатели не сериализуемы)
+        buint64 parentIndex = skeletNoIndex;
+        const blib::graphics::IHierarchal* parent = this->boneStorage[i].getParent();
+        if (parent)
+        {
+            for (size_t p = 0; p < this->boneStorage.size(); ++p)
+            {
+                if (&(this->boneStorage[p]) == parent)
+                {
+                    parentIndex = static_cast<buint64>(p);
+                    break;
+                }
+            }
+        }
+        boneObj.set(skeletKeyParentIndex, blib::core::json::JsonValue(parentIndex));
+
+        bonesArr.pushBack(boneObj);
+    }
+
+    // Индекс корня (сентинел — пустой скелет без корня)
+    buint64 rootIndex = skeletNoIndex;
+    if (this->root)
+    {
+        for (size_t i = 0; i < this->boneStorage.size(); ++i)
+        {
+            if (&(this->boneStorage[i]) == this->root)
+            {
+                rootIndex = static_cast<buint64>(i);
+                break;
+            }
+        }
+    }
+    doc.set(skeletKeyRootIndex, blib::core::json::JsonValue(rootIndex));
+
+    return doc;
+}
+
+blib::core::LoadStatus blib::graphics::Skelet::fromJson(_In const blib::core::json::JsonValue& json)
+{
+    // Валидация формы ДО применения: при ошибке состояние не меняется
+    if (!json.isObject() ||
+        !json.has(skeletKeyBones) || !json.get(skeletKeyBones).isArray() ||
+        !json.has(skeletKeyRootIndex) || !json.get(skeletKeyRootIndex).isNumber())
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+
+    const blib::core::json::JsonValue& bonesArr = json.get(skeletKeyBones);
+    std::vector<blib::graphics::Bone> loadedBones;
+    std::vector<buint64> parentIndices;
+    loadedBones.reserve(bonesArr.size());
+    parentIndices.reserve(bonesArr.size());
+    for (buint32 i = 0; i < bonesArr.size(); ++i)
+    {
+        const blib::core::json::JsonValue& boneObj = bonesArr[i];
+        if (!boneObj.isObject() ||
+            !boneObj.has(skeletKeyParentIndex) || !boneObj.get(skeletKeyParentIndex).isNumber())
+        {
+            return blib::core::LoadStatus::InvalidData;
+        }
+
+        const buint64 parentIndex = boneObj.get(skeletKeyParentIndex).asBuint64();
+        // Индекс родителя обязан указывать на кость в этом же списке
+        // (или быть сентинелом «нет родителя»)
+        if (parentIndex != skeletNoIndex && parentIndex >= static_cast<buint64>(bonesArr.size()))
+        {
+            return blib::core::LoadStatus::InvalidData;
+        }
+
+        blib::graphics::Bone bone;
+        if (__blib_unlikely(bone.fromJson(boneObj) != blib::core::LoadStatus::None))
+        {
+            return blib::core::LoadStatus::InvalidData;
+        }
+        loadedBones.push_back(std::move(bone));
+        parentIndices.push_back(parentIndex);
+    }
+
+    const buint64 rootIndex = json.get(skeletKeyRootIndex).asBuint64();
+    if (__blib_unlikely(rootIndex != skeletNoIndex &&
+        rootIndex >= static_cast<buint64>(loadedBones.size())))
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+
+    // Все данные валидны — применить (move сохраняет адреса костей в
+    // буфере: указатели иерархии ниже выставляются на новые объекты)
+    this->boneStorage = std::move(loadedBones);
+
+    // finalMatrices обязаны иметь размер boneStorage: computeBindPose
+    // и applyClip пишут в них по индексу кости
+    this->finalMatrices.resize(this->boneStorage.size());
+
+    // Восстановить иерархию IHierarchal (parent/childs) по индексам
+    for (size_t i = 0; i < this->boneStorage.size(); ++i)
+    {
+        if (parentIndices[i] == skeletNoIndex)
+        {
+            continue;
+        }
+        this->boneStorage[static_cast<size_t>(parentIndices[i])].addChild(&(this->boneStorage[i]));
+    }
+
+    // Корень и пересчёт global/final-матриц (finalMatrices не
+    // сериализуются — детерминированно пересчитываются)
+    this->root = (rootIndex == skeletNoIndex) ? nullptr : &(this->boneStorage[static_cast<size_t>(rootIndex)]);
+    this->computeBindPose();
+
+    return blib::core::LoadStatus::None;
+}
+
+blib::core::SaveStatus blib::graphics::Skelet::save(_In blib::core::IOutputStream& os) const
+{
+    const blib::core::json::JsonValue doc = this->toJson();
+    if (__blib_unlikely(doc.writeTo(os) != blib::core::json::JsonError::None))
+    {
+        return blib::core::SaveStatus::WriteFailed;
+    }
+    return blib::core::SaveStatus::None;
+}
+
+blib::core::LoadStatus blib::graphics::Skelet::load(_In blib::core::IInputStream& is)
+{
+    blib::core::json::JsonParser parser;
+    blib::core::json::JsonValue doc;
+    if (__blib_unlikely(parser.parse(is, doc) != blib::core::json::JsonError::None))
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+    return this->fromJson(doc);
+}
+
+bool blib::graphics::Skelet::strongCompare(_In const blib::core::IStrongComparable& other,
+    _In blib::core::CompareSession& session) const
+{
+    if (!session.enter(this, &other))
+    {
+        return true;
+    }
+
+    const blib::graphics::Skelet& o = static_cast<const blib::graphics::Skelet&>(other);
+
+    // Строгое сравнение: порядок и состав костей совпадают
+    if (this->boneStorage.size() != o.boneStorage.size())
+    {
+        return false;
+    }
+
+    // Иерархия сравнивается по ИМЕНИ родителя (указатели не сравнимы:
+    // у JSON-восстановленного скелета свои адреса)
+    for (size_t i = 0; i < this->boneStorage.size(); ++i)
+    {
+        const blib::graphics::Bone& bone = this->boneStorage[i];
+        const blib::graphics::Bone& otherBone = o.boneStorage[i];
+
+        if (!bone.strongCompare(otherBone, session))
+        {
+            return false;
+        }
+
+        const blib::graphics::IHierarchal* parent = bone.getParent();
+        const blib::graphics::IHierarchal* otherParent = otherBone.getParent();
+        const std::string parentName = parent ? static_cast<const blib::graphics::Bone*>(parent)->name : std::string();
+        const std::string otherParentName = otherParent ? static_cast<const blib::graphics::Bone*>(otherParent)->name : std::string();
+        if (parentName != otherParentName)
+        {
+            return false;
+        }
+    }
+
+    // Корень — по имени (у пустых скелетов — nullptr)
+    if ((this->root == nullptr) != (o.root == nullptr))
+    {
+        return false;
+    }
+    if (this->root && this->root->name != o.root->name)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+bool blib::graphics::Skelet::verify() const
+{
+    // Round-trip без RTTI (см. blib::core::verifyRoundTrip)
+    return blib::core::verifyRoundTrip(*this);
 }

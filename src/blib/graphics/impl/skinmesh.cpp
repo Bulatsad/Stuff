@@ -1,6 +1,7 @@
 #include <blib/graphics/skinmesh.h>
 
 #include <blib/core/console/console.h>
+#include <blib/core/verifyHelper.h>
 
 namespace
 {
@@ -149,4 +150,43 @@ bool blib::graphics::SkinMesh::loadFromAssimpMesh(
     }
 
     return true;
+}
+
+blib::core::json::JsonValue blib::graphics::SkinMesh::toJson() const
+{
+    // SkinMesh = Mesh (веса костей лежат в mesh.boneIds/boneWeights)
+    return this->mesh.toJson();
+}
+
+blib::core::LoadStatus blib::graphics::SkinMesh::fromJson(_In const blib::core::json::JsonValue& json)
+{
+    return this->mesh.fromJson(json);
+}
+
+blib::core::SaveStatus blib::graphics::SkinMesh::save(_In blib::core::IOutputStream& os) const
+{
+    return this->mesh.save(os);
+}
+
+blib::core::LoadStatus blib::graphics::SkinMesh::load(_In blib::core::IInputStream& is)
+{
+    return this->mesh.load(is);
+}
+
+bool blib::graphics::SkinMesh::strongCompare(_In const blib::core::IStrongComparable& other,
+    _In blib::core::CompareSession& session) const
+{
+    if (!session.enter(this, &other))
+    {
+        return true;
+    }
+
+    const blib::graphics::SkinMesh& o = static_cast<const blib::graphics::SkinMesh&>(other);
+    return this->mesh.strongCompare(o.mesh, session);
+}
+
+bool blib::graphics::SkinMesh::verify() const
+{
+    // Round-trip без RTTI (см. blib::core::verifyRoundTrip)
+    return blib::core::verifyRoundTrip(*this);
 }

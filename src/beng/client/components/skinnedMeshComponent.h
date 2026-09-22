@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include <beng/config.h>
 #include <beng/core/icomponent.h>
@@ -26,6 +27,19 @@ namespace beng
      * - Уничтожается в деструкторе компонента (ComponentPool
      *   вызывает ~T() при destroy).
      *
+     * Сериализуемое состояние (ISaveLoadable):
+     * - ПОЛНОЕ содержимое модели: save() пишет {model: <SkinModel JSON> | null,
+     *   isActive}; load() восстанавливает модель целиком (скелет, веса,
+     *   геометрия, материалы с битмапами диффуза, клипы анимации) через
+     *   blib::graphics::SkinModel::fromJson — при отсутствии модели
+     *   аллоцирует её (GlobalAllocator + placement new)
+     * - GL-состояние модели не сериализуемо (перезапечётся в draw);
+     *   Bone::node (aiNode*) — контекст Assimp, после восстановления
+     *   nullptr (рантайм на нём не зависит)
+     * - verify(): standalone-roundtrip содержимого (true и для
+     *   компонента с моделью: сериализуемое состояние — CPU-данные,
+     *   GL-кэш в него не входит и перезапечётся при draw)
+     *
      * Использование:
      *   scene.addComponent<SkinnedMeshComponent>(entity);
      *   meshComp.loadFromFile(path);
@@ -37,8 +51,11 @@ namespace beng
 
     public:
         // Стабильное имя типа — идентичность типа в таблице типов Scene
-        // (регистрация, резолв в шаблонных методах, будущий save/load)
+        // (регистрация, резолв в шаблонных методах, save/load)
         static constexpr const char* componentTypeName = "beng.SkinnedMesh";
+
+        // Не прятать 1-аргументную точку входа строгого сравнения
+        using blib::core::IStrongComparable::strongCompare;
 
         SkinnedMeshComponent();
         ~SkinnedMeshComponent() override;
@@ -88,6 +105,36 @@ namespace beng
          */
         blib::graphics::SkinModel* getModel();
         const blib::graphics::SkinModel* getModel() const;
+
+        // ========== ISaveLoadable: сериализация и сравнение ==========
+        //
+        // Формат save: JSON-объект {model: <SkinModel JSON> | null,
+        // isActive}. load() восстанавливает содержимое модели целиком
+        // (аллоцирует SkinModel при отсутствии). verify():
+        // standalone-roundtrip содержимого (GL-состояние не входит в
+        // сериализуемое состояние).
+
+        /**
+         * Сохранить состояние компонента в поток (JSON-объект).
+         */
+        blib::core::SaveStatus save(_In blib::core::IOutputStream& os) const __blib_override;
+
+        /**
+         * Загрузить состояние компонента из потока (JSON-объект).
+         */
+        blib::core::LoadStatus load(_In blib::core::IInputStream& is) __blib_override;
+
+        /**
+         * Строгое сравнение: базовые поля + model по null-состоянию +
+         * полное содержимое моделей (делегирование SkinModel).
+         */
+        bool strongCompare(_In const blib::core::IStrongComparable& other,
+            _In blib::core::CompareSession& session) const __blib_override;
+
+        /**
+         * Round-trip валидация (verifyRoundTrip).
+         */
+        bool verify() const __blib_override;
     };
 
 } // namespace beng

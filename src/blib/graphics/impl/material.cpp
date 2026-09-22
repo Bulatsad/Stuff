@@ -1,6 +1,7 @@
 #include <blib/graphics/material.h>
 
 #include <blib/core/console/console.h>
+#include <blib/core/verifyHelper.h>
 #include <blib/graphics/shader.h>
 
 #include <assimp/scene.h>
@@ -13,6 +14,28 @@
 
 namespace
 {
+    // Ключи JSON-объекта материала (формат сериализации)
+    constexpr const char* materialKeyName = "name";
+    constexpr const char* materialKeyAmbient = "ambient";
+    constexpr const char* materialKeyDiffuse = "diffuse";
+    constexpr const char* materialKeySpecular = "specular";
+    constexpr const char* materialKeyHasDiffuseColor = "hasDiffuseColor";
+    constexpr const char* materialKeyTransparencyFactor = "transparencyFactor";
+    constexpr const char* materialKeyAlphaTest = "alphaTest";
+    constexpr const char* materialKeyShadingMode = "shadingMode";
+    constexpr const char* materialKeyRampSoftness = "rampSoftness";
+    constexpr const char* materialKeyRimColor = "rimColor";
+    constexpr const char* materialKeyRimPower = "rimPower";
+    constexpr const char* materialKeyEmission = "emission";
+    constexpr const char* materialKeyOutlineEnabled = "outlineEnabled";
+    constexpr const char* materialKeyOutlineWidth = "outlineWidth";
+    constexpr const char* materialKeyOutlineColor = "outlineColor";
+    constexpr const char* materialKeyDiffuseImage = "diffuseImage";
+
+    // Размеры сериализуемых векторов
+    constexpr buint32 materialVector3Size = 3;
+    constexpr buint32 materialVector4Size = 4;
+
     // Размер синтезируемой 1x1 текстуры плоского цвета (см. bake)
     constexpr buint16 flatColorTextureDimension = 1;
     // Диапазон и округление при переводе компонента цвета 0..1 в байт
@@ -398,4 +421,203 @@ void blib::graphics::Material::loadFromAssimpMaterial(const aiMaterial* pmateria
     // Детали ошибки уже залогированы внутри loadDiffuseTextureFromAssimp
     // через __blib_return_error, дублировать тут незачем
     this->loadDiffuseTextureFromAssimp(pmaterial, folder, scene);
+}
+
+blib::core::json::JsonValue blib::graphics::Material::toJson() const
+{
+    blib::core::json::JsonValue doc = blib::core::json::JsonValue::makeObject();
+
+    doc.set(materialKeyName, blib::core::json::JsonValue(this->m_name.c_str()));
+
+    auto setVector4 = [](_In blib::core::json::JsonValue& target, _In const blib::graphics::Vector4f& v)
+    {
+        target.pushBack(blib::core::json::JsonValue(v.x));
+        target.pushBack(blib::core::json::JsonValue(v.y));
+        target.pushBack(blib::core::json::JsonValue(v.z));
+        target.pushBack(blib::core::json::JsonValue(v.w));
+    };
+    auto setVector3 = [](_In blib::core::json::JsonValue& target, _In const blib::graphics::Vector3f& v)
+    {
+        target.pushBack(blib::core::json::JsonValue(v.x));
+        target.pushBack(blib::core::json::JsonValue(v.y));
+        target.pushBack(blib::core::json::JsonValue(v.z));
+    };
+
+    blib::core::json::JsonValue& ambient = doc.set(materialKeyAmbient, blib::core::json::JsonValue::makeArray());
+    setVector4(ambient, this->AmbientColor);
+    blib::core::json::JsonValue& diffuse = doc.set(materialKeyDiffuse, blib::core::json::JsonValue::makeArray());
+    setVector4(diffuse, this->DiffuseColor);
+    blib::core::json::JsonValue& specular = doc.set(materialKeySpecular, blib::core::json::JsonValue::makeArray());
+    setVector4(specular, this->SpecularColor);
+
+    doc.set(materialKeyHasDiffuseColor, blib::core::json::JsonValue(this->hasDiffuseColor));
+    doc.set(materialKeyTransparencyFactor, blib::core::json::JsonValue(this->m_transparencyFactor));
+    doc.set(materialKeyAlphaTest, blib::core::json::JsonValue(this->m_alphaTest));
+    doc.set(materialKeyShadingMode, blib::core::json::JsonValue(static_cast<buint8>(this->shadingMode)));
+    doc.set(materialKeyRampSoftness, blib::core::json::JsonValue(this->rampSoftness));
+
+    blib::core::json::JsonValue& rimColor = doc.set(materialKeyRimColor, blib::core::json::JsonValue::makeArray());
+    setVector3(rimColor, this->rimColor);
+    doc.set(materialKeyRimPower, blib::core::json::JsonValue(this->rimPower));
+
+    blib::core::json::JsonValue& emission = doc.set(materialKeyEmission, blib::core::json::JsonValue::makeArray());
+    setVector3(emission, this->emission);
+
+    doc.set(materialKeyOutlineEnabled, blib::core::json::JsonValue(this->outlineEnabled));
+    doc.set(materialKeyOutlineWidth, blib::core::json::JsonValue(this->outlineWidth));
+    blib::core::json::JsonValue& outlineColor = doc.set(materialKeyOutlineColor, blib::core::json::JsonValue::makeArray());
+    setVector3(outlineColor, this->outlineColor);
+
+    // Диффузная текстура — CPU-битмап (GL-хендл не сериализуем)
+    doc.set(materialKeyDiffuseImage, this->diffuseImage.toJson());
+
+    return doc;
+}
+
+blib::core::LoadStatus blib::graphics::Material::fromJson(_In const blib::core::json::JsonValue& json)
+{
+    // Чтение массива из 4 чисел (Vector4) с проверкой размера
+    struct Vector4Reader
+    {
+        static bool read(_In const blib::core::json::JsonValue& v, _Out blib::graphics::Vector4f& out)
+        {
+            if (!v.isArray() || v.size() != materialVector4Size)
+            {
+                return false;
+            }
+            out = blib::graphics::Vector4f(v[0].asBfloat(), v[1].asBfloat(), v[2].asBfloat(), v[3].asBfloat());
+            return true;
+        }
+    };
+    struct Vector3Reader
+    {
+        static bool read(_In const blib::core::json::JsonValue& v, _Out blib::graphics::Vector3f& out)
+        {
+            if (!v.isArray() || v.size() != materialVector3Size)
+            {
+                return false;
+            }
+            out = blib::graphics::Vector3f(v[0].asBfloat(), v[1].asBfloat(), v[2].asBfloat());
+            return true;
+        }
+    };
+
+    // Валидация формы ДО применения: при ошибке состояние не меняется
+    if (!json.isObject() ||
+        !json.has(materialKeyName) || !json.get(materialKeyName).isString() ||
+        !json.has(materialKeyHasDiffuseColor) || !json.get(materialKeyHasDiffuseColor).isBool() ||
+        !json.has(materialKeyTransparencyFactor) || !json.get(materialKeyTransparencyFactor).isNumber() ||
+        !json.has(materialKeyAlphaTest) || !json.get(materialKeyAlphaTest).isNumber() ||
+        !json.has(materialKeyShadingMode) || !json.get(materialKeyShadingMode).isNumber() ||
+        !json.has(materialKeyRampSoftness) || !json.get(materialKeyRampSoftness).isNumber() ||
+        !json.has(materialKeyRimPower) || !json.get(materialKeyRimPower).isNumber() ||
+        !json.has(materialKeyOutlineEnabled) || !json.get(materialKeyOutlineEnabled).isBool() ||
+        !json.has(materialKeyOutlineWidth) || !json.get(materialKeyOutlineWidth).isNumber() ||
+        !json.has(materialKeyAmbient) || !json.has(materialKeyDiffuse) ||
+        !json.has(materialKeySpecular) || !json.has(materialKeyRimColor) ||
+        !json.has(materialKeyEmission) || !json.has(materialKeyOutlineColor) ||
+        !json.has(materialKeyDiffuseImage))
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+
+    blib::graphics::Vector4f ambient;
+    blib::graphics::Vector4f diffuse;
+    blib::graphics::Vector4f specular;
+    blib::graphics::Vector3f rim;
+    blib::graphics::Vector3f emission;
+    blib::graphics::Vector3f outline;
+    if (!Vector4Reader::read(json.get(materialKeyAmbient), ambient) ||
+        !Vector4Reader::read(json.get(materialKeyDiffuse), diffuse) ||
+        !Vector4Reader::read(json.get(materialKeySpecular), specular) ||
+        !Vector3Reader::read(json.get(materialKeyRimColor), rim) ||
+        !Vector3Reader::read(json.get(materialKeyEmission), emission) ||
+        !Vector3Reader::read(json.get(materialKeyOutlineColor), outline))
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+
+    // Диффузный битмап: валидация в локальный объект
+    blib::graphics::Image image;
+    if (__blib_unlikely(image.fromJson(json.get(materialKeyDiffuseImage)) != blib::core::LoadStatus::None))
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+
+    // Все данные валидны — применить (GL-хендлы не трогаем)
+    this->m_name = json.get(materialKeyName).asString().c_str();
+    this->AmbientColor = ambient;
+    this->DiffuseColor = diffuse;
+    this->SpecularColor = specular;
+    this->hasDiffuseColor = json.get(materialKeyHasDiffuseColor).asBool();
+    this->m_transparencyFactor = json.get(materialKeyTransparencyFactor).asBfloat();
+    this->m_alphaTest = json.get(materialKeyAlphaTest).asBfloat();
+    this->shadingMode = static_cast<blib::graphics::ShadingMode>(json.get(materialKeyShadingMode).asBuint64());
+    this->rampSoftness = json.get(materialKeyRampSoftness).asBfloat();
+    this->rimColor = rim;
+    this->rimPower = json.get(materialKeyRimPower).asBfloat();
+    this->emission = emission;
+    this->outlineEnabled = json.get(materialKeyOutlineEnabled).asBool();
+    this->outlineWidth = json.get(materialKeyOutlineWidth).asBfloat();
+    this->outlineColor = outline;
+    this->diffuseImage = image;
+
+    return blib::core::LoadStatus::None;
+}
+
+blib::core::SaveStatus blib::graphics::Material::save(_In blib::core::IOutputStream& os) const
+{
+    const blib::core::json::JsonValue doc = this->toJson();
+    if (__blib_unlikely(doc.writeTo(os) != blib::core::json::JsonError::None))
+    {
+        return blib::core::SaveStatus::WriteFailed;
+    }
+    return blib::core::SaveStatus::None;
+}
+
+blib::core::LoadStatus blib::graphics::Material::load(_In blib::core::IInputStream& is)
+{
+    blib::core::json::JsonParser parser;
+    blib::core::json::JsonValue doc;
+    if (__blib_unlikely(parser.parse(is, doc) != blib::core::json::JsonError::None))
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+    return this->fromJson(doc);
+}
+
+bool blib::graphics::Material::strongCompare(_In const blib::core::IStrongComparable& other,
+    _In blib::core::CompareSession& session) const
+{
+    if (!session.enter(this, &other))
+    {
+        return true;
+    }
+
+    const blib::graphics::Material& o = static_cast<const blib::graphics::Material&>(other);
+
+    // Сравниваются только сериализуемые CPU-поля; GL-хендлы
+    // (Texture) не сериализуются и не сравниваются
+    return this->m_name == o.m_name &&
+        this->AmbientColor == o.AmbientColor &&
+        this->DiffuseColor == o.DiffuseColor &&
+        this->SpecularColor == o.SpecularColor &&
+        this->hasDiffuseColor == o.hasDiffuseColor &&
+        this->m_transparencyFactor == o.m_transparencyFactor &&
+        this->m_alphaTest == o.m_alphaTest &&
+        this->shadingMode == o.shadingMode &&
+        this->rampSoftness == o.rampSoftness &&
+        this->rimColor == o.rimColor &&
+        this->rimPower == o.rimPower &&
+        this->emission == o.emission &&
+        this->outlineEnabled == o.outlineEnabled &&
+        this->outlineWidth == o.outlineWidth &&
+        this->outlineColor == o.outlineColor &&
+        this->diffuseImage.strongCompare(o.diffuseImage, session);
+}
+
+bool blib::graphics::Material::verify() const
+{
+    // Round-trip без RTTI (см. blib::core::verifyRoundTrip)
+    return blib::core::verifyRoundTrip(*this);
 }

@@ -2,7 +2,7 @@
 
 > Слой: `blib`. OpenGL/WGL, окно, ассеты, скелетная анимация, ImGui.
 > Шпаргалка по инвариантам, владению GL и граблям. **Обновлять при изменениях кода модуля** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-21
+> Сверено: 2026-09-22
 
 ---
 
@@ -28,6 +28,7 @@
 | Материал/текстура/изображение | `material.h`, `impl/material.cpp`, `texture.h`, `impl/win/texture.cpp`, `image.h`, `impl/image.cpp` |
 | Камеры | `iCamera.h`, `camera.h`, `orbitCamera.h`, `isometricCamera.h`, `viewport.h` |
 | Скелет и анимация | `skelet.h`, `bone.h`, `skinmodel.h`, `skinmesh.h`, `animator.h`, `animationclip.h`, `impl/skelet.cpp`, `impl/skinmodel.cpp`, `impl/skinmesh.cpp`, `impl/win/animator.cpp`, `impl/bone.cpp` |
+| Сериализация ассетов (ISaveLoadable) | `impl/mesh.cpp`, `impl/material.cpp`, `impl/image.cpp`, `impl/bone.cpp`, `impl/skelet.cpp`, `impl/animator.cpp`, `impl/skinmodel.cpp` (см. раздел «Сериализация») |
 | Отладочные линии | `lineRenderer.h`, `impl/lineRenderer.cpp` |
 | Консольное окно | `console/consoleWindow.h` |
 | Форматы TGX/GM1 | `tgx.h`, `gm1.h`, `impl/tgx.cpp`, `impl/gm1.cpp` |
@@ -199,6 +200,18 @@
 - **Порядок обязателен: модели/меши/материалы выгружаются раньше окна и рендер-таргета** (иначе GL-контекст уже мёртв). Так сделано в `ViewerCore::shutdown` и `SkinnedMeshComponent`.
 - `Texture` живёт до явного `free(ctx)`; копирование `Texture` поверхностное (копия и оригинал указывают на один GL-объект) — не копировать.
 - `Shader`/`ShaderProgram` владеют GL-объектами (деструкторы удаляют через сохранённый `RenderApi`); ctx — GlobalAllocator. Не копировать (copy удалён), move — безопасен.
+
+---
+
+## Сериализация (ISaveLoadable)
+
+- **Классы:** `Image`, `Material`, `Mesh`, `SkinMesh`, `Bone`, `Skelet`, `AnimationClip`, `Animator`, `SkinModel` — полный контракт `blib::core::ISaveLoadable`: `toJson()`/`fromJson()` (JSON-DOM) + тонкие `save`/`load` поверх + `strongCompare` + `verify` (`verifyRoundTrip`). Ключи JSON — именованные `constexpr` в `.cpp`. `SkinModel` сериализует ВСЁ содержимое модели: скелет (иерархия по `parentIndex`/`rootIndex`, цепочки, веса, offset/local/global-матрицы), меши (геометрия + веса + материал с битмапом диффуза), аниматор (клипы: каналы с ключами pos/rot/scale, `boneChains`; состояние плейбека).
+- **НЕ сериализуемо (контекст/GL):** `Mesh::ctx`, шейдеры, `baked`; `Material`-текстуры (`Texture` — GL-хендл) и `pRenderContext`; `Bone::node` (`aiNode*` — контекст Assimp-загрузки). Диффузная текстура сериализуется как **CPU-битмап** `diffuseImage` — GL-текстура пересоздаётся `bake()`.
+- **JSON-восстановленный скелет полностью работоспособен:** рантайм (`applyClip`/`computeBindPose`/`getBonePosition`) зависит только от `chain`/матриц/иерархии, не от `node`. `fromJson` восстанавливает иерархию `IHierarchal` по индексам и пересчитывает `finalMatrices` через `computeBindPose` (они не сериализуются).
+- **Семантика `fromJson`/`load`:** валидация ВСЕХ полей до применения (при ошибке — `LoadStatus::InvalidData`, состояние не меняется). `Mesh`/`SkinMesh` пересоздаются destroy + placement new (move-присваивание удалено): GL-кэш старой геометрии невалиден после перезаписи CPU-данных, свежий меш перезапечётся в `draw()`.
+- **ГРАБЛИ: перезапись ЗАПЕЧЁННОГО меша/модели требует живого `RenderContext`** — деструктор старого состояния освобождает GL-ресурсы через сохранённый контекст (см. «Владение GL»). Свежие/незапечённые объекты и `verify()` безопасны без контекста.
+- Формат матриц: 16 чисел в порядке `Matrix(std::initializer_list)` — `data[0][0], data[1][0], …, data[3][3]`; кватернионы — `[x, y, z, w]`.
+- beng использует эту сериализацию: `MeshRenderComponent` делегирует `Mesh`, `SkinnedMeshComponent` — `SkinModel` (см. BENG.md).
 
 ---
 

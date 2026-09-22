@@ -34,8 +34,11 @@ namespace beng
 
     public:
         // Стабильное имя типа — идентичность типа в таблице типов Scene
-        // (регистрация, резолв в шаблонных методах, будущий save/load)
+        // (регистрация, резолв в шаблонных методах, save/load)
         static constexpr const char* componentTypeName = "beng.Animator";
+
+        // Не прятать 1-аргументную точку входа строгого сравнения
+        using blib::core::IStrongComparable::strongCompare;
 
         AnimatorComponent();
 
@@ -89,6 +92,38 @@ namespace beng
          */
         bool isPoseDirty() const;
         void clearPoseDirty();
+
+        // ========== ISaveLoadable: сериализация и сравнение ==========
+        //
+        // Формат save: JSON-объект с собственными полями компонента
+        // (loop, poseDirty, isActive). Указатель animator — контекст:
+        // не сериализуется, сравнивается по null-состоянию (в сцене
+        // verify() = false — строгая модель). Состояние самого Animator
+        // (клип/время/play) принадлежит ассету SkinModel и не
+        // сериализуется — TODO: восстановление после появления
+        // Scene::load/onLoaded.
+
+        /**
+         * Сохранить состояние компонента в поток (JSON-объект).
+         */
+        blib::core::SaveStatus save(_In blib::core::IOutputStream& os) const __blib_override;
+
+        /**
+         * Загрузить состояние компонента из потока (JSON-объект).
+         */
+        blib::core::LoadStatus load(_In blib::core::IInputStream& is) __blib_override;
+
+        /**
+         * Строгое сравнение: базовые поля + loop/poseDirty + animator
+         * по null-состоянию.
+         */
+        bool strongCompare(_In const blib::core::IStrongComparable& other,
+            _In blib::core::CompareSession& session) const __blib_override;
+
+        /**
+         * Round-trip валидация (verifyRoundTrip).
+         */
+        bool verify() const __blib_override;
     };
 
 } // namespace beng

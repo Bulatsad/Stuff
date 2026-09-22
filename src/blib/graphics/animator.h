@@ -4,6 +4,8 @@
 
 #include <assimp/scene.h>
 
+#include <blib/core/isaveloadable.h>
+#include <blib/core/json/json.h>
 #include <blib/graphics/animationclip.h>
 #include <blib/graphics/skelet.h>
 
@@ -14,7 +16,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_graphics_api Animator
+        class __blib_graphics_api Animator : public blib::core::ISaveLoadable
         {
         private:
             std::vector<blib::graphics::AnimationClip> animationList;
@@ -61,6 +63,23 @@ namespace blib
             bool play();
             bool pause();
             bool update(float deltaTimeMs);
+
+            // ========== ISaveLoadable: сериализация и сравнение ==========
+            //
+            // Сериализуется весь список клипов + состояние плейбека
+            // (индекс текущего клипа, время, isPlaying). Реализация —
+            // impl/animator.cpp. Не прятать 1-аргументную точку входа
+            // строгого сравнения.
+
+            using blib::core::IStrongComparable::strongCompare;
+
+            blib::core::json::JsonValue toJson() const;
+            blib::core::LoadStatus fromJson(_In const blib::core::json::JsonValue& json);
+            blib::core::SaveStatus save(_In blib::core::IOutputStream& os) const __blib_override;
+            blib::core::LoadStatus load(_In blib::core::IInputStream& is) __blib_override;
+            bool strongCompare(_In const blib::core::IStrongComparable& other,
+                _In blib::core::CompareSession& session) const __blib_override;
+            bool verify() const __blib_override;
         };
     }
 }

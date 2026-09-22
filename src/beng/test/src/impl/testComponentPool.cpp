@@ -5,9 +5,28 @@
 // Локальный тип компонента для тестов пула
 struct PoolTestComponent : public beng::IComponent
 {
+    using blib::core::IStrongComparable::strongCompare;
+
     explicit PoolTestComponent(float v)
         : value(v)
     {
+    }
+
+    bool strongCompare(_In const blib::core::IStrongComparable& other,
+        _In blib::core::CompareSession& session) const __blib_override
+    {
+        if (!session.enter(this, &other))
+        {
+            return true;
+        }
+        const PoolTestComponent& o = static_cast<const PoolTestComponent&>(other);
+        return getOwnerId() == o.getOwnerId() && isActive == o.isActive && value == o.value;
+    }
+
+    // Не сериализуем (save/load Unsupported) — round-trip неприменим
+    bool verify() const __blib_override
+    {
+        return false;
     }
 
     float value;

@@ -47,6 +47,7 @@
 | Панели: иерархия/анимации/вьюпорт/опции/консоль | `src/beng/editor/panels/*` |
 | Пример композиции приложения | `src/misc/model_viewer/core/viewerCore.cpp` |
 | Тесты | `src/beng/test/src/impl/test*.cpp` (фреймворк `blib::test`, `BUILD_TESTS=ON`) |
+| Интерфейсы сериализации/сравнения (blib-core) | `src/blib/core/{isaveable,iloadable,isaveloadable,icomparable,verifyHelper}.h` |
 | Демо ECS | `src/beng/test_ecs/` |
 
 ---
@@ -83,6 +84,18 @@
 - `AnimationSystem` (приоритет -50): играет → `SkinModel::update(dt_ms)` (время в миллисекундах!); нециклическая доиграла → `pause()`; пауза + `poseDirty` (выбор клипа/скраб) → `update(0)` + сброс флага.
 - `BlobShadowComponent` (на сущности-тени) + `BlobShadowSystem` (приоритет 50): тень следует за root-motion анимации цели — позиция кости (`Skelet::getBonePosition`, кандидаты «boneName»/«Hips»/«mixamorig:Hips»/подстрока hips·pelvis), мировая = `getWorldPosition() + rotate(getWorldScale()·pos, getWorldRotation())` (Matrix::operator* не использовать — транспонированное произведение, см. CORE.md), тень ставится **строго под цель** `(world.x, groundOffset, world.z)` — blob-тень лежит под объектом, без световой проекции; запись в `TransformComponent` тени.
 - `RenderSystem` (приоритет 100) — единственная точка отрисовки мира. Порядок слоёв фиксирован: `Ground` → `Shadow` (альфа-блендинг, запись глубины выключена) → `AlphaTested` → `Opaque` (включая `SkinnedMeshComponent`). Трансформации — из `TransformComponent::getWorldMatrix()`; без таргета — no-op; таргетом не владеет.
+
+### Сериализация компонентов (ISaveLoadable)
+
+- `IComponent` наследует `blib::core::ISaveLoadable` (save/load + строгое сравнение + verify). Чистые виртуальные `strongCompare(other, session)` и `verify()` реализует **каждый** конкретный компонент; `save()`/`load()` — только сериализуемые (default — `Unsupported`; будущий `Scene::save` обязан отклонять такие типы с `SaveStatus::ComponentNotSerializable`).
+- **Формат save:** JSON-объект через `JsonValue::writeTo(IOutputStream)`; `load()` — `JsonParser` из `IInputStream`. Ключи — именованные `constexpr` константы в `.cpp` компонента.
+- **Границы сериализации:** `ownerId` не пишется (владение — забота `Scene`/пула, будущий `Scene::load`); `isActive` пишется. Контекстные указатели (`Scene*`, `Animator*`, `model*`) не сериализуются и сравниваются по null-состоянию → `verify()` standalone-компонента (без контекста) = true, компонента в сцене — false (строгая модель).
+- `TransformComponent` — сериализуется всё состояние, включая кеш `worldMatrix` (бит-в-бит контракт ISaveable). `BlobShadowComponent`/`AnimatorComponent` — все собственные поля (у Animator клип/время/play не пишутся — это состояние ассета `SkinModel`).
+- `MeshRenderComponent` — слой + меш: **делегирует** `blib::graphics::Mesh` (ISaveLoadable: вся CPU-геометрия + CPU-поля `Material`, включая битмап `diffuseImage`; GL-хендлы не сериализуемы — см. GRAPHICS.md, «Сериализация»). JSON-объём пропорционален геометрии (у примитивов/спрайтов малый).
+- `SkinnedMeshComponent` — **полное содержимое модели** через `blib::graphics::SkinModel::toJson/fromJson` (скелет, веса, геометрия, материалы с битмапами диффуза, клипы анимации): `{model: <SkinModel JSON> | null, isActive}`; `load()` при отсутствии модели аллоцирует её (GlobalAllocator + placement new). `Bone::node` (aiNode*) — контекст Assimp, после восстановления nullptr (рантайм на нём не зависит).
+- `verify()` сериализуемых компонентов — `blib::core::verifyRoundTrip<T>` (без RTTI: save → свежий `T()` → load → `strongCompare`); требует default-конструктор (есть у всех сериализуемых).
+- `load()` валидирует **все** поля до применения — при ошибке (`LoadStatus::InvalidData`) состояние компонента не меняется. У `MeshRenderComponent`/`SkinnedMeshComponent` меши пересоздаются destroy + placement new (move-присваивание у `Mesh` удалено): GL-кэш старой геометрии невалиден после перезаписи CPU-данных, свежий меш перезапечётся в `draw()`. **Перезапись запечённого меша требует живого RenderContext.**
+- Не прятать точку входа: в каждом компоненте `using blib::core::IStrongComparable::strongCompare;` — иначе 1-аргументная перегрузка базы скрывается 2-аргументной и `verifyRoundTrip` не компилируется.
 
 ### beng-editor (панели)
 
@@ -124,7 +137,7 @@
 - [ ] Фаза 2 модульных доков beng: `MODEL_VIEWER.md`, `CLIENT.md`, `EDITOR.md` (`GRAVELANDS.md` — готов, см. `misc/gravelands`).
 - [ ] `beng-server` — не реализован (см. ARCHITECTURE.md).
 - [ ] `Application`, рефлексия компонентов, `ResourceManager` — не реализованы (must-требования ARCHITECTURE.md).
-- [ ] `Scene::save`/`load` — не реализованы (типы в файле должны ссылаться по именам через `typeIdByName`; интерфейсы сериализации и тесты лежат незакоммиченными в `src/blib/core/isaveable.h` и др.).
+- [ ] `Scene::save`/`load` — не реализованы (типы в файле должны ссылаться по именам через `typeIdByName`; компоненты и ассеты blib-graphics уже сериализуемы через ISaveLoadable — см. «Сериализация компонентов» и GRAPHICS.md; нужен формат документа + onLoaded-хук для восстановления контекстных связей — `Scene*` у Transform, перепривязка `AnimatorComponent::animator` после загрузки модели; тесты `testsceneSave.cpp` не подключены к CMake).
 
 ---
 

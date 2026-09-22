@@ -1,6 +1,8 @@
 #include <beng/client/components/skinnedMeshComponent.h>
 
 #include <blib/core/console/console.h>
+#include <blib/core/json/json.h>
+#include <blib/core/verifyHelper.h>
 #include <blib/system/memory/globalAllocator.h>
 
 #include <assimp/Importer.hpp>
@@ -11,6 +13,11 @@ namespace beng
 {
     namespace
     {
+        // Ключи JSON-объекта компонента (формат save/load); содержимое
+        // модели сериализует blib::graphics::SkinModel (см. SkinModel::toJson)
+        constexpr const char* keyModel = "model";
+        constexpr const char* keyIsActive = "isActive";
+
         // Флаги постпроцессинга Assimp, общие для всех загрузок:
         // триангуляция обязательна (рендер строит EBO по треугольникам),
         // PopulateArmatureData — обязателен для скелетной анимации
@@ -196,6 +203,123 @@ namespace beng
     const blib::graphics::SkinModel* SkinnedMeshComponent::getModel() const
     {
         return this->model;
+    }
+
+    blib::core::SaveStatus SkinnedMeshComponent::save(_In blib::core::IOutputStream& os) const
+    {
+        blib::core::json::JsonValue doc = blib::core::json::JsonValue::makeObject();
+
+        // Полное содержимое модели или null («модель не загружена»)
+        if (this->model)
+        {
+            doc.set(keyModel, this->model->toJson());
+        }
+        else
+        {
+            doc.set(keyModel, blib::core::json::JsonValue(nullptr));
+        }
+        doc.set(keyIsActive, blib::core::json::JsonValue(isActive));
+
+        if (__blib_unlikely(doc.writeTo(os) != blib::core::json::JsonError::None))
+        {
+            __blib_return_error(blib::core::SaveStatus::WriteFailed,
+                "SkinnedMeshComponent: failed to write JSON to stream");
+        }
+        return blib::core::SaveStatus::None;
+    }
+
+    blib::core::LoadStatus SkinnedMeshComponent::load(_In blib::core::IInputStream& is)
+    {
+        blib::core::json::JsonParser parser;
+        blib::core::json::JsonValue doc;
+        if (__blib_unlikely(parser.parse(is, doc) != blib::core::json::JsonError::None))
+        {
+            __blib_return_error(blib::core::LoadStatus::InvalidData,
+                "SkinnedMeshComponent: failed to parse JSON from stream");
+        }
+
+        // Валидация полей компонента ДО применения (модель валидирует
+        // SkinModel::fromJson — состояние при ошибке не меняется)
+        if (__blib_unlikely(!doc.isObject()) ||
+            __blib_unlikely(!doc.has(keyModel)) ||
+            __blib_unlikely(!doc.has(keyIsActive) || !doc.get(keyIsActive).isBool()))
+        {
+            __blib_return_error(blib::core::LoadStatus::InvalidData,
+                "SkinnedMeshComponent: missing or malformed field");
+        }
+
+        const blib::core::json::JsonValue& modelNode = doc.get(keyModel);
+        if (modelNode.isNull())
+        {
+            // «Модель не загружена» — выгрузить текущую
+            this->unload();
+            isActive = doc.get(keyIsActive).asBool();
+            return blib::core::LoadStatus::None;
+        }
+
+        // Модель в файле есть — аллоцировать при отсутствии
+        // (GlobalAllocator + placement new, как в loadFromFile)
+        if (this->model == nullptr)
+        {
+            this->model = static_cast<blib::graphics::SkinModel*>(
+                blib::memory::GlobalAllocator::instance().allocate(sizeof(blib::graphics::SkinModel)));
+            if (__blib_unlikely(this->model == nullptr))
+            {
+                __blib_return_error(blib::core::LoadStatus::ReadFailed,
+                    "SkinnedMeshComponent: failed to allocate SkinModel");
+            }
+            new (this->model) blib::graphics::SkinModel();
+        }
+
+        // Восстановить содержимое модели целиком (скелет, веса,
+        // геометрия, материалы, клипы). Перезапись ЗАПЕЧЁННОЙ модели
+        // требует живого RenderContext — см. SkinModel::fromJson
+        if (__blib_unlikely(this->model->fromJson(modelNode) != blib::core::LoadStatus::None))
+        {
+            __blib_return_error(blib::core::LoadStatus::InvalidData,
+                "SkinnedMeshComponent: malformed model data");
+        }
+
+        isActive = doc.get(keyIsActive).asBool();
+
+        return blib::core::LoadStatus::None;
+    }
+
+    bool SkinnedMeshComponent::strongCompare(_In const blib::core::IStrongComparable& other,
+        _In blib::core::CompareSession& session) const
+    {
+        // Защита от циклов
+        if (!session.enter(this, &other))
+        {
+            return true;
+        }
+
+        const SkinnedMeshComponent& o = static_cast<const SkinnedMeshComponent&>(other);
+
+        // Базовые поля + модель: null-состояние должно совпадать, а
+        // при наличии моделей — полное сравнение их содержимого
+        if (getOwnerId() != o.getOwnerId() || isActive != o.isActive)
+        {
+            return false;
+        }
+        if ((model == nullptr) != (o.model == nullptr))
+        {
+            return false;
+        }
+        if (model && !model->strongCompare(*o.model, session))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool SkinnedMeshComponent::verify() const
+    {
+        // Round-trip без RTTI (см. blib::core::verifyRoundTrip).
+        // Валидируется сериализуемое состояние — CPU-содержимое
+        // модели (GL-кэш в него не входит)
+        return blib::core::verifyRoundTrip(*this);
     }
 
 } // namespace beng

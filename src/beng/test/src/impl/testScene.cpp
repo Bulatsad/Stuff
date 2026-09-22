@@ -10,9 +10,28 @@ struct SceneTestComponentA : public beng::IComponent
 {
     static constexpr const char* componentTypeName = "test.SceneA";
 
+    using blib::core::IStrongComparable::strongCompare;
+
     explicit SceneTestComponentA(bint32 v)
         : value(v)
     {
+    }
+
+    bool strongCompare(_In const blib::core::IStrongComparable& other,
+        _In blib::core::CompareSession& session) const __blib_override
+    {
+        if (!session.enter(this, &other))
+        {
+            return true;
+        }
+        const SceneTestComponentA& o = static_cast<const SceneTestComponentA&>(other);
+        return getOwnerId() == o.getOwnerId() && isActive == o.isActive && value == o.value;
+    }
+
+    // Не сериализуем (save/load Unsupported) — round-trip неприменим
+    bool verify() const __blib_override
+    {
+        return false;
     }
 
     bint32 value;
@@ -22,9 +41,28 @@ struct SceneTestComponentB : public beng::IComponent
 {
     static constexpr const char* componentTypeName = "test.SceneB";
 
+    using blib::core::IStrongComparable::strongCompare;
+
     explicit SceneTestComponentB(float v)
         : value(v)
     {
+    }
+
+    bool strongCompare(_In const blib::core::IStrongComparable& other,
+        _In blib::core::CompareSession& session) const __blib_override
+    {
+        if (!session.enter(this, &other))
+        {
+            return true;
+        }
+        const SceneTestComponentB& o = static_cast<const SceneTestComponentB&>(other);
+        return getOwnerId() == o.getOwnerId() && isActive == o.isActive && value == o.value;
+    }
+
+    // Не сериализуем (save/load Unsupported) — round-trip неприменим
+    bool verify() const __blib_override
+    {
+        return false;
     }
 
     float value;

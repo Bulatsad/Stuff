@@ -8,11 +8,51 @@
 struct RegistryTestComponentA : public beng::IComponent
 {
     static constexpr const char* componentTypeName = "test.RegistryA";
+
+    using blib::core::IStrongComparable::strongCompare;
+
+    // Данных нет: сравниваются только базовые поля IComponent
+    bool strongCompare(_In const blib::core::IStrongComparable& other,
+        _In blib::core::CompareSession& session) const __blib_override
+    {
+        if (!session.enter(this, &other))
+        {
+            return true;
+        }
+        const RegistryTestComponentA& o = static_cast<const RegistryTestComponentA&>(other);
+        return getOwnerId() == o.getOwnerId() && isActive == o.isActive;
+    }
+
+    // Не сериализуем (save/load Unsupported) — round-trip неприменим
+    bool verify() const __blib_override
+    {
+        return false;
+    }
 };
 
 struct RegistryTestComponentB : public beng::IComponent
 {
     static constexpr const char* componentTypeName = "test.RegistryB";
+
+    using blib::core::IStrongComparable::strongCompare;
+
+    // Данных нет: сравниваются только базовые поля IComponent
+    bool strongCompare(_In const blib::core::IStrongComparable& other,
+        _In blib::core::CompareSession& session) const __blib_override
+    {
+        if (!session.enter(this, &other))
+        {
+            return true;
+        }
+        const RegistryTestComponentB& o = static_cast<const RegistryTestComponentB&>(other);
+        return getOwnerId() == o.getOwnerId() && isActive == o.isActive;
+    }
+
+    // Не сериализуем (save/load Unsupported) — round-trip неприменим
+    bool verify() const __blib_override
+    {
+        return false;
+    }
 };
 
 BLIB_TEST_CASE("registry: isRegisteredComponentType reflects registration state")

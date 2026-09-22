@@ -1,7 +1,17 @@
 #include <beng/client/components/animatorComponent.h>
 
+#include <blib/core/json/json.h>
+#include <blib/core/verifyHelper.h>
+
 namespace beng
 {
+    namespace
+    {
+        // Ключи JSON-объекта компонента (формат save/load)
+        constexpr const char* keyLoop = "loop";
+        constexpr const char* keyPoseDirty = "poseDirty";
+        constexpr const char* keyIsActive = "isActive";
+    }
     AnimatorComponent::AnimatorComponent()
         : animator(nullptr)
         , loop(true)
@@ -130,6 +140,78 @@ namespace beng
     void AnimatorComponent::clearPoseDirty()
     {
         this->poseDirty = false;
+    }
+
+    blib::core::SaveStatus AnimatorComponent::save(_In blib::core::IOutputStream& os) const
+    {
+        blib::core::json::JsonValue doc = blib::core::json::JsonValue::makeObject();
+
+        doc.set(keyLoop, blib::core::json::JsonValue(loop));
+        doc.set(keyPoseDirty, blib::core::json::JsonValue(poseDirty));
+        doc.set(keyIsActive, blib::core::json::JsonValue(isActive));
+
+        if (__blib_unlikely(doc.writeTo(os) != blib::core::json::JsonError::None))
+        {
+            __blib_return_error(blib::core::SaveStatus::WriteFailed,
+                "AnimatorComponent: failed to write JSON to stream");
+        }
+        return blib::core::SaveStatus::None;
+    }
+
+    blib::core::LoadStatus AnimatorComponent::load(_In blib::core::IInputStream& is)
+    {
+        blib::core::json::JsonParser parser;
+        blib::core::json::JsonValue doc;
+        if (__blib_unlikely(parser.parse(is, doc) != blib::core::json::JsonError::None))
+        {
+            __blib_return_error(blib::core::LoadStatus::InvalidData,
+                "AnimatorComponent: failed to parse JSON from stream");
+        }
+
+        // Валидация всех полей до применения (при ошибке состояние не меняется)
+        if (__blib_unlikely(!doc.isObject()) ||
+            __blib_unlikely(!doc.has(keyLoop) || !doc.get(keyLoop).isBool()) ||
+            __blib_unlikely(!doc.has(keyPoseDirty) || !doc.get(keyPoseDirty).isBool()) ||
+            __blib_unlikely(!doc.has(keyIsActive) || !doc.get(keyIsActive).isBool()))
+        {
+            __blib_return_error(blib::core::LoadStatus::InvalidData,
+                "AnimatorComponent: missing or malformed field");
+        }
+
+        loop = doc.get(keyLoop).asBool();
+        poseDirty = doc.get(keyPoseDirty).asBool();
+        isActive = doc.get(keyIsActive).asBool();
+        // animator — контекст, не восстанавливается
+
+        return blib::core::LoadStatus::None;
+    }
+
+    bool AnimatorComponent::strongCompare(_In const blib::core::IStrongComparable& other,
+        _In blib::core::CompareSession& session) const
+    {
+        // Защита от циклов
+        if (!session.enter(this, &other))
+        {
+            return true;
+        }
+
+        const AnimatorComponent& o = static_cast<const AnimatorComponent&>(other);
+
+        // Базовые поля + собственные данные. animator — контекст:
+        // сравнение по null-состоянию (привязан / не привязан)
+        return getOwnerId() == o.getOwnerId() &&
+            isActive == o.isActive &&
+            loop == o.loop &&
+            poseDirty == o.poseDirty &&
+            ((animator == nullptr) == (o.animator == nullptr));
+    }
+
+    bool AnimatorComponent::verify() const
+    {
+        // Round-trip без RTTI (см. blib::core::verifyRoundTrip).
+        // У компонента с привязанным аниматором честно вернёт false:
+        // standalone-копия аниматора не восстанавливает
+        return blib::core::verifyRoundTrip(*this);
     }
 
 } // namespace beng

@@ -7,9 +7,28 @@ struct EntityTestComponent : public beng::IComponent
 {
     static constexpr const char* componentTypeName = "test.Entity";
 
+    using blib::core::IStrongComparable::strongCompare;
+
     explicit EntityTestComponent(bint32 v)
         : value(v)
     {
+    }
+
+    bool strongCompare(_In const blib::core::IStrongComparable& other,
+        _In blib::core::CompareSession& session) const __blib_override
+    {
+        if (!session.enter(this, &other))
+        {
+            return true;
+        }
+        const EntityTestComponent& o = static_cast<const EntityTestComponent&>(other);
+        return getOwnerId() == o.getOwnerId() && isActive == o.isActive && value == o.value;
+    }
+
+    // Не сериализуем (save/load Unsupported) — round-trip неприменим
+    bool verify() const __blib_override
+    {
+        return false;
     }
 
     bint32 value;

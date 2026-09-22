@@ -6,6 +6,8 @@
 #include <assimp/scene.h>
 
 #include <blib/config.h>
+#include <blib/core/isaveloadable.h>
+#include <blib/core/json/json.h>
 #include <blib/graphics/bone.h>
 #include <blib/graphics/animationclip.h>
 
@@ -13,7 +15,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_graphics_api Skelet 
+        class __blib_graphics_api Skelet : public blib::core::ISaveLoadable
         {
         public:
             blib::graphics::Bone* root = nullptr;
@@ -76,6 +78,27 @@ namespace blib
             std::vector<blib::graphics::Bone>& getBoneStorage();
             const std::vector<blib::graphics::Bone>& getBoneStorage() const;
             const std::vector<blib::graphics::TransformMatrix>& getFinalMatrices() const;
+
+            // ========== ISaveLoadable: сериализация и сравнение ==========
+            //
+            // Формат toJson: {bones[{...bone.toJson(), parentIndex}],
+            // rootIndex}. Иерархия (parent/childs IHierarchal) НЕ пишется
+            // внутрь костей — восстанавливается fromJson по parentIndex
+            // (setParent/addChild) + computeBindPose() пересчитывает
+            // finalMatrices. Bone::node (aiNode*) — контекст Assimp,
+            // после JSON-восстановления nullptr (рантайм на нём не
+            // зависит). fromJson валидирует всё до применения.
+            // Не прятать 1-аргументную точку входа строгого сравнения.
+
+            using blib::core::IStrongComparable::strongCompare;
+
+            blib::core::json::JsonValue toJson() const;
+            blib::core::LoadStatus fromJson(_In const blib::core::json::JsonValue& json);
+            blib::core::SaveStatus save(_In blib::core::IOutputStream& os) const __blib_override;
+            blib::core::LoadStatus load(_In blib::core::IInputStream& is) __blib_override;
+            bool strongCompare(_In const blib::core::IStrongComparable& other,
+                _In blib::core::CompareSession& session) const __blib_override;
+            bool verify() const __blib_override;
 
         private:
             std::vector<blib::graphics::Bone> boneStorage;

@@ -52,6 +52,10 @@
 | **ComponentPool** | Пул компонентов одного типа в сцене; итераторы `begin()/end()` обходят только активные компоненты (`isActive`), `*it` → `T&`, владелец — `it.getEntityId()`. | BENG.md |
 | **Активный компонент (`isActive`)** | Флаг `IComponent::isActive` (по умолчанию `true`): неактивные компоненты пропускаются итераторами `ComponentPool`, но остаются в пуле и считаются в `size()`. | BENG.md |
 | **ComponentType / ComponentMask** | `ComponentType` — локальный индекс типа в сцене (бит в `ComponentMask`, лимит 64 типа на сцену); регистрация — per-scene, до запуска цикла. | BENG.md |
+| **Строгое сравнение (`strongCompare`)** | Бит-в-бит сравнение объектов: все значения класса совпадают; указатели сравниваются по содержимому (для `IStrongComparable`) или по null-состоянию (контекстные); циклы разрешает `CompareSession`; `operator==` возвращает `strongCompare`. | icomparable.h |
+| **`CompareSession`** | Контекст одного сеанса строгого сравнения: множество пар указателей «в процессе сравнения» — защита от бесконечной рекурсии на циклических графах объектов. | icomparable.h |
+| **Round-trip verify** | Валидация сериализации: `save()` → поток → свежий объект того же типа → `load()` → `strongCompare`. Готовая реализация — `blib::core::verifyRoundTrip<T>` (без RTTI, требует default-конструктор). | isaveloadable.h |
+| **Контекстные указатели** | Поля-указатели на внешние объекты (`Scene*`, ассеты), которые `load()` не восстанавливает: не сериализуются, `strongCompare` сравнивает их по null-состоянию — standalone-verify = true, in-scene = false (строгая модель). | icomponent.h |
 
 ## game / Gravelands
 

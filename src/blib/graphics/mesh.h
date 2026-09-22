@@ -6,6 +6,7 @@
 
 #include <blib/config.h>
 #include <blib/blibint.h>
+#include <blib/core/isaveloadable.h>
 #include <blib/graphics/vertex.h>
 #include <blib/graphics/renderWindow.h>
 #include <blib/graphics/drawable.h>
@@ -30,7 +31,8 @@ namespace blib
             TriangleStrip = 0x10
         };
 
-        class __blib_graphics_api Mesh : public blib::graphics::IDrawable, public blib::graphics::ITransformable
+        class __blib_graphics_api Mesh : public blib::graphics::IDrawable, public blib::graphics::ITransformable,
+            public blib::core::ISaveLoadable
         {
         private:
             void* ctx;
@@ -73,6 +75,26 @@ namespace blib
             // ������������ ����� IDrawable
             virtual void draw(blib::graphics::RenderContext& ctx) const override;
             void draw(blib::graphics::RenderContext& ctx, const std::vector<blib::graphics::TransformMatrix>* pBoneMatrices) const;
+
+            // ========== ISaveLoadable: сериализация и сравнение ==========
+            //
+            // Сериализуется вся CPU-геометрия + материал (включая
+            // битмап диффуза). GL-состояние (ctx, шейдеры, baked) НЕ
+            // сериализуемо: fromJson пересоздаёт меш (destroy +
+            // placement new — move-присваивание удалено), свежий меш
+            // перезапечётся в draw(). ПЕРЕЗАПИСЬ ЗАПЕЧЁННОГО МЕША
+            // требует живого RenderContext (деструктор освобождает GL).
+            // Не прятать 1-аргументную точку входа строгого сравнения.
+
+            using blib::core::IStrongComparable::strongCompare;
+
+            blib::core::json::JsonValue toJson() const;
+            blib::core::LoadStatus fromJson(_In const blib::core::json::JsonValue& json);
+            blib::core::SaveStatus save(_In blib::core::IOutputStream& os) const __blib_override;
+            blib::core::LoadStatus load(_In blib::core::IInputStream& is) __blib_override;
+            bool strongCompare(_In const blib::core::IStrongComparable& other,
+                _In blib::core::CompareSession& session) const __blib_override;
+            bool verify() const __blib_override;
         };
     }
 }

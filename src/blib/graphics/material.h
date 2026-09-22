@@ -8,6 +8,8 @@
 #include <blib/utilmacro.h>
 
 #include <blib/core/folder.h>
+#include <blib/core/isaveloadable.h>
+#include <blib/core/json/json.h>
 #include <blib/graphics/vector.h>
 #include <blib/graphics/texture.h>
 #include <blib/graphics/image.h>
@@ -39,7 +41,7 @@ namespace blib
             Toon = 1
         };
 
-        class __blib_graphics_api Material 
+        class __blib_graphics_api Material : public blib::core::ISaveLoadable
         {
         public:
 
@@ -113,7 +115,29 @@ namespace blib
             // Возвращает GL-текстуру диффуза, если она была создана
             // (см. реализацию в material.cpp: контекст рендера обязан
             // быть жив на момент уничтожения материала)
-            ~Material();
+            ~Material() __blib_override;
+
+            // ========== ISaveLoadable: сериализация и сравнение ==========
+            //
+            // Сериализуются ТОЛЬКО CPU-поля (включая diffuseImage —
+            // «диффузная текстура» как битмап). GL-хендлы Texture
+            // (diffuse/pSpecularExponent) и pRenderContext НЕ
+            // сериализуемы: текстуры пересоздаются bake() из
+            // diffuseImage. fromJson валидирует всё до применения и не
+            // трогает GL-состояние (load на уже запечённом материале
+            // оставляет старые GL-текстуры — вызывающий обязан
+            // позаботиться о RenderContext).
+            // Не прятать 1-аргументную точку входа строгого сравнения.
+
+            using blib::core::IStrongComparable::strongCompare;
+
+            blib::core::json::JsonValue toJson() const;
+            blib::core::LoadStatus fromJson(_In const blib::core::json::JsonValue& json);
+            blib::core::SaveStatus save(_In blib::core::IOutputStream& os) const __blib_override;
+            blib::core::LoadStatus load(_In blib::core::IInputStream& is) __blib_override;
+            bool strongCompare(_In const blib::core::IStrongComparable& other,
+                _In blib::core::CompareSession& session) const __blib_override;
+            bool verify() const __blib_override;
 
         private:
             // Контекст рендера, которым была создана GL-текстура

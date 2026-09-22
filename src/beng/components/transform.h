@@ -59,8 +59,12 @@ namespace beng
     {
     public:
         // Стабильное имя типа — идентичность типа в таблице типов Scene
-        // (регистрация, резолв в шаблонных методах, будущий save/load)
+        // (регистрация, резолв в шаблонных методах, save/load)
         static constexpr const char* componentTypeName = "beng.Transform";
+
+        // Не прятать 1-аргументную точку входа строгого сравнения
+        // (IStrongComparable::strongCompare(other)) за перегрузкой ниже
+        using blib::core::IStrongComparable::strongCompare;
 
         /**
          * Конструктор TransformComponent.
@@ -74,6 +78,53 @@ namespace beng
          * - parent = invalidEntity (нет родителя)
          */
         explicit TransformComponent(_In Scene* scene);
+
+        /**
+         * Конструктор по умолчанию: компонент вне сцены (ownerScene = nullptr).
+         * Нужен verifyRoundTrip (ISaveLoadable::verify) — временная копия
+         * конструируется без контекста сцены.
+         */
+        TransformComponent();
+
+        // ========== ISaveLoadable: сериализация и сравнение ==========
+        //
+        // Формат save: JSON-объект (JsonValue::writeTo) с локальным TRS,
+        // иерархией (parent/children), кешем мировой матрицы и isActive.
+        // Контекст НЕ сериализуется: ownerScene и ownerId — забота
+        // Scene::save/load (будущее); поэтому verify() без сцены — true,
+        // компонента в сцене — false (строгая модель, см. ISaveLoadable).
+
+        /**
+         * Сохранить состояние компонента в поток (JSON-объект).
+         *
+         * @param os Выходной поток
+         * @return SaveStatus::None при успехе
+         */
+        blib::core::SaveStatus save(_In blib::core::IOutputStream& os) const __blib_override;
+
+        /**
+         * Загрузить состояние компонента из потока (JSON-объект).
+         *
+         * @param is Входной поток
+         * @return LoadStatus::None при успехе
+         *
+         * ownerScene не восстанавливается (контекст) — его вернёт
+         * будущий Scene::load через onLoaded/привязку к сцене.
+         */
+        blib::core::LoadStatus load(_In blib::core::IInputStream& is) __blib_override;
+
+        /**
+         * Строгое (бит-в-бит) сравнение: базовые поля + TRS + иерархия +
+         * кеш мировой матрицы. ownerScene сравнивается по null-состоянию.
+         */
+        bool strongCompare(_In const blib::core::IStrongComparable& other,
+            _In blib::core::CompareSession& session) const __blib_override;
+
+        /**
+         * Round-trip валидация (verifyRoundTrip): save -> свежий
+         * standalone-объект -> load -> strongCompare.
+         */
+        bool verify() const __blib_override;
 
         // ========== Local Transform (относительно родителя) ==========
 

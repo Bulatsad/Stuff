@@ -1,11 +1,88 @@
 #include <beng/components/transform.h>
 #include <beng/core/scene.h>
 #include <blib/core/console/console.h>
+#include <blib/core/json/json.h>
+#include <blib/core/verifyHelper.h>
 
 namespace beng
 {
     namespace
     {
+        // Ключи JSON-объекта компонента (формат save/load) — именованные
+        // константы по правилу про вшитые строки
+        constexpr const char* keyPosition = "position";
+        constexpr const char* keyRotation = "rotation";
+        constexpr const char* keyScale = "scale";
+        constexpr const char* keyParent = "parent";
+        constexpr const char* keyChildren = "children";
+        constexpr const char* keyWorldMatrix = "worldMatrix";
+        constexpr const char* keyWorldMatrixDirty = "worldMatrixDirty";
+        constexpr const char* keyIsActive = "isActive";
+
+        // Размерности сериализуемых структур (квадратная матрица 4x4)
+        constexpr buint32 matrixDim = 4;
+        constexpr buint32 vector3Size = 3;
+        constexpr buint32 quaternionSize = 4;
+
+        // Чтение массива из 3 чисел с проверкой размера (Vector3).
+        // false — ключ отсутствует, не массив или неверной длины
+        bool readVector3(_In const blib::core::json::JsonValue& doc, _In const char* key,
+            _Out blib::math::Vector<float, 3>& out)
+        {
+            if (!doc.has(key))
+            {
+                return false;
+            }
+            const blib::core::json::JsonValue& arr = doc.get(key);
+            if (!arr.isArray() || arr.size() != vector3Size)
+            {
+                return false;
+            }
+            out = blib::math::Vector<float, 3>(
+                arr[0].asBfloat(), arr[1].asBfloat(), arr[2].asBfloat());
+            return true;
+        }
+
+        // Чтение массива из 4 чисел с проверкой размера (Quaternion).
+        bool readQuaternion(_In const blib::core::json::JsonValue& doc, _In const char* key,
+            _Out blib::math::Quaternion<float>& out)
+        {
+            if (!doc.has(key))
+            {
+                return false;
+            }
+            const blib::core::json::JsonValue& arr = doc.get(key);
+            if (!arr.isArray() || arr.size() != quaternionSize)
+            {
+                return false;
+            }
+            out = blib::math::Quaternion<float>(
+                arr[3].asBfloat(), arr[0].asBfloat(), arr[1].asBfloat(), arr[2].asBfloat());
+            return true;
+        }
+
+        // Чтение булева поля с проверкой типа.
+        bool readBool(_In const blib::core::json::JsonValue& doc, _In const char* key, _Out bool& out)
+        {
+            if (!doc.has(key) || !doc.get(key).isBool())
+            {
+                return false;
+            }
+            out = doc.get(key).asBool();
+            return true;
+        }
+
+        // Чтение EntityID (buint64) с проверкой типа.
+        bool readEntity(_In const blib::core::json::JsonValue& doc, _In const char* key, _Out EntityID& out)
+        {
+            if (!doc.has(key) || !doc.get(key).isNumber())
+            {
+                return false;
+            }
+            out = static_cast<EntityID>(doc.get(key).asBuint64());
+            return true;
+        }
+
         // Сборка локальной TRS-матрицы из позиции/вращения/масштаба.
         // Раскладка согласована с blib::graphics::composeMatrix и
         // ITransformable: data[row][col], трансляция — в последней
@@ -62,6 +139,11 @@ namespace beng
     {
         // Инициализировать мировую матрицу как identity
         worldMatrix.loadIdentity();
+    }
+
+    TransformComponent::TransformComponent()
+        : TransformComponent(nullptr)
+    {
     }
 
     void TransformComponent::setLocalPosition(const blib::math::Vector<float, 3>& pos)
@@ -274,6 +356,213 @@ namespace beng
         }
 
         worldMatrixDirty = false;
+    }
+
+    blib::core::SaveStatus TransformComponent::save(_In blib::core::IOutputStream& os) const
+    {
+        blib::core::json::JsonValue doc = blib::core::json::JsonValue::makeObject();
+
+        // Локальный TRS: массивы [x, y, z] / [x, y, z, w]
+        blib::core::json::JsonValue& pos = doc.set(keyPosition, blib::core::json::JsonValue::makeArray());
+        pos.pushBack(blib::core::json::JsonValue(localPosition.x));
+        pos.pushBack(blib::core::json::JsonValue(localPosition.y));
+        pos.pushBack(blib::core::json::JsonValue(localPosition.z));
+
+        blib::core::json::JsonValue& rot = doc.set(keyRotation, blib::core::json::JsonValue::makeArray());
+        rot.pushBack(blib::core::json::JsonValue(localRotation.x));
+        rot.pushBack(blib::core::json::JsonValue(localRotation.y));
+        rot.pushBack(blib::core::json::JsonValue(localRotation.z));
+        rot.pushBack(blib::core::json::JsonValue(localRotation.w));
+
+        blib::core::json::JsonValue& scale = doc.set(keyScale, blib::core::json::JsonValue::makeArray());
+        scale.pushBack(blib::core::json::JsonValue(localScale.x));
+        scale.pushBack(blib::core::json::JsonValue(localScale.y));
+        scale.pushBack(blib::core::json::JsonValue(localScale.z));
+
+        // Иерархия: parent + children (EntityID, ownerId не пишется —
+        // владение восстанавливает Scene::load в будущем)
+        doc.set(keyParent, blib::core::json::JsonValue(parent));
+        blib::core::json::JsonValue& childrenArr =
+            doc.set(keyChildren, blib::core::json::JsonValue::makeArray());
+        for (EntityID childId : children)
+        {
+            childrenArr.pushBack(blib::core::json::JsonValue(childId));
+        }
+
+        // Кеш мировой матрицы: сериализуется целиком (контракт «всё
+        // состояние бит-в-бит», включая кэши — см. ISaveable)
+        blib::core::json::JsonValue& matArr =
+            doc.set(keyWorldMatrix, blib::core::json::JsonValue::makeArray());
+        for (buint32 i = 0; i < matrixDim; ++i)
+        {
+            for (buint32 j = 0; j < matrixDim; ++j)
+            {
+                matArr.pushBack(blib::core::json::JsonValue(worldMatrix.data[i][j]));
+            }
+        }
+        doc.set(keyWorldMatrixDirty, blib::core::json::JsonValue(worldMatrixDirty));
+        doc.set(keyIsActive, blib::core::json::JsonValue(isActive));
+
+        if (__blib_unlikely(doc.writeTo(os) != blib::core::json::JsonError::None))
+        {
+            __blib_return_error(blib::core::SaveStatus::WriteFailed,
+                "TransformComponent: failed to write JSON to stream");
+        }
+        return blib::core::SaveStatus::None;
+    }
+
+    blib::core::LoadStatus TransformComponent::load(_In blib::core::IInputStream& is)
+    {
+        blib::core::json::JsonParser parser;
+        blib::core::json::JsonValue doc;
+        if (__blib_unlikely(parser.parse(is, doc) != blib::core::json::JsonError::None))
+        {
+            __blib_return_error(blib::core::LoadStatus::InvalidData,
+                "TransformComponent: failed to parse JSON from stream");
+        }
+        if (__blib_unlikely(!doc.isObject()))
+        {
+            __blib_return_error(blib::core::LoadStatus::InvalidData,
+                "TransformComponent: root is not a JSON object");
+        }
+
+        // Сначала читаем всё в локальные переменные: при ошибке данных
+        // состояние компонента остаётся нетронутым
+        blib::math::Vector<float, 3> pos;
+        blib::math::Quaternion<float> rot;
+        blib::math::Vector<float, 3> scale;
+        EntityID parentId;
+        bool dirty;
+        bool active;
+        if (__blib_unlikely(!readVector3(doc, keyPosition, pos)) ||
+            __blib_unlikely(!readQuaternion(doc, keyRotation, rot)) ||
+            __blib_unlikely(!readVector3(doc, keyScale, scale)) ||
+            __blib_unlikely(!readEntity(doc, keyParent, parentId)) ||
+            __blib_unlikely(!readBool(doc, keyWorldMatrixDirty, dirty)) ||
+            __blib_unlikely(!readBool(doc, keyIsActive, active)) ||
+            __blib_unlikely(!doc.has(keyChildren)) ||
+            __blib_unlikely(!doc.get(keyChildren).isArray()))
+        {
+            __blib_return_error(blib::core::LoadStatus::InvalidData,
+                "TransformComponent: missing or malformed scalar field");
+        }
+
+        // Список детей
+        const blib::core::json::JsonValue& childrenArr = doc.get(keyChildren);
+        std::vector<EntityID> loadedChildren;
+        loadedChildren.reserve(childrenArr.size());
+        for (buint32 i = 0; i < childrenArr.size(); ++i)
+        {
+            loadedChildren.push_back(static_cast<EntityID>(childrenArr[i].asBuint64()));
+        }
+
+        // Кеш мировой матрицы: ровно 16 чисел в порядке data[i][j]
+        if (__blib_unlikely(!doc.has(keyWorldMatrix)))
+        {
+            __blib_return_error(blib::core::LoadStatus::InvalidData,
+                "TransformComponent: missing world matrix field");
+        }
+        const blib::core::json::JsonValue& matArr = doc.get(keyWorldMatrix);
+        if (__blib_unlikely(!matArr.isArray() || matArr.size() != matrixDim * matrixDim))
+        {
+            __blib_return_error(blib::core::LoadStatus::InvalidData,
+                "TransformComponent: world matrix must be an array of %u numbers",
+                static_cast<unsigned int>(matrixDim * matrixDim));
+        }
+        blib::math::Matrix<float, 4, 4> loadedMatrix;
+        loadedMatrix.loadIdentity();
+        buint32 matIndex = 0;
+        for (buint32 i = 0; i < matrixDim; ++i)
+        {
+            for (buint32 j = 0; j < matrixDim; ++j)
+            {
+                loadedMatrix.data[i][j] = matArr[matIndex].asBfloat();
+                ++matIndex;
+            }
+        }
+
+        // Все поля валидны — применить состояние.
+        // ownerScene/ownerId не восстанавливаются (контекст)
+        localPosition = pos;
+        localRotation = rot;
+        localScale = scale;
+        parent = parentId;
+        children = loadedChildren;
+        worldMatrix = loadedMatrix;
+        worldMatrixDirty = dirty;
+        isActive = active;
+
+        return blib::core::LoadStatus::None;
+    }
+
+    bool TransformComponent::strongCompare(_In const blib::core::IStrongComparable& other,
+        _In blib::core::CompareSession& session) const
+    {
+        // Защита от циклов: пара уже сравнивается — считаем равной
+        if (!session.enter(this, &other))
+        {
+            return true;
+        }
+
+        const TransformComponent& o = static_cast<const TransformComponent&>(other);
+
+        // Базовые поля IComponent. ownerId сравнивается: строгая модель —
+        // standalone-копия (invalidEntity) не равна компоненту в сцене
+        if (getOwnerId() != o.getOwnerId() || isActive != o.isActive)
+        {
+            return false;
+        }
+
+        // Локальный TRS (бит-в-бит; NaN не сериализуем и не сравним)
+        if (localPosition != o.localPosition || localScale != o.localScale)
+        {
+            return false;
+        }
+        if (localRotation.w != o.localRotation.w ||
+            localRotation.x != o.localRotation.x ||
+            localRotation.y != o.localRotation.y ||
+            localRotation.z != o.localRotation.z)
+        {
+            return false;
+        }
+
+        // Иерархия
+        if (parent != o.parent || children != o.children)
+        {
+            return false;
+        }
+
+        // Кеш мировой матрицы (сериализуется — сравнивается)
+        if (worldMatrixDirty != o.worldMatrixDirty)
+        {
+            return false;
+        }
+        for (buint32 i = 0; i < matrixDim; ++i)
+        {
+            for (buint32 j = 0; j < matrixDim; ++j)
+            {
+                if (worldMatrix.data[i][j] != o.worldMatrix.data[i][j])
+                {
+                    return false;
+                }
+            }
+        }
+
+        // Контекст: ownerScene не сериализуется — сравнение по
+        // null-состоянию (компонент в сцене ≠ standalone-копии)
+        if ((ownerScene == nullptr) != (o.ownerScene == nullptr))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool TransformComponent::verify() const
+    {
+        // Round-trip без RTTI: save -> свежий standalone-объект ->
+        // load -> strongCompare (см. blib::core::verifyRoundTrip)
+        return blib::core::verifyRoundTrip(*this);
     }
 
 } // namespace beng

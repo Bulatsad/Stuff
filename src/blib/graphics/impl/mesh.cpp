@@ -1,6 +1,7 @@
 #include <blib/graphics/mesh.h>
 
 #include <blib/core/console/console.h>
+#include <blib/core/verifyHelper.h>
 #include <blib/system/memory/globalAllocator.h>
 #include <blib/graphics/shaderPaths.h>
 
@@ -515,3 +516,399 @@ void blib::graphics::Mesh::draw(blib::graphics::RenderContext& ctx, const std::v
 //    }
 //    glPopMatrix();
 //}
+
+namespace
+{
+    // Ключи JSON-объекта меша (формат сериализации)
+    constexpr const char* meshKeyPrimitiveType = "primitiveType";
+    constexpr const char* meshKeyNgonEncoding = "ngonEncoding";
+    constexpr const char* meshKeyVertices = "vertices";
+    constexpr const char* meshKeyNormals = "normals";
+    constexpr const char* meshKeyTextureCoords = "textureCoords";
+    constexpr const char* meshKeyColors = "colors";
+    constexpr const char* meshKeyBoneIds = "boneIds";
+    constexpr const char* meshKeyBoneWeights = "boneWeights";
+    constexpr const char* meshKeyFaces = "faces";
+    constexpr const char* meshKeyMaterial = "material";
+
+    // Количество каналов цвета (RGBA) и размеры векторов
+    constexpr buint32 meshColorChannelCount = 4;
+    constexpr buint32 meshVector3Size = 3;
+    constexpr buint32 meshVector4Size = 4;
+
+    // -------- Запись примитивов в JSON --------
+
+    // Vector3f → массив [x, y, z]
+    blib::core::json::JsonValue meshVector3fToArray(_In const blib::graphics::Vector3f& v)
+    {
+        blib::core::json::JsonValue arr = blib::core::json::JsonValue::makeArray();
+        arr.pushBack(blib::core::json::JsonValue(v.x));
+        arr.pushBack(blib::core::json::JsonValue(v.y));
+        arr.pushBack(blib::core::json::JsonValue(v.z));
+        return arr;
+    }
+
+    // Vector4f → массив [x, y, z, w]
+    blib::core::json::JsonValue meshVector4fToArray(_In const blib::graphics::Vector4f& v)
+    {
+        blib::core::json::JsonValue arr = blib::core::json::JsonValue::makeArray();
+        arr.pushBack(blib::core::json::JsonValue(v.x));
+        arr.pushBack(blib::core::json::JsonValue(v.y));
+        arr.pushBack(blib::core::json::JsonValue(v.z));
+        arr.pushBack(blib::core::json::JsonValue(v.w));
+        return arr;
+    }
+
+    // Vector4i → массив [x, y, z, w]
+    blib::core::json::JsonValue meshVector4iToArray(_In const blib::graphics::Vector4i& v)
+    {
+        blib::core::json::JsonValue arr = blib::core::json::JsonValue::makeArray();
+        arr.pushBack(blib::core::json::JsonValue(v.x));
+        arr.pushBack(blib::core::json::JsonValue(v.y));
+        arr.pushBack(blib::core::json::JsonValue(v.z));
+        arr.pushBack(blib::core::json::JsonValue(v.w));
+        return arr;
+    }
+
+    // Color → массив [r, g, b, a]
+    blib::core::json::JsonValue meshColorToArray(_In const blib::graphics::Color& c)
+    {
+        blib::core::json::JsonValue arr = blib::core::json::JsonValue::makeArray();
+        arr.pushBack(blib::core::json::JsonValue(c.red));
+        arr.pushBack(blib::core::json::JsonValue(c.green));
+        arr.pushBack(blib::core::json::JsonValue(c.blue));
+        arr.pushBack(blib::core::json::JsonValue(c.alpha));
+        return arr;
+    }
+
+    // -------- Чтение примитивов из JSON (false — неверная форма) --------
+
+    bool meshReadVector3f(_In const blib::core::json::JsonValue& v, _Out blib::graphics::Vector3f& out)
+    {
+        if (!v.isArray() || v.size() != meshVector3Size)
+        {
+            return false;
+        }
+        out = blib::graphics::Vector3f(v[0].asBfloat(), v[1].asBfloat(), v[2].asBfloat());
+        return true;
+    }
+
+    bool meshReadVector4f(_In const blib::core::json::JsonValue& v, _Out blib::graphics::Vector4f& out)
+    {
+        if (!v.isArray() || v.size() != meshVector4Size)
+        {
+            return false;
+        }
+        out = blib::graphics::Vector4f(v[0].asBfloat(), v[1].asBfloat(), v[2].asBfloat(), v[3].asBfloat());
+        return true;
+    }
+
+    bool meshReadVector4i(_In const blib::core::json::JsonValue& v, _Out blib::graphics::Vector4i& out)
+    {
+        if (!v.isArray() || v.size() != meshVector4Size)
+        {
+            return false;
+        }
+        out = blib::graphics::Vector4i(
+            static_cast<int>(v[0].asBint64()),
+            static_cast<int>(v[1].asBint64()),
+            static_cast<int>(v[2].asBint64()),
+            static_cast<int>(v[3].asBint64()));
+        return true;
+    }
+
+    bool meshReadColor(_In const blib::core::json::JsonValue& v, _Out blib::graphics::Color& out)
+    {
+        if (!v.isArray() || v.size() != meshColorChannelCount)
+        {
+            return false;
+        }
+        out = blib::graphics::Color(
+            static_cast<buint8>(v[0].asBuint64()),
+            static_cast<buint8>(v[1].asBuint64()),
+            static_cast<buint8>(v[2].asBuint64()),
+            static_cast<buint8>(v[3].asBuint64()));
+        return true;
+    }
+
+    // Массив элементов одного вида: проверка формы каждого элемента.
+    // reader возвращает false → весь результат отбрасывается
+    template<typename T>
+    bool meshReadElementArray(_In const blib::core::json::JsonValue& arr,
+        _In bool (*reader)(_In const blib::core::json::JsonValue&, _Out T&),
+        _Out std::vector<T>& out)
+    {
+        out.clear();
+        if (!arr.isArray())
+        {
+            return false;
+        }
+        out.reserve(arr.size());
+        for (buint32 i = 0; i < arr.size(); ++i)
+        {
+            T value;
+            if (!reader(arr[i], value))
+            {
+                out.clear();
+                return false;
+            }
+            out.push_back(value);
+        }
+        return true;
+    }
+
+    // -------- Сравнение (поэлементное, без готовых операторов ==) --------
+
+    bool meshColorsEqual(_In const std::vector<blib::graphics::Color>& a,
+        _In const std::vector<blib::graphics::Color>& b)
+    {
+        if (a.size() != b.size())
+        {
+            return false;
+        }
+        for (size_t i = 0; i < a.size(); ++i)
+        {
+            if (a[i].red != b[i].red || a[i].green != b[i].green ||
+                a[i].blue != b[i].blue || a[i].alpha != b[i].alpha)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool meshFacesEqual(_In const std::vector<blib::graphics::Face>& a,
+        _In const std::vector<blib::graphics::Face>& b)
+    {
+        if (a.size() != b.size())
+        {
+            return false;
+        }
+        for (size_t i = 0; i < a.size(); ++i)
+        {
+            if (a[i].indices != b[i].indices)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool meshDataEqual(_In const blib::graphics::Mesh& a, _In const blib::graphics::Mesh& b)
+    {
+        if (a.ngonencoding != b.ngonencoding || a.primitiveType != b.primitiveType)
+        {
+            return false;
+        }
+        // Векторы Vector3f/Vector4i/Vector4f имеют операторы ==
+        if (a.vertices != b.vertices || a.normals != b.normals ||
+            a.textureCoords != b.textureCoords)
+        {
+            return false;
+        }
+        if (!meshColorsEqual(a.colors, b.colors))
+        {
+            return false;
+        }
+        if (a.boneIds != b.boneIds || a.boneWeights != b.boneWeights)
+        {
+            return false;
+        }
+        return meshFacesEqual(a.faces, b.faces);
+    }
+}
+
+blib::core::json::JsonValue blib::graphics::Mesh::toJson() const
+{
+    blib::core::json::JsonValue doc = blib::core::json::JsonValue::makeObject();
+
+    doc.set(meshKeyPrimitiveType, blib::core::json::JsonValue(static_cast<buint8>(this->primitiveType)));
+    doc.set(meshKeyNgonEncoding, blib::core::json::JsonValue(this->ngonencoding));
+
+    blib::core::json::JsonValue& verts = doc.set(meshKeyVertices, blib::core::json::JsonValue::makeArray());
+    for (const blib::graphics::Vector3f& v : this->vertices)
+    {
+        verts.pushBack(meshVector3fToArray(v));
+    }
+
+    blib::core::json::JsonValue& norms = doc.set(meshKeyNormals, blib::core::json::JsonValue::makeArray());
+    for (const blib::graphics::Vector3f& v : this->normals)
+    {
+        norms.pushBack(meshVector3fToArray(v));
+    }
+
+    blib::core::json::JsonValue& uvs = doc.set(meshKeyTextureCoords, blib::core::json::JsonValue::makeArray());
+    for (const blib::graphics::Vector3f& v : this->textureCoords)
+    {
+        uvs.pushBack(meshVector3fToArray(v));
+    }
+
+    blib::core::json::JsonValue& colors = doc.set(meshKeyColors, blib::core::json::JsonValue::makeArray());
+    for (const blib::graphics::Color& c : this->colors)
+    {
+        colors.pushBack(meshColorToArray(c));
+    }
+
+    blib::core::json::JsonValue& boneIds = doc.set(meshKeyBoneIds, blib::core::json::JsonValue::makeArray());
+    for (const blib::graphics::Vector4i& v : this->boneIds)
+    {
+        boneIds.pushBack(meshVector4iToArray(v));
+    }
+
+    blib::core::json::JsonValue& boneWeights = doc.set(meshKeyBoneWeights, blib::core::json::JsonValue::makeArray());
+    for (const blib::graphics::Vector4f& v : this->boneWeights)
+    {
+        boneWeights.pushBack(meshVector4fToArray(v));
+    }
+
+    blib::core::json::JsonValue& faces = doc.set(meshKeyFaces, blib::core::json::JsonValue::makeArray());
+    for (const blib::graphics::Face& face : this->faces)
+    {
+        blib::core::json::JsonValue faceArr = blib::core::json::JsonValue::makeArray();
+        for (buint32 index : face.indices)
+        {
+            faceArr.pushBack(blib::core::json::JsonValue(index));
+        }
+        faces.pushBack(faceArr);
+    }
+
+    // Материал (CPU-поля + битмап диффуза; GL-хендлы не сериализуемы)
+    doc.set(meshKeyMaterial, this->material.toJson());
+
+    return doc;
+}
+
+blib::core::LoadStatus blib::graphics::Mesh::fromJson(_In const blib::core::json::JsonValue& json)
+{
+    // Валидация формы ДО применения: при ошибке состояние не меняется
+    if (!json.isObject() ||
+        !json.has(meshKeyPrimitiveType) || !json.get(meshKeyPrimitiveType).isNumber() ||
+        !json.has(meshKeyNgonEncoding) || !json.get(meshKeyNgonEncoding).isBool() ||
+        !json.has(meshKeyVertices) || !json.has(meshKeyNormals) ||
+        !json.has(meshKeyTextureCoords) || !json.has(meshKeyColors) ||
+        !json.has(meshKeyBoneIds) || !json.has(meshKeyBoneWeights) ||
+        !json.has(meshKeyFaces) || !json.has(meshKeyMaterial))
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+
+    const blib::graphics::PrimitiveType primitiveType = static_cast<blib::graphics::PrimitiveType>(
+        json.get(meshKeyPrimitiveType).asBuint64());
+    const bool ngonEncoding = json.get(meshKeyNgonEncoding).asBool();
+
+    std::vector<blib::graphics::Vector3f> vertices;
+    std::vector<blib::graphics::Vector3f> normals;
+    std::vector<blib::graphics::Vector3f> textureCoords;
+    std::vector<blib::graphics::Color> colors;
+    std::vector<blib::graphics::Vector4i> boneIds;
+    std::vector<blib::graphics::Vector4f> boneWeights;
+    std::vector<blib::graphics::Face> faces;
+    if (!meshReadElementArray<blib::graphics::Vector3f>(
+            json.get(meshKeyVertices), meshReadVector3f, vertices) ||
+        !meshReadElementArray<blib::graphics::Vector3f>(
+            json.get(meshKeyNormals), meshReadVector3f, normals) ||
+        !meshReadElementArray<blib::graphics::Vector3f>(
+            json.get(meshKeyTextureCoords), meshReadVector3f, textureCoords) ||
+        !meshReadElementArray<blib::graphics::Color>(
+            json.get(meshKeyColors), meshReadColor, colors) ||
+        !meshReadElementArray<blib::graphics::Vector4i>(
+            json.get(meshKeyBoneIds), meshReadVector4i, boneIds) ||
+        !meshReadElementArray<blib::graphics::Vector4f>(
+            json.get(meshKeyBoneWeights), meshReadVector4f, boneWeights))
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+
+    // Грани: массив массивов индексов
+    const blib::core::json::JsonValue& facesArr = json.get(meshKeyFaces);
+    if (!facesArr.isArray())
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+    for (buint32 i = 0; i < facesArr.size(); ++i)
+    {
+        const blib::core::json::JsonValue& faceArr = facesArr[i];
+        if (!faceArr.isArray())
+        {
+            return blib::core::LoadStatus::InvalidData;
+        }
+        blib::graphics::Face face;
+        for (buint32 j = 0; j < faceArr.size(); ++j)
+        {
+            face.indices.push_back(static_cast<buint32>(faceArr[j].asBuint64()));
+        }
+        faces.push_back(face);
+    }
+
+    // Материал: валидация во временный объект (только CPU-поля)
+    blib::graphics::Material material;
+    if (__blib_unlikely(material.fromJson(json.get(meshKeyMaterial)) != blib::core::LoadStatus::None))
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+
+    // Все данные валидны — пересоздать меш поверх старого: GL-кэш
+    // (VAO/VBO/EBO/шейдеры) старой геометрии невалиден после
+    // перезаписи CPU-данных; свежий меш перезапечётся в draw().
+    // Перезапись ЗАПЕЧЁННОГО меша требует живого RenderContext
+    // (деструктор освобождает GL-ресурсы) — см. GRAPHICS.md
+    this->~Mesh();
+    new (this) blib::graphics::Mesh();
+
+    this->primitiveType = primitiveType;
+    this->ngonencoding = ngonEncoding;
+    this->vertices = std::move(vertices);
+    this->normals = std::move(normals);
+    this->textureCoords = std::move(textureCoords);
+    this->colors = std::move(colors);
+    this->boneIds = std::move(boneIds);
+    this->boneWeights = std::move(boneWeights);
+    this->faces = std::move(faces);
+    this->material = std::move(material);
+
+    return blib::core::LoadStatus::None;
+}
+
+blib::core::SaveStatus blib::graphics::Mesh::save(_In blib::core::IOutputStream& os) const
+{
+    const blib::core::json::JsonValue doc = this->toJson();
+    if (__blib_unlikely(doc.writeTo(os) != blib::core::json::JsonError::None))
+    {
+        return blib::core::SaveStatus::WriteFailed;
+    }
+    return blib::core::SaveStatus::None;
+}
+
+blib::core::LoadStatus blib::graphics::Mesh::load(_In blib::core::IInputStream& is)
+{
+    blib::core::json::JsonParser parser;
+    blib::core::json::JsonValue doc;
+    if (__blib_unlikely(parser.parse(is, doc) != blib::core::json::JsonError::None))
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+    return this->fromJson(doc);
+}
+
+bool blib::graphics::Mesh::strongCompare(_In const blib::core::IStrongComparable& other,
+    _In blib::core::CompareSession& session) const
+{
+    if (!session.enter(this, &other))
+    {
+        return true;
+    }
+
+    const blib::graphics::Mesh& o = static_cast<const blib::graphics::Mesh&>(other);
+
+    // Сравниваются только сериализуемые CPU-данные; GL-состояние
+    // (ctx, шейдеры, baked) не сериализуется и не сравнивается
+    return meshDataEqual(*this, o) &&
+        this->material.strongCompare(o.material, session);
+}
+
+bool blib::graphics::Mesh::verify() const
+{
+    // Round-trip без RTTI (см. blib::core::verifyRoundTrip).
+    // ПЕРЕЗАПИСЬ НЕЗАПЕЧЁННОГО меша безопасна без RenderContext
+    return blib::core::verifyRoundTrip(*this);
+}

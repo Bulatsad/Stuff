@@ -3,6 +3,8 @@
 #include <blib/config.h>
 
 #include <blib/core/console/console.h>
+#include <blib/core/isaveloadable.h>
+#include <blib/core/json/json.h>
 #include <blib/graphics/vector.h>
 #include <blib/graphics/transformMatrix.h>
 #include <blib/core/math/quaternion.h>
@@ -143,7 +145,7 @@ namespace blib
             }
         };
 
-        class __blib_graphics_api AnimationClip
+        class __blib_graphics_api AnimationClip : public blib::core::ISaveLoadable
         {
         public:
             // Элемент цепочки трансформа кости из файла анимации:
@@ -199,6 +201,23 @@ namespace blib
 
                 return true;
             }
+
+            // ========== ISaveLoadable: сериализация и сравнение ==========
+            //
+            // Сериализуются все данные клипа: имя, тайминги, cycled,
+            // каналы (позиция/вращение/масштаб с ключами) и boneChains
+            // (привязка к костям). Реализация — impl/animator.cpp.
+            // Не прятать 1-аргументную точку входа строгого сравнения.
+
+            using blib::core::IStrongComparable::strongCompare;
+
+            blib::core::json::JsonValue toJson() const;
+            blib::core::LoadStatus fromJson(_In const blib::core::json::JsonValue& json);
+            blib::core::SaveStatus save(_In blib::core::IOutputStream& os) const __blib_override;
+            blib::core::LoadStatus load(_In blib::core::IInputStream& is) __blib_override;
+            bool strongCompare(_In const blib::core::IStrongComparable& other,
+                _In blib::core::CompareSession& session) const __blib_override;
+            bool verify() const __blib_override;
         };
     }
 }

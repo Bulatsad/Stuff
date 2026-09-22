@@ -2,6 +2,8 @@
 
 #include <blib/graphics/skelet.h>
 #include <blib/graphics/skinmesh.h>
+#include <blib/graphics/skinmodel.h>
+#include <blib/core/memoryStream.h>
 
 #include <assimp/scene.h>
 
@@ -479,4 +481,189 @@ BLIB_TEST_CASE("skelet: adoptOffsetMatricesFrom is idempotent and does not touch
     // Источник не тронут
     BLIB_TEST_CHECK(hasTranslationOffset(candidateSkelet.find(headBoneName)[0], 3.0f, 0.0f, 0.0f));
     BLIB_TEST_CHECK(hasTranslationOffset(candidateSkelet.find(rootBoneName)[0], 0.0f, 0.0f, 0.0f));
+}
+
+// ============================================================
+// Сериализация (ISaveLoadable): round-trip и verify
+// ============================================================
+
+BLIB_TEST_CASE("serialization: image roundtrip and verify")
+{
+    // 3x2 RGBA с отличимыми пикселями
+    blib::graphics::Image image(3, 2, nullptr);
+    std::vector<blib::graphics::Color>& pixels = image.data();
+    for (size_t i = 0; i < pixels.size(); ++i)
+    {
+        const buint8 v = static_cast<buint8>(i * 11);
+        pixels[i] = blib::graphics::Color(v, static_cast<buint8>(v + 1),
+            static_cast<buint8>(v + 2), static_cast<buint8>(v + 3));
+    }
+
+    blib::core::MemoryStream mem;
+    BLIB_TEST_REQUIRE(image.save(mem) == blib::core::SaveStatus::None);
+
+    blib::graphics::Image loaded;
+    mem.seek(0, blib::core::SeekOrigin::Begin);
+    BLIB_TEST_REQUIRE(loaded.load(mem) == blib::core::LoadStatus::None);
+
+    BLIB_TEST_CHECK(image.strongCompare(loaded));
+    BLIB_TEST_CHECK(image.verify());
+}
+
+BLIB_TEST_CASE("serialization: image rejects malformed json without state change")
+{
+    blib::graphics::Image image(2, 2, nullptr);
+
+    // Длина pixels не совпадает с width * height * 4
+    blib::core::MemoryStream mem;
+    const char bad[] = "{\"width\":2,\"height\":2,\"pixels\":[1,2,3]}";
+    mem.write(bad, sizeof(bad) - 1);
+    mem.seek(0, blib::core::SeekOrigin::Begin);
+
+    BLIB_TEST_CHECK(image.load(mem) == blib::core::LoadStatus::InvalidData);
+
+    // Состояние не изменилось
+    BLIB_TEST_CHECK(image.width == 2 && image.height == 2);
+    BLIB_TEST_CHECK(image.data().size() == 4);
+}
+
+BLIB_TEST_CASE("serialization: mesh roundtrip and verify")
+{
+    // Меш с геометрией, гранями, цветами, весами и материалом
+    // (включая битмап диффуза)
+    blib::graphics::Mesh mesh;
+    mesh.primitiveType = blib::graphics::PrimitiveType::Triangle;
+    mesh.ngonencoding = true;
+    mesh.vertices = {
+        blib::graphics::Vector3f(0.0f, 0.0f, 0.0f),
+        blib::graphics::Vector3f(1.0f, 0.0f, 0.0f),
+        blib::graphics::Vector3f(0.0f, 1.0f, 0.0f) };
+    mesh.normals = {
+        blib::graphics::Vector3f(0.0f, 0.0f, 1.0f),
+        blib::graphics::Vector3f(0.0f, 0.0f, 1.0f),
+        blib::graphics::Vector3f(0.0f, 0.0f, 1.0f) };
+    mesh.textureCoords = {
+        blib::graphics::Vector3f(0.0f, 0.0f, 0.0f),
+        blib::graphics::Vector3f(1.0f, 0.0f, 0.0f),
+        blib::graphics::Vector3f(0.0f, 1.0f, 0.0f) };
+    mesh.colors = {
+        blib::graphics::Color(255, 0, 0, 255),
+        blib::graphics::Color(0, 255, 0, 255),
+        blib::graphics::Color(0, 0, 255, 255) };
+    mesh.boneIds = {
+        blib::graphics::Vector4i(0, 1, 0, 0),
+        blib::graphics::Vector4i(0, 1, 0, 0),
+        blib::graphics::Vector4i(1, 0, 0, 0) };
+    mesh.boneWeights = {
+        blib::graphics::Vector4f(0.7f, 0.3f, 0.0f, 0.0f),
+        blib::graphics::Vector4f(0.7f, 0.3f, 0.0f, 0.0f),
+        blib::graphics::Vector4f(1.0f, 0.0f, 0.0f, 0.0f) };
+    blib::graphics::Face face;
+    face.indices = { 0, 1, 2 };
+    mesh.faces.push_back(face);
+
+    mesh.material.m_name = "testMaterial";
+    mesh.material.shadingMode = blib::graphics::ShadingMode::Toon;
+    mesh.material.hasDiffuseColor = true;
+    mesh.material.DiffuseColor = blib::graphics::Vector4f(1.0f, 0.5f, 0.25f, 1.0f);
+    mesh.material.rimColor = blib::graphics::Vector3f(0.4f, 0.35f, 0.3f);
+    mesh.material.outlineEnabled = true;
+    mesh.material.diffuseImage.create(2, 2, blib::graphics::Color(1, 2, 3, 4));
+
+    blib::core::MemoryStream mem;
+    BLIB_TEST_REQUIRE(mesh.save(mem) == blib::core::SaveStatus::None);
+
+    blib::graphics::Mesh loaded;
+    mem.seek(0, blib::core::SeekOrigin::Begin);
+    BLIB_TEST_REQUIRE(loaded.load(mem) == blib::core::LoadStatus::None);
+
+    BLIB_TEST_CHECK(mesh.strongCompare(loaded));
+    BLIB_TEST_CHECK(mesh.verify());
+}
+
+BLIB_TEST_CASE("serialization: skelet roundtrip restores hierarchy and bind pose")
+{
+    SkeletonSceneFixture scene;
+    BLIB_TEST_REQUIRE(scene.build({
+        { rootBoneName, "" },
+        { headBoneName, rootBoneName },
+        { neckBoneName, headBoneName } },
+        {
+            { rootBoneName, makeTranslationMatrix(1.0f, 0.0f, 0.0f) },
+            { headBoneName, makeTranslationMatrix(0.0f, 5.0f, 0.0f) },
+            { neckBoneName, makeTranslationMatrix(9.0f, 9.0f, 9.0f) } }));
+
+    blib::graphics::Skelet skelet;
+    BLIB_TEST_REQUIRE(skelet.loadFromAssimp(scene.scene.get()));
+
+    blib::core::MemoryStream mem;
+    BLIB_TEST_REQUIRE(skelet.save(mem) == blib::core::SaveStatus::None);
+
+    blib::graphics::Skelet loaded;
+    mem.seek(0, blib::core::SeekOrigin::Begin);
+    BLIB_TEST_REQUIRE(loaded.load(mem) == blib::core::LoadStatus::None);
+
+    // Строгое сравнение и round-trip
+    BLIB_TEST_CHECK(skelet.strongCompare(loaded));
+    BLIB_TEST_CHECK(skelet.verify());
+
+    // Иерархия восстановлена: Head висит на Root
+    const blib::graphics::Bone* head = loaded.find(headBoneName);
+    BLIB_TEST_REQUIRE(head != nullptr);
+    const blib::graphics::IHierarchal* headParent = head->getParent();
+    BLIB_TEST_REQUIRE(headParent != nullptr);
+    BLIB_TEST_CHECK(static_cast<const blib::graphics::Bone*>(headParent)->name == rootBoneName);
+
+    // finalMatrices пересчитаны и совпадают (global * offset)
+    const std::vector<blib::graphics::TransformMatrix>& originalFinal = skelet.getFinalMatrices();
+    const std::vector<blib::graphics::TransformMatrix>& loadedFinal = loaded.getFinalMatrices();
+    BLIB_TEST_REQUIRE(originalFinal.size() == loadedFinal.size());
+    for (size_t i = 0; i < originalFinal.size(); ++i)
+    {
+        for (size_t j = 0; j < 4; ++j)
+        {
+            for (size_t k = 0; k < 4; ++k)
+            {
+                BLIB_TEST_CHECK(originalFinal[i].data[j][k] == loadedFinal[i].data[j][k]);
+            }
+        }
+    }
+}
+
+BLIB_TEST_CASE("serialization: skinmodel roundtrip and verify")
+{
+    // Модель: скелет (Root → Head → Neck с offset-ами) + скин-меш
+    // с весами + материал с битмапом диффуза. Аниматор — без клипов
+    // (фикстурная сцена без mAnimations)
+    SkeletonSceneFixture scene;
+    BLIB_TEST_REQUIRE(scene.build({
+        { rootBoneName, "" },
+        { headBoneName, rootBoneName },
+        { neckBoneName, headBoneName } },
+        {
+            { headBoneName, makeTranslationMatrix(0.0f, 5.0f, 0.0f) } }));
+
+    blib::graphics::SkinModel model;
+    BLIB_TEST_REQUIRE(model.getSkelet().loadFromAssimp(scene.scene.get()));
+
+    SkinMeshFixture skinMeshFixture;
+    skinMeshFixture.build(2, {
+        { headBoneName, { {0, 1.0f}, {1, 0.5f} } },
+        { neckBoneName, { {1, 0.5f} } } });
+
+    blib::graphics::SkinMesh skin;
+    BLIB_TEST_REQUIRE(skin.loadFromAssimpMesh(skinMeshFixture.mesh.get(), model.getSkelet()));
+    skin.mesh.material.m_name = "skinMaterial";
+    skin.mesh.material.diffuseImage.create(2, 1, blib::graphics::Color(7, 8, 9, 10));
+    model.getMeshes().push_back(std::move(skin));
+
+    blib::core::MemoryStream mem;
+    BLIB_TEST_REQUIRE(model.save(mem) == blib::core::SaveStatus::None);
+
+    blib::graphics::SkinModel loaded;
+    mem.seek(0, blib::core::SeekOrigin::Begin);
+    BLIB_TEST_REQUIRE(loaded.load(mem) == blib::core::LoadStatus::None);
+
+    BLIB_TEST_CHECK(model.strongCompare(loaded));
+    BLIB_TEST_CHECK(model.verify());
 }

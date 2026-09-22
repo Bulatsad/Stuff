@@ -6,6 +6,20 @@
 #include <blib/inline.h>
 
 #include <blib/core/fileStream.h>
+#include <blib/core/verifyHelper.h>
+
+#include <cstring>
+
+namespace
+{
+    // Ключи JSON-объекта изображения (формат сериализации)
+    constexpr const char* imageKeyWidth = "width";
+    constexpr const char* imageKeyHeight = "height";
+    constexpr const char* imageKeyPixels = "pixels";
+
+    // Количество каналов цвета (RGBA)
+    constexpr buint32 imageColorChannelCount = 4;
+}
 
 #define TGX_TOKEN_TYPE_PIXELSTREAM            0x00
 #define TGX_TOKEN_TYPE_REPEATINGPIXELS        0x02
@@ -258,4 +272,134 @@ blib::core::UnsafeSlicer<blib::graphics::Color> blib::graphics::Image::operator[
     return blib::core::UnsafeSlicer<blib::graphics::Color>(
         &(this->bitmap[static_cast<size_t>(index)]),
         this->width);
+}
+
+blib::core::json::JsonValue blib::graphics::Image::toJson() const
+{
+    blib::core::json::JsonValue doc = blib::core::json::JsonValue::makeObject();
+
+    doc.set(imageKeyWidth, blib::core::json::JsonValue(this->width));
+    doc.set(imageKeyHeight, blib::core::json::JsonValue(this->height));
+
+    // Плоский массив байт RGBA (row-major); пустое изображение — []
+    blib::core::json::JsonValue& pixels =
+        doc.set(imageKeyPixels, blib::core::json::JsonValue::makeArray());
+    const size_t pixelBytes = static_cast<size_t>(this->width) *
+        static_cast<size_t>(this->height) * imageColorChannelCount;
+    if (pixelBytes > 0)
+    {
+        const buint8* raw = static_cast<const buint8*>(this->getData());
+        for (size_t i = 0; i < pixelBytes; ++i)
+        {
+            pixels.pushBack(blib::core::json::JsonValue(raw[i]));
+        }
+    }
+
+    return doc;
+}
+
+blib::core::LoadStatus blib::graphics::Image::fromJson(_In const blib::core::json::JsonValue& json)
+{
+    // Валидация формы ДО применения: при ошибке состояние не меняется
+    if (!json.isObject() ||
+        !json.has(imageKeyWidth) || !json.get(imageKeyWidth).isNumber() ||
+        !json.has(imageKeyHeight) || !json.get(imageKeyHeight).isNumber() ||
+        !json.has(imageKeyPixels))
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+
+    const buint32 loadedWidth = static_cast<buint32>(json.get(imageKeyWidth).asBuint64());
+    const buint32 loadedHeight = static_cast<buint32>(json.get(imageKeyHeight).asBuint64());
+    // Размеры обязаны влезать в buint16 (тип width/height)
+    if (__blib_unlikely(loadedWidth > buint16Max || loadedHeight > buint16Max))
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+
+    const blib::core::json::JsonValue& pixelsArr = json.get(imageKeyPixels);
+    if (__blib_unlikely(!pixelsArr.isArray() ||
+        pixelsArr.size() != loadedWidth * loadedHeight * imageColorChannelCount))
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+
+    // Все данные валидны — применить (bitmap собирается во временный
+    // буфер, затем swap: аллокация тоже до применения)
+    const size_t pixelCount = static_cast<size_t>(loadedWidth) * static_cast<size_t>(loadedHeight);
+    std::vector<blib::graphics::Color> loadedBitmap;
+    loadedBitmap.resize(pixelCount);
+    for (size_t i = 0; i < pixelCount; ++i)
+    {
+        const buint32 base = static_cast<buint32>(i) * imageColorChannelCount;
+        loadedBitmap[i].red = static_cast<buint8>(pixelsArr[base].asBuint64());
+        loadedBitmap[i].green = static_cast<buint8>(pixelsArr[base + 1].asBuint64());
+        loadedBitmap[i].blue = static_cast<buint8>(pixelsArr[base + 2].asBuint64());
+        loadedBitmap[i].alpha = static_cast<buint8>(pixelsArr[base + 3].asBuint64());
+    }
+
+    this->width = static_cast<buint16>(loadedWidth);
+    this->height = static_cast<buint16>(loadedHeight);
+    this->bitmap.swap(loadedBitmap);
+
+    return blib::core::LoadStatus::None;
+}
+
+blib::core::SaveStatus blib::graphics::Image::save(_In blib::core::IOutputStream& os) const
+{
+    const blib::core::json::JsonValue doc = this->toJson();
+    if (__blib_unlikely(doc.writeTo(os) != blib::core::json::JsonError::None))
+    {
+        return blib::core::SaveStatus::WriteFailed;
+    }
+    return blib::core::SaveStatus::None;
+}
+
+blib::core::LoadStatus blib::graphics::Image::load(_In blib::core::IInputStream& is)
+{
+    blib::core::json::JsonParser parser;
+    blib::core::json::JsonValue doc;
+    if (__blib_unlikely(parser.parse(is, doc) != blib::core::json::JsonError::None))
+    {
+        return blib::core::LoadStatus::InvalidData;
+    }
+    return this->fromJson(doc);
+}
+
+bool blib::graphics::Image::strongCompare(_In const blib::core::IStrongComparable& other,
+    _In blib::core::CompareSession& session) const
+{
+    if (!session.enter(this, &other))
+    {
+        return true;
+    }
+
+    const blib::graphics::Image& o = static_cast<const blib::graphics::Image&>(other);
+
+    if (this->width != o.width || this->height != o.height)
+    {
+        return false;
+    }
+
+    // Попиксельное сравнение RGBA (bitmap). Пустые изображения равны
+    const size_t bytes = static_cast<size_t>(this->width) *
+        static_cast<size_t>(this->height) * imageColorChannelCount;
+    if (bytes == 0)
+    {
+        return true;
+    }
+
+    const void* dataThis = this->getData();
+    const void* dataOther = o.getData();
+    if (dataThis == nullptr || dataOther == nullptr)
+    {
+        return false;
+    }
+    return std::memcmp(dataThis, dataOther, bytes) == 0;
+}
+
+bool blib::graphics::Image::verify() const
+{
+    // Round-trip без RTTI (см. blib::core::verifyRoundTrip)
+    return blib::core::verifyRoundTrip(*this);
 }
