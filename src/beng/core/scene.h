@@ -260,8 +260,9 @@ namespace beng
          * 
          * Использование (в системах):
          *   ComponentPool<TransformComponent>& pool = scene.getComponentPool<TransformComponent>();
-         *   for (buint32 i = 0; i < pool.size(); ++i) {
-         *       TransformComponent* comp = pool.getByIndex(i);
+         *   for (auto it = pool.begin(); it != pool.end(); ++it) {
+         *       TransformComponent& comp = *it;
+         *       EntityID id = it.getEntityId();
          *       // ... обработка
          *   }
          */

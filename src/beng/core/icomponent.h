@@ -41,7 +41,7 @@ namespace beng
          * Конструктор - компонент без владельца (до добавления в Entity).
          */
         IComponent()
-            : ownerId(invalidEntity)
+            : ownerId(invalidEntity), isActive(true)
         {
         }
 
@@ -63,6 +63,7 @@ namespace beng
          */
         void setOwnerId(EntityID id) { ownerId = id; }
 
+        bool isActive;
     private:
         // EntityID владельца компонента (invalidEntity пока не привязан)
         EntityID ownerId;

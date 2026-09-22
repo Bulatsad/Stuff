@@ -45,18 +45,18 @@ namespace beng
         // трансформация сущности — единственный источник размещения
         beng::ComponentPool<SkinnedMeshComponent>& skinnedPool = scene.getComponentPool<SkinnedMeshComponent>();
 
-        for (buint32 i = 0; i < skinnedPool.size(); ++i)
+        for (auto it = skinnedPool.begin(); it != skinnedPool.end(); ++it)
         {
-            SkinnedMeshComponent* meshComp = skinnedPool.getByIndex(i);
-            if (__blib_unlikely(!meshComp->getModel()))
+            SkinnedMeshComponent& meshComp = *it;
+            if (__blib_unlikely(!meshComp.getModel()))
             {
                 continue;
             }
 
-            blib::graphics::SkinModel* model = meshComp->getModel();
+            blib::graphics::SkinModel* model = meshComp.getModel();
 
             beng::TransformComponent* transform =
-                scene.tryGetComponent<beng::TransformComponent>(skinnedPool.getEntityId(i));
+                scene.tryGetComponent<beng::TransformComponent>(it.getEntityId());
             if (transform)
             {
                 model->setTransform(transform->getWorldMatrix());
@@ -83,10 +83,10 @@ namespace beng
             this->renderTarget->rc.api.ogl.__blib_glDepthMask(GL_FALSE);
         }
 
-        for (buint32 i = 0; i < meshPool.size(); ++i)
+        for (auto it = meshPool.begin(); it != meshPool.end(); ++it)
         {
-            MeshRenderComponent* meshComp = meshPool.getByIndex(i);
-            if (meshComp->getLayer() != layer)
+            MeshRenderComponent& meshComp = *it;
+            if (meshComp.getLayer() != layer)
             {
                 continue;
             }
@@ -95,13 +95,13 @@ namespace beng
             // ECS-позиция/вращение/масштаб — единственный источник
             // размещения меша в мире
             beng::TransformComponent* transform =
-                scene.tryGetComponent<beng::TransformComponent>(meshPool.getEntityId(i));
+                scene.tryGetComponent<beng::TransformComponent>(it.getEntityId());
             if (transform)
             {
-                meshComp->getMesh().setTransform(transform->getWorldMatrix());
+                meshComp.getMesh().setTransform(transform->getWorldMatrix());
             }
 
-            this->renderTarget->draw(meshComp->getMesh());
+            this->renderTarget->draw(meshComp.getMesh());
         }
 
         if (blended)

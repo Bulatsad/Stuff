@@ -35,10 +35,10 @@ namespace beng
      *           // Получить пул компонентов
      *           auto& pool = scene.getComponentPool<MyComponent>();
      *           
-     *           // Итерация по всем компонентам
-     *           for (buint32 i = 0; i < pool.size(); ++i) {
-     *               MyComponent* comp = pool.getByIndex(i);
-     *               EntityID id = pool.getEntityId(i);
+     *           // Итерация по активным компонентам (isActive == true)
+     *           for (auto it = pool.begin(); it != pool.end(); ++it) {
+     *               MyComponent& comp = *it;
+     *               EntityID id = it.getEntityId();
      *               // ... обработка
      *           }
      *       }

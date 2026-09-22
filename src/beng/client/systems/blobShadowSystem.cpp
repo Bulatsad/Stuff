@@ -93,13 +93,13 @@ namespace beng
             return;
         }
 
-        for (buint32 i = 0; i < shadowPool->size(); ++i)
+        for (auto it = shadowPool->begin(); it != shadowPool->end(); ++it)
         {
-            BlobShadowComponent* shadowComp = shadowPool->getByIndex(i);
+            BlobShadowComponent& shadowComp = *it;
 
             // Цель — скелетная модель (root-motion живёт в позе костей)
             SkinnedMeshComponent* targetMesh =
-                scene.tryGetComponent<SkinnedMeshComponent>(shadowComp->getTargetEntity());
+                scene.tryGetComponent<SkinnedMeshComponent>(shadowComp.getTargetEntity());
             if (targetMesh == nullptr || targetMesh->getModel() == nullptr)
             {
                 continue;
@@ -110,14 +110,14 @@ namespace beng
             // заданное в компоненте, «Hips», «mixamorig:Hips», затем
             // любая кость с "hips"/"pelvis" в имени
             blib::graphics::Vector3f bonePosition;
-            if (!resolveHipsBonePosition(targetMesh->getModel()->getSkelet(), shadowComp->getBoneName(), bonePosition))
+            if (!resolveHipsBonePosition(targetMesh->getModel()->getSkelet(), shadowComp.getBoneName(), bonePosition))
             {
-                if (!shadowComp->isBoneMissingLogged())
+                if (!shadowComp.isBoneMissingLogged())
                 {
                     __blib_log_warning("blob shadow: hips/pelvis bone not found (tried '%s', Hips, mixamorig:Hips, substring fallback) on target entity %llu",
-                        shadowComp->getBoneName().c_str(),
-                        static_cast<unsigned long long>(shadowComp->getTargetEntity()));
-                    shadowComp->setBoneMissingLogged();
+                        shadowComp.getBoneName().c_str(),
+                        static_cast<unsigned long long>(shadowComp.getTargetEntity()));
+                    shadowComp.setBoneMissingLogged();
                 }
                 continue;
             }
@@ -128,7 +128,7 @@ namespace beng
             // трансляция). Используем проверенные API TransformComponent:
             // world = position + rotate(scale * bone, rotation)
             beng::TransformComponent* targetTransform =
-                scene.tryGetComponent<beng::TransformComponent>(shadowComp->getTargetEntity());
+                scene.tryGetComponent<beng::TransformComponent>(shadowComp.getTargetEntity());
             if (targetTransform != nullptr)
             {
                 const blib::math::Vector<float, 3> worldPosition = targetTransform->getWorldPosition();
@@ -147,12 +147,12 @@ namespace beng
             // защита от z-fighting): это «клякса» привязки к земле,
             // а не проекция от источника света
             const blib::math::Vector<float, 3> shadowPosition(
-                bonePosition.x, shadowComp->getGroundOffset(), bonePosition.z);
+                bonePosition.x, shadowComp.getGroundOffset(), bonePosition.z);
 
             // Переместить сущность-тень (dirty-флаг → RenderSystem
             // пересчитает world-матрицу при отрисовке)
             beng::TransformComponent* shadowTransform =
-                scene.tryGetComponent<beng::TransformComponent>(shadowPool->getEntityId(i));
+                scene.tryGetComponent<beng::TransformComponent>(it.getEntityId());
             if (shadowTransform != nullptr)
             {
                 shadowTransform->setLocalPosition(shadowPosition);

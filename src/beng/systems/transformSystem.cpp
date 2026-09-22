@@ -9,18 +9,14 @@ namespace beng
         // Получить пул Transform компонентов
         ComponentPool<TransformComponent>& pool = scene.getComponentPool<TransformComponent>();
 
-        // Итерация по всем Transform компонентам.
+        // Итерация по всем активным Transform компонентам.
         // Порядок в dense не важен: при пересчёте компонент сам
         // рекурсивно тянет мировую матрицу родителя.
         // Мёртвых Entity в пуле нет — destroyEntity чистит компоненты.
-        for (buint32 i = 0; i < pool.size(); ++i)
+        for (auto it = pool.begin(); it != pool.end(); ++it)
         {
-            TransformComponent* transform = pool.getByIndex(i);
-            if (transform != nullptr)
-            {
-                // Вызвать getWorldMatrix() чтобы обновить кеш (если dirty)
-                transform->getWorldMatrix();
-            }
+            // Вызвать getWorldMatrix() чтобы обновить кеш (если dirty)
+            it->getWorldMatrix();
         }
     }
 

@@ -158,3 +158,137 @@ BLIB_TEST_CASE("pool: component storage exceeds chunk size (grows)")
         BLIB_TEST_CHECK(comp->value == static_cast<float>(id));
     }
 }
+
+BLIB_TEST_CASE("pool: iterator visits all active components with consistent entity ids")
+{
+    beng::ComponentPool<PoolTestComponent> pool(8);
+
+    constexpr beng::EntityID entityCount = 5;
+    for (beng::EntityID id = 1; id <= entityCount; ++id)
+    {
+        BLIB_TEST_REQUIRE(pool.create(id, static_cast<float>(id)) != nullptr);
+    }
+
+    // Инвариант sparse set через итератор: владелец из getEntityId()
+    // соответствует компоненту из get(), а &*it == getByIndex
+    buint32 visited = 0;
+    for (auto it = pool.begin(); it != pool.end(); ++it)
+    {
+        PoolTestComponent& comp = *it;
+        beng::EntityID id = it.getEntityId();
+        BLIB_TEST_CHECK(pool.get(id) == &comp);
+        BLIB_TEST_CHECK(comp.getOwnerId() == id);
+        ++visited;
+    }
+
+    BLIB_TEST_CHECK(visited == entityCount);
+}
+
+BLIB_TEST_CASE("pool: iterator skips inactive components (isActive)")
+{
+    beng::ComponentPool<PoolTestComponent> pool(8);
+
+    PoolTestComponent* active1 = pool.create(1, 1.0f);
+    PoolTestComponent* active2 = pool.create(2, 2.0f);
+    PoolTestComponent* inactive = pool.create(3, 3.0f);
+    BLIB_TEST_REQUIRE(active1 != nullptr && active2 != nullptr && inactive != nullptr);
+
+    // Средний компонент становится неактивным — итератор его пропустит
+    active2->isActive = false;
+
+    buint32 visited = 0;
+    for (auto it = pool.begin(); it != pool.end(); ++it)
+    {
+        BLIB_TEST_CHECK(it.getEntityId() != 2);
+        ++visited;
+    }
+
+    BLIB_TEST_CHECK(visited == 2);
+
+    // Возврат активности — компонент снова виден
+    active2->isActive = true;
+    buint32 visitedAfter = 0;
+    for (auto it = pool.begin(); it != pool.end(); ++it)
+    {
+        ++visitedAfter;
+    }
+    BLIB_TEST_CHECK(visitedAfter == 3);
+}
+
+BLIB_TEST_CASE("pool: iterator on empty or fully inactive pool gives begin() == end()")
+{
+    beng::ComponentPool<PoolTestComponent> pool(8);
+
+    BLIB_TEST_CHECK(pool.begin() == pool.end());
+
+    PoolTestComponent* comp = pool.create(1, 1.0f);
+    BLIB_TEST_REQUIRE(comp != nullptr);
+    BLIB_TEST_CHECK(pool.begin() != pool.end());
+
+    // Единственный компонент неактивен — итерация пуста
+    comp->isActive = false;
+    BLIB_TEST_CHECK(pool.begin() == pool.end());
+}
+
+BLIB_TEST_CASE("pool: iterator after destroy (swap-and-pop) sees survivors")
+{
+    beng::ComponentPool<PoolTestComponent> pool(8);
+
+    pool.create(10, 10.0f);
+    pool.create(20, 20.0f);
+    pool.create(30, 30.0f);
+
+    // Удаляем средний: последний встаёт на его место в dense —
+    // итератор обязан увидеть обоих выживших
+    pool.destroy(20);
+
+    buint32 visited = 0;
+    for (auto it = pool.begin(); it != pool.end(); ++it)
+    {
+        beng::EntityID id = it.getEntityId();
+        BLIB_TEST_CHECK(id == 10 || id == 30);
+        BLIB_TEST_CHECK(pool.get(id) == &*it);
+        ++visited;
+    }
+
+    BLIB_TEST_CHECK(visited == 2);
+}
+
+BLIB_TEST_CASE("pool: const iteration returns const components (cbegin/cend)")
+{
+    beng::ComponentPool<PoolTestComponent> pool(8);
+
+    pool.create(1, 1.0f);
+    pool.create(2, 2.0f);
+
+    const beng::ComponentPool<PoolTestComponent>& constPool = pool;
+
+    buint32 visited = 0;
+    for (auto it = constPool.cbegin(); it != constPool.cend(); ++it)
+    {
+        const PoolTestComponent& comp = *it;
+        BLIB_TEST_CHECK(comp.getOwnerId() == it.getEntityId());
+        ++visited;
+    }
+
+    BLIB_TEST_CHECK(visited == 2);
+}
+
+BLIB_TEST_CASE("pool: range-for over active components")
+{
+    beng::ComponentPool<PoolTestComponent> pool(8);
+
+    pool.create(1, 1.0f);
+    pool.create(2, 2.0f);
+    PoolTestComponent* inactive = pool.create(3, 3.0f);
+    BLIB_TEST_REQUIRE(inactive != nullptr);
+    inactive->isActive = false;
+
+    float valueSum = 0.0f;
+    for (PoolTestComponent& comp : pool)
+    {
+        valueSum += comp.value;
+    }
+
+    BLIB_TEST_CHECK(valueSum == 3.0f);
+}

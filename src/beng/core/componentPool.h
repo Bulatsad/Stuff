@@ -11,6 +11,8 @@
 #include <vector>
 #include <unordered_map>
 #include <utility>
+#include <iterator>
+#include <type_traits>
 
 namespace beng
 {
@@ -55,6 +57,17 @@ namespace beng
      * - Некопируем и неперемещаем: контейнеры держат указатель на
      *   собственный containerAllocator (StdAllocatorAdapter), переезд
      *   объекта оставил бы висячие ссылки
+     * 
+     * Итерация:
+     * - begin()/end() (+ const/cbegin/cend) — итерация по АКТИВНЫМ
+     *   компонентам (IComponent::isActive == true); неактивные
+     *   пропускаются (флаг читается вживую на каждом шаге)
+     * - Порядок: dense-массив (сплошной скан Entry, как у getByIndex)
+     * - operator* → T& (const T& для const-пула); EntityID владельца —
+     *   через метод getEntityId() итератора
+     * - Инвалидация: create() (push_back в dense) и destroy()
+     *   (swap-and-pop) — стандартная контейнерная семантика,
+     *   end() пересчитывать заново; инкремент на end() — UB
      */
     template<typename T>
     class ComponentPool
@@ -92,6 +105,139 @@ namespace beng
         ComponentPool& operator=(const ComponentPool&) = delete;
         ComponentPool(ComponentPool&&) = delete;
         ComponentPool& operator=(ComponentPool&&) = delete;
+
+        /**
+         * IteratorBase<PoolT> - forward-итератор по активным компонентам пула.
+         * 
+         * PoolT = ComponentPool<T>        → Iterator (возвращает T&)
+         * PoolT = const ComponentPool<T>  → ConstIterator (возвращает const T&)
+         * 
+         * Семантика:
+         * - Итерирует ТОЛЬКО активные компоненты (IComponent::isActive == true),
+         *   неактивные пропускаются (проверка флага O(1) на шаг)
+         * - Порядок: dense-массив, как у индексных циклов getByIndex
+         * - Пустой пул или пул без активных компонентов: begin() == end()
+         * - operator* → T&; EntityID владельца — метод getEntityId()
+         * 
+         * Инвалидация (как у контейнеров):
+         * - create() (push_back в dense) и destroy() (swap-and-pop)
+         *   инвалидируют живые итераторы; end() пересчитывать заново
+         * - Деструктор пула оставляет итераторы висячими
+         * - Инкремент на end() - UB (стандартная конвенция итераторов)
+         * 
+         * isActive читается «вживую» на каждом шаге: переключение флага
+         * во время итерации немедленно влияет на обход (не кешируется).
+         */
+        template<typename PoolT>
+        class IteratorBase
+        {
+        public:
+            // std-совместимые typedef'ы (по образцу PoolAllocator::IteratorBase).
+            // value_type = T: итератор выдаёт сам компонент (ссылку), а не
+            // указатель; владелец доступен через getEntityId().
+            typedef std::forward_iterator_tag iterator_category;
+            typedef T value_type;
+            typedef std::ptrdiff_t difference_type;
+            typedef std::conditional_t<std::is_const_v<PoolT>, const T*, T*> pointer;
+            typedef std::conditional_t<std::is_const_v<PoolT>, const T&, T&> reference;
+
+            enum class IteratorOrigin {
+                Begin,
+                End
+            };
+
+            IteratorBase(_In PoolT* a_pool, IteratorOrigin itOrigin)
+                : pool(a_pool)
+                , index(0)
+            {
+                if (itOrigin == IteratorOrigin::Begin)
+                {
+                    // Нормализация: первый компонент может быть неактивным —
+                    // сразу продвигаемся к первому активному (пул без
+                    // активных компонентов даёт end()).
+                    this->skipInactive();
+                }
+                else if (itOrigin == IteratorOrigin::End)
+                {
+                    this->index = static_cast<buint32>(this->pool->dense.size());
+                }
+            }
+
+            reference operator*() const
+            {
+                return static_cast<reference>(*this->pool->dense[this->index].component);
+            }
+
+            pointer operator->() const
+            {
+                return this->pool->dense[this->index].component;
+            }
+
+            /**
+             * EntityID владельца текущего компонента.
+             * Аналог pool.getEntityId(index) для индексных циклов.
+             */
+            EntityID getEntityId() const
+            {
+                return this->pool->dense[this->index].entityId;
+            }
+
+            IteratorBase& operator++()
+            {
+                ++this->index;
+                this->skipInactive();
+                return *this;
+            }
+
+            IteratorBase operator++(int)
+            {
+                IteratorBase tmp(*this);
+                ++(*this);
+                return tmp;
+            }
+
+            bool operator==(const IteratorBase& rhs) const
+            {
+                return (this->pool == rhs.pool) && (this->index == rhs.index);
+            }
+
+            bool operator!=(const IteratorBase& rhs) const
+            {
+                return !(*this == rhs);
+            }
+
+        private:
+            PoolT* pool = nullptr;
+            buint32 index = 0;
+
+            // Позиция end: index указывает за последний элемент dense.
+            bool isAtEnd() const
+            {
+                return this->index == static_cast<buint32>(this->pool->dense.size());
+            }
+
+            // Пропуск неактивных компонентов. Проверка isAtEnd() ИДЁТ ДО
+            // чтения dense[index]: ++index мог увести за границу массива.
+            void skipInactive()
+            {
+                while (!this->isAtEnd() && !this->pool->dense[this->index].component->isActive)
+                {
+                    ++this->index;
+                }
+            }
+        };
+
+        typedef IteratorBase<ComponentPool> Iterator;
+        typedef IteratorBase<const ComponentPool> ConstIterator;
+
+        Iterator begin() noexcept { return Iterator(this, Iterator::IteratorOrigin::Begin); }
+        Iterator end() noexcept { return Iterator(this, Iterator::IteratorOrigin::End); }
+
+        ConstIterator begin() const noexcept { return ConstIterator(this, ConstIterator::IteratorOrigin::Begin); }
+        ConstIterator end() const noexcept { return ConstIterator(this, ConstIterator::IteratorOrigin::End); }
+
+        ConstIterator cbegin() const noexcept { return ConstIterator(this, ConstIterator::IteratorOrigin::Begin); }
+        ConstIterator cend() const noexcept { return ConstIterator(this, ConstIterator::IteratorOrigin::End); }
 
         /**
          * Создать компонент для Entity.
@@ -245,11 +391,10 @@ namespace beng
          * @param index Индекс в dense array
          * @return EntityID компонента
          * 
-         * Использование (для систем):
-         *   for (buint32 i = 0; i < pool.size(); ++i) {
-         *       EntityID id = pool.getEntityId(i);
-         *       T* component = pool.getByIndex(i);
-         *   }
+         * Для систем предпочтительнее итераторы begin()/end():
+         * они дают и компонент, и владельца (it.getEntityId())
+         * без ручной индексации. Индексный доступ остаётся
+         * для тестов и диагностики.
          */
         EntityID getEntityId(buint32 index) const
         {
@@ -261,6 +406,10 @@ namespace beng
          * 
          * @param index Индекс в dense array
          * @return Указатель на компонент
+         * 
+         * Для систем предпочтительнее итераторы begin()/end()
+         * (см. getEntityId). Неактивные компоненты (isActive == false)
+         * этим методом возвращаются как есть — итераторы их пропускают.
          */
         T* getByIndex(buint32 index)
         {
