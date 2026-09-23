@@ -2,7 +2,7 @@
 
 > Слой: `blib`, нижний модуль. Память, потоки, синхронизация, базовые заголовки.
 > Шпаргалка по инвариантам и граблям. **Обновлять при изменениях кода модуля** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-22
+> Сверено: 2026-09-24
 
 ---
 
@@ -22,6 +22,7 @@
 |-----------|-----|
 | Публичный аллокатор | `src/blib/system/memory/globalAllocator.h` + `impl/globalAllocator.cpp` |
 | Type-erased аллокатор | `src/blib/system/memory/allocator.h`, `impl/allocator.cpp`, `impl/allocator.inl`, `impl/allocatorImplWrapper.h` |
+| Базовый интерфейс type erasure | `src/blib/system/memory/itypeErased.h` |
 | SBO-хранилище | `src/blib/system/memory/sbo.h` |
 | Дефолтный/debug/malloc/pool | `src/blib/system/memory/defaultAllocator.h`, `allocators/debugAllocator.h`, `allocators/mallocAllocator.h`, `allocators/poolAllocator.h` |
 | Адаптер под STL | `src/blib/system/memory/stdAllocatorAdapter.h` |
@@ -58,6 +59,18 @@
 - Хранение: SBO **56 байт** + указатель на `IAllocatorImpl`. Комментарий в шапке про «итого 64 байта» не сходится с фактической раскладкой на x64.
 - **Известное ограничение (зафиксировано HACK/TODO в коде):** для **stateful** аллокаторов `share()`/`deepCopy()` возвращают `nullptr` — копия/клон такого аллокатора становится «мёртвой» (`allocate` → `nullptr`). Для stateless — работает (heap-копия через GlobalAllocator).
 - `AllocatorTraits<T>::isStateless` по умолчанию `false`; stateless помечены `DefaultAllocatorImpl`, `MallocAllocatorImpl`; stateful — `PoolAllocatorImpl`, `DebugAllocator`.
+
+### ITypeErased — базовый интерфейс type erasure
+
+- Non-template база, от которой наследники строят свои type-erased API (первый планируемый потребитель — `TypeErasedAllocator`). Header-only, файл `itypeErased.h`.
+- Механика: erased-объект живёт в куче через член-`Allocator`; операции конкретного типа — не-захватывающие fn-ptr (`DestructorFn`, `CopyConstructorFn`, `MoveConstructorFn` — "vtable" без виртуальных вызовов на объект). Памятью управляет сам `ITypeErased` (аллокатор и размер у него), поэтому лямбды ничего не захватывают.
+- API: protected-конструкторы (пустой; от `Allocator&&`), protected `construct<T>(args...)` (allocate → placement new → установка всех трёх fn-ptr; при OOM — stderr + `false`, объект пуст), protected `destroyErased()`, protected `copyConstructFrom`/`moveConstructFrom` (см. ниже), public `isEmpty()` и виртуальный деструктор.
+- **База — копируемый/перемещаемый value-тип**: copy/move ctor'ы и `operator=` реализованы на хелперах. `copyConstructFrom` — свежая аллокация через **свой** аллокатор + copy-ctor `T` (кража чужого `pdata` недопустима: `deallocate` обязан идти через выделивший аллокатор). `moveConstructFrom` — то же + `destroyErased()` источника после переноса (источник пуст). Self-assign guard в обоих `operator=` (иначе `destroyErased()` обнулил бы источник до чтения). При OOM или недоступной операции объект становится пустым (при move источник не тронут). Копия/перемещение пустого — валидная пустая.
+- **Аллокатор при copy/move не переносится**: копия использует свой DefaultAllocator (копирование stateful-`Allocator` даёт «мёртвый» аллокатор — известный дефект `Allocator`, см. выше); move — тоже свой, т.к. источник уничтожается через его собственный аллокатор.
+- Наследники с дополнительным состоянием (например, `type_info`) дополняют copy/move собственными ctor'ами/`operator=`: база копирует только erased-содержимое, производные члены — забота наследника.
+- fn-ptr copy/move заполняются только если `std::is_copy/move_constructible<T>` (`if constexpr`) — move-only/non-movable типы работают, недоступная операция даёт `nullptr` + `false` из хелпера.
+- Инварианты: `pdata != nullptr ⟺ pDestructor != nullptr`; повторный `construct`/`copyConstructFrom`/`moveConstructFrom` уничтожает старое содержимое; конструкторы `T` не бросают; alignment — ответственность аллокатора.
+- Наследуемые конструкторы сохраняют protected-доступ базы: `using ITypeErased::ITypeErased` в public-секции наследника доступ не меняет (по стандарту) — нужны явные публичные ctor'ы.
 
 ### Аллокаторы модуля
 
@@ -110,6 +123,7 @@
 - Итерация `PoolAllocator` — O(N): занятость блока проверяется битом в инлайн-битмапе чанка за O(1). Поиск чанка по указателю в `allocate`/`deallocate` — O(C), скан `chunks` с конца (LIFO-блоки чаще из свежих чанков); C обычно 1–4.
 - `deallocate` валидирует указатель: попадание в область битмапа или между блоками внутри чанка — warning + no-op (без проверки испортился бы битмап/соседние блоки).
 - `DebugAllocator` не имеет begin/end-итераторов сам по себе: итерация доступна только через underlying (`PoolAllocatorImpl`), а `DebugAllocator::begin()/end()` пробрасывают её и сдвигают `*it` на `sizeof(Header) + GUARD_SIZE` — без этого адреса указывали бы на header, а не на пользовательскую область.
+- `ITypeErased`: `typeid`-сравнение в наследниках (как в тестовом `TypeErasedValue`) работает только в пределах одного модуля — при `blib` shared типы из разных DLL не совпадут (та же грабля, что у `AnyIterator`). Наследуемые конструкторы базы сохраняют protected-доступ: `using ITypeErased::ITypeErased` в public-секции наследника доступ не меняет. Копирование move-only `T` даёт пустую копию + stderr (copy-ctor не может вернуть ошибку — вызывающий проверяет пустоту). Copy/move/assign аллоцируют и не имеют сильной гарантии: при OOM объект становится пустым (исключений в проекте нет). Self-assign защищён guard'ом (`this != &other`). `moveConstructFrom` сбрасывает только содержимое базы — производные члены (типа `type_info` в тестовом `CopyableValue`) наследник сбрасывает сам.
 
 ---
 
@@ -122,6 +136,7 @@
 - [ ] Починить утечку в SPSC `reset()`.
 - [ ] Актуализировать комментарии: размер `Allocator`, `constructInHeap`, `StdAllocatorAdapter` про исключения.
 - [ ] Добавить `initialize/shutdown` для GlobalAllocator (если понадобится контроль порядка).
+- [ ] Реализовать `TypeErasedAllocator` на базе `ITypeErased` — первый потребитель инфраструктуры.
 
 ---
 
