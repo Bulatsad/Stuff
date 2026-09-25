@@ -16,7 +16,7 @@ target_link_libraries(blib_test_main PRIVATE blib-core)
 set_target_properties(blib_test_main PROPERTIES FOLDER "blib/tests")
 
 # Test group list: group name == file suffix test<group>.cpp
-set(blib_test_groups angle matrix pdl quaternion vector allocator allocatoraware typeerased iterator stream binary compression hash circlequeue console skinmesh json resource)
+set(blib_test_groups angle matrix pdl quaternion vector allocator allocatoraware typeerased iterator stream binary compression hash circlequeue console skinmesh transformmatrix json resource)
 
 # Per-group source lists (по умолчанию — src/impl/test<group>.cpp).
 # Группа json разбита на файлы по зонам ответственности:
@@ -34,6 +34,11 @@ set(blib_test_group_sources_json
 # assimp/zlib (символы aiNode/aiScene/material, как в model_viewer)
 set(blib_test_group_libs_skinmesh blib-graphics debug assimpd debug zlibstaticd optimized assimp optimized zlibstatic)
 set(blib_test_group_link_dirs_skinmesh ${assimp_lib})
+# transformmatrix тестирует матрицы graphics-слоя (composeMatrix/
+# decomposeMatrix/lookAt/mul/перспектива) — та же связка библиотек,
+# что у skinmesh: blib-graphics + prebuilt assimp/zlib
+set(blib_test_group_libs_transformmatrix blib-graphics debug assimpd debug zlibstaticd optimized assimp optimized zlibstatic)
+set(blib_test_group_link_dirs_transformmatrix ${assimp_lib})
 
 # Список standalone-исполняемых групп (заполняется в цикле ниже)
 set(blib_test_group_exes)

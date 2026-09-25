@@ -2,7 +2,7 @@
 
 > Слой: `blib`. OpenGL/WGL, окно, ассеты, скелетная анимация, ImGui.
 > Шпаргалка по инвариантам, владению GL и граблям. **Обновлять при изменениях кода модуля** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-24
+> Сверено: 2026-09-25
 
 ---
 
@@ -41,7 +41,7 @@
 
 1. **Окно:** `RenderWindow(width, height, title, style)` создаёт Win32-окно и WGL-контекст; `update()` качает сообщения, `isOpen()`, `close()`, `swapBuffers()`. `__getCtx()` даёт платформенный `WinCtx` (hwnd и т.д.).
 2. **Кадр таргета:** `IRenderTarget::clear(color)` биндит очередной FBO из кольца и очищает его; `draw(const IDrawable&)` вызывает `drawable.draw(rc)`. `rc` — публичное поле таргета.
-3. **Отрисовка:** `RenderContext::setShaderProgram`, отправка матриц (`gViewMatrix`, `gProjectionMatrix`, `gModelMatrix`) и костей (`gBones`), бинд текстуры. Матрицы уходят с `transpose = GL_TRUE`.
+3. **Отрисовка:** `RenderContext::setShaderProgram`, отправка матриц (`gViewMatrix`, `gProjectionMatrix`, `gModelMatrix`) и костей (`gBones`), бинд текстуры. Матрицы column-major → уходят с `transpose = GL_FALSE` (без транспонирования; см. «Конвенция матриц» в `../core/CORE.md`).
 4. **UI:** ImGui-кадр рисуется в back-буфер (`ImGui_ImplOpenGL3_*`); порядок «сцена в FBO → UI → swap» — ответственность приложения (см. `../../beng/BENG.md`, кадр вьювера).
 
 ### RenderContext
@@ -92,6 +92,24 @@
 - Шейдеры: `shaders/post/*` (пути — `shaderPaths.h`); компилируются лениво при первом `apply()`, **участвуют в hotreload** (реестр `ShaderProgram`).
 - Включение/выключение для сравнения — по усмотрению приложения (в gravelands-клиенте клавиша P; иначе `RenderWindow::blitToBackbuffer` — прямой блит без поста).
 - `shaderPaths.h` хранит **абсолютные пути** `M:\Stuff\src\shaders\...` — вьювер работает только при запуске из корня репозитория (TODO: путь относительно exe).
+
+---
+
+## Трансформации и матрицы (`transformMatrix.h` / `impl/transformMatrix.cpp`)
+
+- **Конвенция — column-major + column-vectors** (единая, см. `../core/CORE.md`, «Конвенция матриц»): хранилище `data[столбец][строка]`, трансляция — в последней колонке `data[3][0..2]`, загрузка в GL — `GL_FALSE`. Раньше матрицы хранились транспонированными + `GL_TRUE` (компенсация на границе GL) — сломаны были `decomposeMatrix` и иерархии beng; с 2026-09-25 транспонированное хранение запрещено.
+- `composeMatrix(position, rotation, scale)` — стандартная TRS: столбцы 0..2 = колонки R·S, колонка 3 = трансляция. Дубликат в `beng/components/transform.cpp` (`composeTrsMatrix`, beng-core не зависит от graphics).
+- `mul(lhs, rhs)` — **алиас** `Matrix::operator*` (стандартное произведение `lhs * rhs`, НЕ транспонированное). Используется в `skelet.cpp`: `global = mul(parent.global, local)`, `finalMatrices = mul(global, offsetMatrix)` — обе формулы теперь стандартные.
+- `lookAt(camera, target, worldUp)` — правая система: `f = normalize(target-camera)`, `s = normalize(cross(f, up))`, `u = cross(s, f)`; столбцы — образы осей, трансляция `(-dot(s,eye), -dot(u,eye), dot(f,eye))` в последней колонке. Вырождается при взгляде вдоль up (камеры не доводят pitch до ±90°).
+- **Конверсия Assimp-матриц:** `aiMatrix4x4` — row-major (трансляция в `a4,b4,c4`); `transformFromAssimp` (skelet.cpp) и `Bone::loadFromAssimp` читают построчно. У Mixamo-FBX трансформы узлов (в т.ч. декомпозиция `_$AssimpFbx$_Translation/PreRotation/Rotation`) и offsets — обычные column-vector матрицы; раньше конверсия транспонировала их, и после перехода на column-major «танцор» взрывался. Регресс — `testSkinMesh.cpp`.
+- `rotateX/Y/Z(matrix, angle)` — `matrix * R(angle)`, углы в **градусах**; матрицы R — стандартные (через initializer_list).
+- `decomposeMatrix(matrix, transform)` — извлекает TRS из стандартной матрицы: position = `data[3][0..2]`, scale = длины столбцов 0..2, rotation = Euler **X·Y·Z в градусах** (согласовано с `ITransformable::getTransform` = `X·Y·Z·T`; при нулевом масштабе — нулевые углы). Тесты: `blib/test/.../testTransformMatrix.cpp`.
+
+### ITransformable (`transformable.h` / `impl/transformable.cpp`)
+
+- `getTransform()` лениво собирает `X·Y·Z·T` (трансляция — последняя колонка) из `Transform`-полей; `setTransform(m)` ставит матрицу и разбирает её `decomposeMatrix`.
+- `transform(point)` — точка как вектор-столбец `(x, y, z, 1)`; стандартное произведение сохраняет трансляцию.
+- Углы `Transform` — в **градусах** (`rotateX` — `fmod(..., 360)`).
 
 ---
 

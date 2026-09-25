@@ -222,13 +222,14 @@ namespace modelviewer
     namespace
     {
         // Извлечение позиции сустава из глобальной трансформации кости:
-        // трансляция хранится в последней колонке (data[i][3])
+        // column-major, трансляция хранится в последней колонке
+        // (data[3][0..2]; см. CORE.md, «Конвенция матриц»)
         blib::graphics::Vector3f boneWorldPosition(_In const blib::graphics::TransformMatrix& transform)
         {
             return blib::graphics::Vector3f(
-                transform.data[0][3],
-                transform.data[1][3],
-                transform.data[2][3]);
+                transform.data[3][0],
+                transform.data[3][1],
+                transform.data[3][2]);
         }
 
         // MD5-модель (расширение ".md5mesh", без учёта регистра)?

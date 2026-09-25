@@ -37,16 +37,22 @@ namespace
         return true;
     }
 
-    // Конвертация aiMatrix4x4 в TransformMatrix с тем же порядком
-    // элементов, что используется в остальных загрузчиках Assimp
+    // Конвертация aiMatrix4x4 в TransformMatrix.
+    // ВАЖНО: aiMatrix4x4 — row-major хранилище: row0 = (a1, a2, a3, a4),
+    // row1 = (b1, b2, b3, b4), ...; трансляция — в последней колонке
+    // (a4, b4, c4). Matrix(initializer_list) тоже читается построчно.
+    // Раньше элементы брались «крест-накрест» (row0 = a1,b1,c1,d1) —
+    // матрица транспонировалась, и старый пайплайн компенсировал это
+    // перевёрнутым mul + GL_TRUE; теперь конвенция единая (column-major,
+    // см. CORE.md) и конверсия честная.
     blib::graphics::TransformMatrix transformFromAssimp(const aiMatrix4x4& m)
     {
         return blib::graphics::TransformMatrix(
             {
-                m.a1, m.b1, m.c1, m.d1,
-                m.a2, m.b2, m.c2, m.d2,
-                m.a3, m.b3, m.c3, m.d3,
-                m.a4, m.b4, m.c4, m.d4
+                m.a1, m.a2, m.a3, m.a4,
+                m.b1, m.b2, m.b3, m.b4,
+                m.c1, m.c2, m.c3, m.c4,
+                m.d1, m.d2, m.d3, m.d4
             });
     }
 
@@ -159,12 +165,14 @@ bool blib::graphics::Skelet::getBonePosition(_In const std::string& name, _Out b
     // parent.global * local, обновляется updateTransforms при applyClip).
     // НЕ finalMatrices: finalMatrices[i] = global * offsetMatrix, где
     // offsetMatrix — INVERSE BIND — трансляция такой матрицы это не
-    // позиция кости, а «дельта» относительно bind-позы (почти ноль)
+    // позиция кости, а «дельта» относительно bind-позы (почти ноль).
+    // Трансляция — в последней колонке (data[3][0..2], column-major —
+    // см. CORE.md, «Конвенция матриц»)
     const blib::graphics::TransformMatrix& globalMatrix = this->boneStorage[index].globalTransform;
     outPosition = blib::graphics::Vector3f(
-        globalMatrix.data[0][3],
-        globalMatrix.data[1][3],
-        globalMatrix.data[2][3]);
+        globalMatrix.data[3][0],
+        globalMatrix.data[3][1],
+        globalMatrix.data[3][2]);
     return true;
 }
 

@@ -107,11 +107,13 @@ blib::math::Matrix<float, 4, 4> blib::graphics::Camera::perspective(const blib::
 
     float f = 1.0f / blib::math::tan(fov.data * 3.14159f / 360.f);
 
+    // Стандартная column-major перспектива OpenGL: data[столбец][строка].
+    // data[2][3] = -1 (перспективное деление), data[3][2] — сдвиг по z
     projMat.data[0][0] = f / aspect;    // x scale
     projMat.data[1][1] = f;             // y scale
     projMat.data[2][2] = (farDist + nearDist) / (nearDist - farDist);   // z scale
-    projMat.data[3][2] = -1;            // perspective div
-    projMat.data[2][3] = (2 * farDist * nearDist) / (nearDist - farDist); // z shift
+    projMat.data[2][3] = -1;            // perspective div
+    projMat.data[3][2] = (2 * farDist * nearDist) / (nearDist - farDist); // z shift
 
     projMat.data[3][3] = 0;
 

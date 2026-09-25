@@ -2,7 +2,7 @@
 
 > Слой: `blib`. Переносимое ядро: math, console, streams, алгоритмы, PDL, утилиты.
 > Шпаргалка по инвариантам и граблям. **Обновлять при изменениях кода модуля** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-24
+> Сверено: 2026-09-25
 
 ---
 
@@ -31,23 +31,23 @@
 | PDL | `pdl/pdl.h`, `pdl/standard.txt`, `pdl/demo*.pdl` |
 | Кеш ресурсов | `resource/resourceManager.h`, `resource/impl/resourceManager.cpp` (док — `resource/RESOURCE_MANAGER.md`) |
 | Iterator / LinkedList | `iterator.h`, `linkedList.h` |
-| Прочее | `flags.h`, `unsafeslicer.h`, `alignedAllocator.h`, `bytearray.h`, `time.h` (legacy) |
+| Прочее | `flags.h`, `unsafeslicer.h`, `bytearray.h`, `time.h` (legacy) |
 
 ---
 
 ## Math (`blib::math`)
 
 - **Vector<T, N>** (2/3/4): union `data[N]` / `x,y,z,w`; операторы, `magnitude`, `normalize`, `cross` (3D), `dot`, `lerp`. Копирование из вектора другого размера разрешено только «вниз» (`static_assert(size <= rhsSize)`).
-- **Matrix<T, W, H>**: identity по умолчанию; `initializer_list` (недостающее — identity, лишнее игнорируется); `+ - *` (со `static_assert` на размерности), `Transpose()`, `loadIdentity()`.
+- **Matrix<T, W, H>**: identity по умолчанию; `initializer_list` (недостающее — identity, лишнее игнорируется; порядок — построчный); `+ - *` (со `static_assert` на размерности; `*` — стандартное произведение), `Transpose()`, `loadIdentity()`. Хранилище — column-major (`data[столбец][строка]`), см. «Конвенция матриц» в «Граблях math».
 - **Quaternion<T>**: конструкторы (w,x,y,z)/(axis)/(angle+axis), `normalize/conjugate/inverse`, свободные `rotate/dot/nlerp/operator*`.
 - **Angle**: `AngleDegree<T>` (нормализация `[0,360)`), `AngleRadian<T>` (`[0,2π)`), `toRadian()`, `toDergee()` (**опечатка в публичном API**).
 - **Константы**: `PI`, `piDiv180`, `c180DivPi`, `piDiv360`; тригонометрия-обёртки в `trigonometry.h`.
 
 ### Грабли math
 
-- **Матрицы хранятся по столбцам** (`data[столбец][строка]`), несмотря на комментарий «stores matrix as array of lines(rows)». Трансляция — `data[0..2][3]`.
-- **Два пути умножения матриц**: `Matrix::operator*` и свободный `transformMatrix.h::mul()` реализованы с разным порядком индексов. В коде смешаны оба; при написании нового кода — не смешивать и сверяться с вызывающими.
-- **`Matrix::operator*` вычисляет ТРАНСПОНИРОВАННОЕ произведение** (`res(i,j) = Σ lhs(k,j)·rhs(i,k)` = `lhsᵀ·rhs`). Трансформировать ТОЧКИ через него нельзя — теряется трансляция (проверено на BlobShadowSystem, тень «съезжала» в ноль). Для точек — `blib::math::rotate(vector, quaternion)` + ручное масштабирование, либо `TransformComponent::getWorldPosition/getWorldRotation/getWorldScale` (beng). Латентный баг: `TransformComponent::updateWorldMatrix` умножает `parentMatrix * worldMatrix` тем же транспонированным оператором — parent-иерархии рендерятся неверно (в текущих сценах parent не используется).
+- **Конвенция матриц (ЕДИНАЯ для всего проекта, сентябрь 2026):** column-major хранилище — `data[столбец][строка]`, в памяти столбец лежит подряд (как в OpenGL/glm); column-vector математика — `v' = M * v`; трансляция 4x4-преобразования — в **последней колонке** `data[3][0..2]`; загрузка в OpenGL — `glUniformMatrix4fv(..., GL_FALSE, ...)` (без транспонирования). `initializer_list` читается **построчно** (первые W значений — первая строка). Раньше graphics-слой хранил матрицы транспонированными (трансляция в последней строке) и компенсировал это `GL_TRUE` при загрузке — «работало по счастливой случайности», ломало decomposeMatrix/transform точки и иерархии beng; теперь транспонированное хранение запрещено.
+- **`Matrix::operator*` — стандартное произведение** (`res = lhs * rhs`), трансляция при преобразовании точки НЕ теряется; `graphics::mul(lhs, rhs)` — алиас того же произведения. Точки: `M * v` (вектор-столбец `(x, y, z, 1)`), либо TRS-API (`TransformComponent::getWorldPosition/...`). Регресс-тесты: `testmatrix.cpp` («point transform preserves translation»), `testTransformMatrix.cpp` (blib-graphics).
+- **Конверсия aiMatrix4x4 → Matrix (blib-graphics):** `aiMatrix4x4` — **row-major** хранилище: `row0 = (a1,a2,a3,a4)`, …, трансляция — в `(a4,b4,c4)`. `transformFromAssimp` (skelet.cpp) и загрузка `offsetMatrix` (bone.cpp) читают его построчно (`{a1,a2,a3,a4, b1,…}`) и получают стандартную column-major матрицу. Раньше элементы брались «крест-накрест» (`row0 = a1,b1,c1,d1`) — матрица транспонировалась; старый пайплайн компенсировал это перевёрнутым `mul` + `GL_TRUE`, после перехода на единую column-major конвенцию FBX-модели (Mixamo: трансформы узлов и offsets row-vector) «взрывались» (гигантские костные матрицы). Регресс: `testSkinMesh.cpp` («bind pose finalMatrices are identity», «FBX decomposition chain…», real-file тест танцора).
 - **Знаки углов: кватернион vs Euler-функции.** Кватернион `AngleDegreef(θ)` вокруг +Y — стандартная конвенция: +Z → `(sinθ, 0, cosθ)`. Euler-функции `rotateY/rotateZ` (blib-graphics, `transformMatrix.cpp`) — ПРОТИВОПОЛОЖНЫЙ знак: +Z → `(−sinθ, 0, cosθ)`. При переносе ориентации с Euler на кватернионы (например, в `TransformComponent::setLocalRotation`) угол менять на противоположный, иначе объект развернётся ребром/спиной к камере (проверено на плоскостях-деревьях: после ECS-переноса они встали ребром и отсеклись culling'ом).
 - `normalize` нулевого вектора делит на ноль (тест — только smoke); `magnitude` аккумулирует во `float` независимо от `Type`.
 - Assimp-конверсии (`Vector3f::loadFromAssimp`, `Quaternion::loadFromAssimp`) существуют только при `COMPILE_ASSIMP_COMPATIBLE`.
@@ -99,7 +99,6 @@
 - `Folder`: нормализует `\`→`/`; если путь не папка — поднимается на уровень вверх. `getAllEntries`/`isFolder` реализованы только под Win32 (на других платформах — пустой список/false). Возвращает в том числе `.` и `..`.
 - `Flags<Enum, Storage>`: побитовые флаги с `isUp/isDown`.
 - `UnsafeSlicer<T>` / `ConstUnsafeSlicer<T>`: доступ по `base + index*stride`; используется `Image`.
-- `alignedAllocator.h` (лежит в core, но по смыслу — память): `AlignedAllocator`/`CacheAlignedAllocator` на `_aligned_malloc`; **не через GlobalAllocator**, нигде не используется.
 - `bytearray.h`: `typedef std::vector<buint8> ByteArray` (без `#pragma once`).
 - `time.h`: legacy-класс `Time` на `clock()`, нигде не подключён (в beng свой `beng::Time`).
 
@@ -161,7 +160,6 @@
 - [ ] Привести PDL к правилам проекта (GlobalAllocator, без `new`, касты).
 - [ ] Починить/удалить мёртвые файлы (`allocator.h`, `linkedList.cpp`, `fdft.*`, `bytearray.h` без `#pragma once`).
 - [ ] Исправить опечатку `toDergee()` (ломающее изменение API — только с миграцией).
-- [ ] Актуализировать комментарии (matrix rows/columns).
 
 ---
 

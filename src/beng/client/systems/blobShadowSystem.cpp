@@ -122,11 +122,12 @@ namespace beng
                 continue;
             }
 
-            // Мировая позиция кости. ВАЖНО: Matrix::operator* в blib-core
-            // вычисляет ТРАНСПОНИРОВАННОЕ произведение (lhs^T * rhs) —
-            // трансформировать точки через него нельзя (теряется
-            // трансляция). Используем проверенные API TransformComponent:
-            // world = position + rotate(scale * bone, rotation)
+            // Мировая позиция кости. ВАЖНО: TransformComponent хранит
+            // TRS-компоненты, а не готовую матрицу — используем
+            // проверенные API: world = position + rotate(scale * bone,
+            // rotation). (Matrix::operator* тоже стандартен — column-major
+            // конвенция, см. CORE.md, — но TRS-путь здесь проще и
+            // не требует собирать матрицу.)
             beng::TransformComponent* targetTransform =
                 scene.tryGetComponent<beng::TransformComponent>(shadowComp.getTargetEntity());
             if (targetTransform != nullptr)

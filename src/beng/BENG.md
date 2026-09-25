@@ -3,7 +3,7 @@
 > Слой: `beng`. Шпаргалка по устройству, инвариантам и граблям — чтобы не перечитывать исходники.
 > Не дублирует правила проекта (`AGENTS.md`) и roadmap (`ARCHITECTURE.md`) — только ссылается на них.
 > **Обновлять при любом изменении кода beng** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-24
+> Сверено: 2026-09-25
 
 ---
 
@@ -72,6 +72,7 @@
 ### Transform
 
 - `TransformComponent` — локальные TRS + `parent`/`children` (EntityID), кеш `worldMatrix` с dirty-флагом (рекурсивно тянет мировую матрицу родителя).
+- Мировая матрица — стандартная column-major TRS (`composeTrsMatrix`: трансляция в последней колонке `data[3][0..2]`, см. CORE.md «Конвенция матриц»); иерархия — `worldMatrix = parentMatrix * worldMatrix` (стандартное column-vector произведение, трансляция родителя переносится корректно).
 - `setParent` отклоняет циклы и самого себя (warning, no-op); для смены родителя нужен `Scene`.
 - `TransformSystem` (приоритет -100) просто вызывает `getWorldMatrix()` у всех — порядок обхода dense не важен.
 
@@ -82,7 +83,7 @@
 - `MeshRenderComponent` — меш в **двух режимах**: `ResourceRef` на слот кеша (ctor от ref'а / `setMeshResource`; для тайлов: `IsometricTileset::buildMeshInto` собирает прямо в слот — Mesh move-присваивание удалено) либо `Mesh` по значению (move-only, из билдера/примитива, напр. `Sphere::takeMesh()`). `getMesh()` возвращает АКТИВНЫЙ меш (ref ?? owned; owned пуст в ref-режиме и служит verify-фолбэком). `RenderLayer {Ground, Shadow, AlphaTested, Opaque}` задаёт порядок/поведение. ComponentPool не двигает компоненты — move-only член безопасен. Пулы RenderSystem берёт через `Scene::tryGetComponentPool` — сцены без статики (вьювер) работают как раньше.
 - `AnimatorComponent` — **не владеет** аниматором: хранит указатель на `Animator` внутри `SkinModel` + `loop`/`poseDirty`. При выгрузке модели указатель обязан быть снят (`setAnimator(nullptr)` или уничтожение сущности) — иначе висячий указатель.
 - `AnimationSystem` (приоритет -50): играет → `SkinModel::update(dt_ms)` (время в миллисекундах!); нециклическая доиграла → `pause()`; пауза + `poseDirty` (выбор клипа/скраб) → `update(0)` + сброс флага.
-- `BlobShadowComponent` (на сущности-тени) + `BlobShadowSystem` (приоритет 50): тень следует за root-motion анимации цели — позиция кости (`Skelet::getBonePosition`, кандидаты «boneName»/«Hips»/«mixamorig:Hips»/подстрока hips·pelvis), мировая = `getWorldPosition() + rotate(getWorldScale()·pos, getWorldRotation())` (Matrix::operator* не использовать — транспонированное произведение, см. CORE.md), тень ставится **строго под цель** `(world.x, groundOffset, world.z)` — blob-тень лежит под объектом, без световой проекции; запись в `TransformComponent` тени.
+- `BlobShadowComponent` (на сущности-тени) + `BlobShadowSystem` (приоритет 50): тень следует за root-motion анимации цели — позиция кости (`Skelet::getBonePosition`, кандидаты «boneName»/«Hips»/«mixamorig:Hips»/подстрока hips·pelvis), мировая = `getWorldPosition() + rotate(getWorldScale()·pos, getWorldRotation())` (TRS-путь короче сборки матрицы; `Matrix::operator*` стандартен — column-major конвенция, см. CORE.md), тень ставится **строго под цель** `(world.x, groundOffset, world.z)` — blob-тень лежит под объектом, без световой проекции; запись в `TransformComponent` тени.
 - `RenderSystem` (приоритет 100) — единственная точка отрисовки мира. Порядок слоёв фиксирован: `Ground` → `Shadow` (альфа-блендинг, запись глубины выключена) → `AlphaTested` → `Opaque` (включая `SkinnedMeshComponent`). Трансформации — из `TransformComponent::getWorldMatrix()`; без таргета — no-op; таргетом не владеет.
 
 ### Кеш ресурсов сцены

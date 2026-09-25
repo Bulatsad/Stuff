@@ -85,9 +85,10 @@ namespace beng
 
         // Сборка локальной TRS-матрицы из позиции/вращения/масштаба.
         // Раскладка согласована с blib::graphics::composeMatrix и
-        // ITransformable: data[row][col], трансляция — в последней
-        // колонке (data[i][3]) — именно такую матрицу ожидает
-        // рендер (glUniformMatrix4fv с transpose=GL_TRUE).
+        // ITransformable: column-major хранилище data[столбец][строка],
+        // трансляция — в последней КОЛОНКЕ (data[3][0..2]) — именно
+        // такую матрицу ожидает рендер (glUniformMatrix4fv с
+        // transpose=GL_FALSE; см. CORE.md, «Конвенция матриц»).
         //
         // Формула дублирует blib::graphics::composeMatrix намеренно:
         // beng-core зависит только от blib-core (математика), а
@@ -111,20 +112,22 @@ namespace beng
             const float r21 = 2.0f * (qy * qz + qw * qx);
             const float r22 = 1.0f - 2.0f * (qx * qx + qy * qy);
 
+            // Стандартная column-major TRS: столбцы 0..2 — колонки R*S,
+            // колонка 3 — трансляция
             blib::math::Matrix<float, 4, 4> result;
             result.loadIdentity();
             result.data[0][0] = r00 * scale.x;
-            result.data[0][1] = r01 * scale.y;
-            result.data[0][2] = r02 * scale.z;
-            result.data[0][3] = position.x;
-            result.data[1][0] = r10 * scale.x;
+            result.data[0][1] = r10 * scale.x;
+            result.data[0][2] = r20 * scale.x;
+            result.data[1][0] = r01 * scale.y;
             result.data[1][1] = r11 * scale.y;
-            result.data[1][2] = r12 * scale.z;
-            result.data[1][3] = position.y;
-            result.data[2][0] = r20 * scale.x;
-            result.data[2][1] = r21 * scale.y;
+            result.data[1][2] = r21 * scale.y;
+            result.data[2][0] = r02 * scale.z;
+            result.data[2][1] = r12 * scale.z;
             result.data[2][2] = r22 * scale.z;
-            result.data[2][3] = position.z;
+            result.data[3][0] = position.x;
+            result.data[3][1] = position.y;
+            result.data[3][2] = position.z;
             return result;
         }
     }
@@ -171,11 +174,12 @@ namespace beng
             updateWorldMatrix();
         }
 
-        // Извлечь позицию из мировой матрицы (последняя колонка)
+        // Извлечь позицию из мировой матрицы: column-major, трансляция —
+        // в последней колонке (data[3][0..2])
         return blib::math::Vector<float, 3>(
-            worldMatrix.data[0][3],
-            worldMatrix.data[1][3],
-            worldMatrix.data[2][3]
+            worldMatrix.data[3][0],
+            worldMatrix.data[3][1],
+            worldMatrix.data[3][2]
         );
     }
 
@@ -343,8 +347,11 @@ namespace beng
         worldMatrix = composeTrsMatrix(localPosition, localRotation, localScale);
 
         // Если есть родитель — умножить на его мировую матрицу.
-        // getWorldMatrix родителя рекурсивно пересчитает его самого,
-        // если он dirty — порядок итерации по dense не влияет на результат.
+        // Стандартное column-vector произведение: world = parent * local
+        // (Matrix::operator* — обычное произведение, не транспонированное;
+        // см. CORE.md, «Конвенция матриц»). getWorldMatrix родителя
+        // рекурсивно пересчитает его самого, если он dirty — порядок
+        // итерации по dense не влияет на результат.
         if (parent != invalidEntity)
         {
             TransformComponent* parentTransform = ownerScene->tryGetComponent<TransformComponent>(parent);

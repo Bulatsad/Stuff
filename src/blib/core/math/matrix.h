@@ -8,7 +8,11 @@ namespace blib
 {
     namespace math
     {
-        // stores matrix as array of lines(rows)
+        // Хранилище: массив СТОЛБЦОВ — data[колонка][строка], в памяти
+        // column-major (столбец лежит подряд), как в OpenGL/glm.
+        // tmplWidth — число столбцов, tmplHeight — число строк.
+        // Матрица задаёт column-vector конвенцию: v' = M * v, трансляция
+        // 4x4-преобразования — в последней колонке (data[3][0..2]).
         typedef unsigned int matrixSizeT;
         template<class Type, matrixSizeT tmplWidth, matrixSizeT tmplHeight >
         class Matrix
@@ -27,6 +31,9 @@ namespace blib
                 // identity, а лишние аргументы игнорируются (обрезаются
                 // циклом ниже). Раньше тут было исключение, но правило
                 // проекта запрещает throw (см. AGENTS.md).
+                // Порядок аргументов — построчно (row-major): первые
+                // tmplWidth значений — первая строка матрицы; в память
+                // ложатся в column-major раскладку (data[столбец][строка]).
                 this->loadIdentity();
 
                 //construct
@@ -99,6 +106,9 @@ namespace blib
             template<class TypeRhs, matrixSizeT tmplWidthRhs, matrixSizeT tmplHeightRhs>
             Matrix<Type, tmplWidthRhs, tmplHeight> operator*(const Matrix<TypeRhs, tmplWidthRhs, tmplHeightRhs>& rhs) const
             {
+                // Стандартное матричное произведение (column-vector
+                // конвенция): res = this * rhs; трансляция при
+                // преобразовании точки НЕ теряется.
                 // Размерности известны на этапе компиляции — ловим
                 // несовместимость статически (раньше тут было throw)
                 static_assert(tmplWidth == tmplHeightRhs,

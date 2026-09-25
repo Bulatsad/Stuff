@@ -393,3 +393,53 @@ BLIB_TEST_CASE("Matrix3x3 Transpose roundtrip")
 		}
 	}
 }
+
+// ============================================================
+// Конвенция: column-major, column-vectors
+// ============================================================
+// Матрица 4x4 с трансляцией (5, 6, 7) при умножении на
+// вектор-столбец (x, y, z, 1) даёт (x+5, y+6, z+7) — трансляция
+// НЕ теряется. Регресс-тест: раньше graphics-слой хранил матрицы
+// транспонированными, и произведение теряло трансляцию.
+
+BLIB_TEST_CASE("Matrix4x4 point transform preserves translation")
+{
+	// Трансляционная матрица: data[столбец][строка], трансляция —
+	// в последней колонке (data[3][0..2])
+	Mat4 translate;
+	translate.data[3][0] = 5.0f;
+	translate.data[3][1] = 6.0f;
+	translate.data[3][2] = 7.0f;
+
+	// Точка как вектор-столбец: Matrix<float, 1, 4> — одна колонка,
+	// четыре строки
+	Matrix<float, 1, 4> point;
+	point.data[0][0] = 1.0f;
+	point.data[0][1] = 2.0f;
+	point.data[0][2] = 3.0f;
+	point.data[0][3] = 1.0f;
+
+	Matrix<float, 1, 4> res = translate * point;
+
+	BLIB_TEST_CHECK(res.data[0][0] == 6.0f);
+	BLIB_TEST_CHECK(res.data[0][1] == 8.0f);
+	BLIB_TEST_CHECK(res.data[0][2] == 10.0f);
+	BLIB_TEST_CHECK(res.data[0][3] == 1.0f);
+}
+
+BLIB_TEST_CASE("Matrix4x4 identity point transform keeps point")
+{
+	Mat4 id;
+	Matrix<float, 1, 4> point;
+	point.data[0][0] = 3.0f;
+	point.data[0][1] = -1.0f;
+	point.data[0][2] = 0.5f;
+	point.data[0][3] = 1.0f;
+
+	Matrix<float, 1, 4> res = id * point;
+
+	BLIB_TEST_CHECK(res.data[0][0] == 3.0f);
+	BLIB_TEST_CHECK(res.data[0][1] == -1.0f);
+	BLIB_TEST_CHECK(res.data[0][2] == 0.5f);
+	BLIB_TEST_CHECK(res.data[0][3] == 1.0f);
+}

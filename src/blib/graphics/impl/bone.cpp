@@ -84,12 +84,15 @@ bool blib::graphics::Bone::loadFromAssimp(const aiBone* pbone)
 
     this->node = pbone->mNode;
 
+    // ВАЖНО: aiMatrix4x4 — row-major хранилище (row0 = a1..a4),
+    // трансляция — в (a4, b4, c4); Matrix(initializer_list) читается
+    // построчно (см. transformFromAssimp в skelet.cpp, CORE.md)
     this->offsetMatrix = blib::graphics::TransformMatrix(
         {
-            pbone->mOffsetMatrix.a1, pbone->mOffsetMatrix.b1, pbone->mOffsetMatrix.c1, pbone->mOffsetMatrix.d1,
-            pbone->mOffsetMatrix.a2, pbone->mOffsetMatrix.b2, pbone->mOffsetMatrix.c2, pbone->mOffsetMatrix.d2,
-            pbone->mOffsetMatrix.a3, pbone->mOffsetMatrix.b3, pbone->mOffsetMatrix.c3, pbone->mOffsetMatrix.d3,
-            pbone->mOffsetMatrix.a4, pbone->mOffsetMatrix.b4, pbone->mOffsetMatrix.c4, pbone->mOffsetMatrix.d4
+            pbone->mOffsetMatrix.a1, pbone->mOffsetMatrix.a2, pbone->mOffsetMatrix.a3, pbone->mOffsetMatrix.a4,
+            pbone->mOffsetMatrix.b1, pbone->mOffsetMatrix.b2, pbone->mOffsetMatrix.b3, pbone->mOffsetMatrix.b4,
+            pbone->mOffsetMatrix.c1, pbone->mOffsetMatrix.c2, pbone->mOffsetMatrix.c3, pbone->mOffsetMatrix.c4,
+            pbone->mOffsetMatrix.d1, pbone->mOffsetMatrix.d2, pbone->mOffsetMatrix.d3, pbone->mOffsetMatrix.d4
         });
 
     this->localTransform = blib::graphics::Identity;

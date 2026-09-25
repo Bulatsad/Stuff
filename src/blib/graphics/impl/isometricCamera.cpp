@@ -109,8 +109,8 @@ namespace blib
             this->projectionMatrix.data[0][0] = f / aspect;      // x scale
             this->projectionMatrix.data[1][1] = f;               // y scale
             this->projectionMatrix.data[2][2] = (farDist + nearDist) / (nearDist - farDist);   // z scale
-            this->projectionMatrix.data[3][2] = -1;              // perspective div
-            this->projectionMatrix.data[2][3] = (2 * farDist * nearDist) / (nearDist - farDist); // z shift
+            this->projectionMatrix.data[2][3] = -1;              // perspective div
+            this->projectionMatrix.data[3][2] = (2 * farDist * nearDist) / (nearDist - farDist); // z shift
             this->projectionMatrix.data[3][3] = 0;
         }
 

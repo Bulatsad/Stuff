@@ -94,8 +94,11 @@ void blib::graphics::RenderContext::sendVievMatrixToShaderProgram()
         return;
     }
 
+    // Матрицы движка — column-major (data[столбец][строка]), поэтому
+    // GL_FALSE: OpenGL читает их как есть, без транспонирования
+    // (см. CORE.md, «Конвенция матриц»)
     const void* pViewMatrix = static_cast<const void*>(&(this->pCamera->getViewMatrix().data));
-    this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_TRUE, reinterpret_cast<const GLfloat*>(pViewMatrix));
+    this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_FALSE, reinterpret_cast<const GLfloat*>(pViewMatrix));
 }
 
 void blib::graphics::RenderContext::setCamera(blib::graphics::ICamera* a_pCamera)
@@ -112,7 +115,7 @@ void blib::graphics::RenderContext::sendProjectionMatrixToShaderProgram()
     }
 
     const void* pProjectionMatrix = static_cast<const void*>(&(this->pCamera->getProjectionMatrix().data));
-    this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_TRUE, reinterpret_cast<const GLfloat*>(pProjectionMatrix));
+    this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_FALSE, reinterpret_cast<const GLfloat*>(pProjectionMatrix));
 }
 
 void blib::graphics::RenderContext::sendModelMatrixToShaderProgram(const blib::graphics::TransformMatrix& modelMatix)
@@ -124,7 +127,7 @@ void blib::graphics::RenderContext::sendModelMatrixToShaderProgram(const blib::g
     }
 
     const void* pModelMatrix = static_cast<const void*>(&(modelMatix.data));
-    this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_TRUE, reinterpret_cast<const GLfloat*>(pModelMatrix));
+    this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, 1, GL_FALSE, reinterpret_cast<const GLfloat*>(pModelMatrix));
 }
 
 void blib::graphics::RenderContext::sendBoneMatricesToShaderProgram(const std::vector<blib::graphics::TransformMatrix>& boneMatrices)
@@ -141,7 +144,7 @@ void blib::graphics::RenderContext::sendBoneMatricesToShaderProgram(const std::v
     }
 
     size_t count = boneMatrices.size() > __blib_max_bones ? __blib_max_bones : boneMatrices.size();
-    this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, static_cast<GLsizei>(count), GL_TRUE, reinterpret_cast<const GLfloat*>(boneMatrices.data()));
+    this->api.ogl.ext.__blib_gl_glUniformMatrix4fv(location, static_cast<GLsizei>(count), GL_FALSE, reinterpret_cast<const GLfloat*>(boneMatrices.data()));
 }
 
 void blib::graphics::RenderContext::sendLightsToShaderProgram()
