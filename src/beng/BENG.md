@@ -3,7 +3,7 @@
 > Слой: `beng`. Шпаргалка по устройству, инвариантам и граблям — чтобы не перечитывать исходники.
 > Не дублирует правила проекта (`AGENTS.md`) и roadmap (`ARCHITECTURE.md`) — только ссылается на них.
 > **Обновлять при любом изменении кода beng** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-22
+> Сверено: 2026-09-24
 
 ---
 
@@ -37,8 +37,8 @@
 | Время кадра | `src/beng/core/time.h/.cpp` |
 | Transform + иерархия | `src/beng/components/transform.h/.cpp` |
 | TransformSystem | `src/beng/systems/transformSystem.h/.cpp` |
-| Скелетная модель (владеет `SkinModel`) | `src/beng/client/components/skinnedMeshComponent.h/.cpp` |
-| Статический меш (`Mesh` + слой рендера) | `src/beng/client/components/meshRenderComponent.h/.cpp` |
+| Скелетная модель (ref на слот кеша или owned `SkinModel`) | `src/beng/client/components/skinnedMeshComponent.h/.cpp` |
+| Статический меш (ref на слот кеша или `Mesh` + слой рендера) | `src/beng/client/components/meshRenderComponent.h/.cpp` |
 | Blob-тень, следующая за моделью | `src/beng/client/components/blobShadowComponent.h/.cpp` |
 | Анимация (состояние плейбека) | `src/beng/client/components/animatorComponent.h/.cpp` |
 | Продвижение и применение анимации | `src/beng/client/systems/animationSystem.h/.cpp` |
@@ -61,7 +61,7 @@
 - **Коллизия имени в сцене — fatal** (повторная регистрация имени): guard-паттерн `if (!scene.isRegisteredComponentType<T>()) scene.registerComponentType<T>();` для идемпотентности. `getComponentPool<T>()`/`addComponent<T>()` без регистрации — fatal; `tryGetComponentPool<T>()`/`tryGetComponent<T>()` — не-fatal (nullptr, контракт для систем с опциональными компонентами).
 - **Регистрация — строго до запуска цикла** (Scene не thread-safe). Горячий путь резолва `T → ComponentType` — линейный скан таблицы имён (`≤ maxComponentTypes` strcmp, без аллокаций); словарь `typeIdByName` (строка → ID, ключи через blib-аллокатор) используется при регистрации и в будущем save/load по именам.
 - Имена типов не копируются сценой: это литералы из классов компонентов, живущие весь процесс. Имена уникальны по конвенции (префикс модуля: `beng.*`, `gravelands.*`).
-- **Владение:** `ComponentPool<T>` хранит компоненты через `PoolAllocator`; `destroyEntity`/`removeComponent` вызывают `~T()`. Компонент, владеющий ресурсом, освобождает его в деструкторе (пример: `SkinnedMeshComponent` → `SkinModel`).
+- **Владение:** `ComponentPool<T>` хранит компоненты через `PoolAllocator`; `destroyEntity`/`removeComponent` вызывают `~T()`. Компонент, владеющий ресурсом, освобождает его в деструкторе (пример: `SkinnedMeshComponent` → `SkinModel` или `ResourceRef` на слот кеша сцены).
 - Указатель на компонент стабилен, пока компонент жив: `destroy` другого компонента двигает только `Entry` (swap-and-pop).
 - **Итерация `ComponentPool`:** `begin()/end()` (+ const/`cbegin`/`cend`) обходят **только активные** компоненты (`IComponent::isActive == true`, флаг читается вживую на каждом шаге); порядок — dense, как у `getByIndex`; `*it` → `T&` (const-пул → `const T&`), владелец — `it.getEntityId()`. **Инвалидация:** `create()` (push_back) и `destroy()` (swap-and-pop) убивают живые итераторы — стандартная контейнерная семантика, `end()` пересчитывать. `size()` считает все компоненты **включая неактивные**; `getByIndex` возвращает неактивные как есть (тесты/диагностика), системы используют итераторы.
 - Служебные контейнеры — через `StdAllocatorAdapter` (GlobalAllocator), без `::operator new`.
@@ -78,12 +78,18 @@
 ### beng-client
 
 - **ИНВАРИАНТ — единый ECS-рендер:** вся отрисовка мира идёт ТОЛЬКО через `Scene`: создать сцену → добавить объекты на сцену (сущности с рендер-компонентами) → отрисовать сцену (`scene.update()`, рисует `RenderSystem`). Прямые вызовы `renderTarget.draw(...)` вне RenderSystem запрещены. Пост-процессинг (пасс над FBO после сцены) и свет (`RenderContext`) — состояние презентации, не объекты мира (могут жить в приложении).
-- `SkinnedMeshComponent` — **владеет** `blib::graphics::SkinModel` (GlobalAllocator + placement new; `unload()` идемпотентен; `getModel()` может быть nullptr). `loadFromFile` пересоздаёт модель.
-- `MeshRenderComponent` — **владеет** `blib::graphics::Mesh` по значению (move-only: меш передаётся из билдера/примитива, напр. `Sphere::takeMesh()`); `RenderLayer {Ground, Shadow, AlphaTested, Opaque}` задаёт порядок/поведение. ComponentPool не двигает компоненты — move-only член безопасен. Пулы RenderSystem берёт через `Scene::tryGetComponentPool` — сцены без статики (вьювер) работают как раньше.
+- `SkinnedMeshComponent` — модель в **двух режимах**: (1) `ResourceRef` на слот кеша сцены (`loadFromFile(path, rm)`, ключ = путь; уже «опечатанный» слот просто берётся ref'ом — разделение/dedup); (2) owned-фолбэк `SkinModel*` (GlobalAllocator + placement new) — standalone-`loadFromFile(path)` и verifyRoundTrip. `getModel()` возвращает АКТИВНУЮ модель (ref ?? owned); `unload()` снимает ref и выгружает owned. **Мутация общего слота** (`loadSkinFromFile`/`loadAnimationsFromFile` в ref-режиме) устаревает его datahash — dedup-индекс более не отражает содержимое (TODO: re-commit API).
+- `MeshRenderComponent` — меш в **двух режимах**: `ResourceRef` на слот кеша (ctor от ref'а / `setMeshResource`; для тайлов: `IsometricTileset::buildMeshInto` собирает прямо в слот — Mesh move-присваивание удалено) либо `Mesh` по значению (move-only, из билдера/примитива, напр. `Sphere::takeMesh()`). `getMesh()` возвращает АКТИВНЫЙ меш (ref ?? owned; owned пуст в ref-режиме и служит verify-фолбэком). `RenderLayer {Ground, Shadow, AlphaTested, Opaque}` задаёт порядок/поведение. ComponentPool не двигает компоненты — move-only член безопасен. Пулы RenderSystem берёт через `Scene::tryGetComponentPool` — сцены без статики (вьювер) работают как раньше.
 - `AnimatorComponent` — **не владеет** аниматором: хранит указатель на `Animator` внутри `SkinModel` + `loop`/`poseDirty`. При выгрузке модели указатель обязан быть снят (`setAnimator(nullptr)` или уничтожение сущности) — иначе висячий указатель.
 - `AnimationSystem` (приоритет -50): играет → `SkinModel::update(dt_ms)` (время в миллисекундах!); нециклическая доиграла → `pause()`; пауза + `poseDirty` (выбор клипа/скраб) → `update(0)` + сброс флага.
 - `BlobShadowComponent` (на сущности-тени) + `BlobShadowSystem` (приоритет 50): тень следует за root-motion анимации цели — позиция кости (`Skelet::getBonePosition`, кандидаты «boneName»/«Hips»/«mixamorig:Hips»/подстрока hips·pelvis), мировая = `getWorldPosition() + rotate(getWorldScale()·pos, getWorldRotation())` (Matrix::operator* не использовать — транспонированное произведение, см. CORE.md), тень ставится **строго под цель** `(world.x, groundOffset, world.z)` — blob-тень лежит под объектом, без световой проекции; запись в `TransformComponent` тени.
 - `RenderSystem` (приоритет 100) — единственная точка отрисовки мира. Порядок слоёв фиксирован: `Ground` → `Shadow` (альфа-блендинг, запись глубины выключена) → `AlphaTested` → `Opaque` (включая `SkinnedMeshComponent`). Трансформации — из `TransformComponent::getWorldMatrix()`; без таргета — no-op; таргетом не владеет.
+
+### Кеш ресурсов сцены
+
+- `Scene::getResources()` — член-`blib::resource::ResourceManager` (см. `src/blib/core/resource/RESOURCE_MANAGER.md`): кеш ISaveLoadable-ресурсов по ключам с dedup по содержимому (MD5 сериализованной формы) и refcount-доступом. **Сцена владеет кешем** — загрузка идёт через `scene.getResources()`, не через глобальный сервис.
+- **Порядок жизни:** `Scene::clear()` (в деструкторе) уничтожает компоненты **до** деструктора кеша — ref'ы компонентов отпускаются раньше; внешние `ResourceRef`'ы обязаны умереть раньше сцены, иначе `~ResourceManager` фаталит (утечка ref'ов). В gravelands-клиенте сцена объявлена после окна/таргета — GL-контекст на момент уничтожения кеша жив (см. GRAPHICS.md «Владение GL»).
+- Грабли: `construct` идемпотентен по ключу (второй вызов игнорирует ctor-аргументы, warning + ref на существующий); после `commit` дубликат возвращает ref на канонический слот — паттерн `rf = rm.commit(rf)`.
 
 ### Сериализация компонентов (ISaveLoadable)
 
@@ -92,7 +98,7 @@
 - **Границы сериализации:** `ownerId` не пишется (владение — забота `Scene`/пула, будущий `Scene::load`); `isActive` пишется. Контекстные указатели (`Scene*`, `Animator*`, `model*`) не сериализуются и сравниваются по null-состоянию → `verify()` standalone-компонента (без контекста) = true, компонента в сцене — false (строгая модель).
 - `TransformComponent` — сериализуется всё состояние, включая кеш `worldMatrix` (бит-в-бит контракт ISaveable). `BlobShadowComponent`/`AnimatorComponent` — все собственные поля (у Animator клип/время/play не пишутся — это состояние ассета `SkinModel`).
 - `MeshRenderComponent` — слой + меш: **делегирует** `blib::graphics::Mesh` (ISaveLoadable: вся CPU-геометрия + CPU-поля `Material`, включая битмап `diffuseImage`; GL-хендлы не сериализуемы — см. GRAPHICS.md, «Сериализация»). JSON-объём пропорционален геометрии (у примитивов/спрайтов малый).
-- `SkinnedMeshComponent` — **полное содержимое модели** через `blib::graphics::SkinModel::toJson/fromJson` (скелет, веса, геометрия, материалы с битмапами диффуза, клипы анимации): `{model: <SkinModel JSON> | null, isActive}`; `load()` при отсутствии модели аллоцирует её (GlobalAllocator + placement new). `Bone::node` (aiNode*) — контекст Assimp, после восстановления nullptr (рантайм на нём не зависит).
+- `SkinnedMeshComponent` — **полное содержимое АКТИВНОЙ модели** через `blib::graphics::SkinModel::toJson/fromJson` (скелет, веса, геометрия, материалы с битмапами диффуза, клипы анимации): `{model: <SkinModel JSON> | null, isActive}`; `load()` восстанавливает в активную модель — ref-слот, либо owned-фолбэк (аллоцируется при отсутствии: GlobalAllocator + placement new, standalone/verify-путь). `Bone::node` (aiNode*) — контекст Assimp, после восстановления nullptr (рантайм на нём не зависит).
 - `verify()` сериализуемых компонентов — `blib::core::verifyRoundTrip<T>` (без RTTI: save → свежий `T()` → load → `strongCompare`); требует default-конструктор (есть у всех сериализуемых).
 - `load()` валидирует **все** поля до применения — при ошибке (`LoadStatus::InvalidData`) состояние компонента не меняется. У `MeshRenderComponent`/`SkinnedMeshComponent` меши пересоздаются destroy + placement new (move-присваивание у `Mesh` удалено): GL-кэш старой геометрии невалиден после перезаписи CPU-данных, свежий меш перезапечётся в `draw()`. **Перезапись запечённого меша требует живого RenderContext.**
 - Не прятать точку входа: в каждом компоненте `using blib::core::IStrongComparable::strongCompare;` — иначе 1-аргументная перегрузка базы скрывается 2-аргументной и `verifyRoundTrip` не компилируется.

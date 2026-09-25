@@ -5,6 +5,7 @@
 #include <blib/config.h>
 #include <blib/core/isaveloadable.h>
 #include <blib/core/json/json.h>
+#include <blib/system/memory/iallocatorAware.h>
 #include <blib/graphics/mesh.h>
 #include <blib/graphics/skelet.h>
 
@@ -17,9 +18,27 @@ namespace blib
          * костей в boneIds/boneWeights + материал), сериализуется
          * целиком делегированием Mesh (ISaveLoadable).
          */
-        class __blib_graphics_api SkinMesh : public blib::core::ISaveLoadable
+        class __blib_graphics_api SkinMesh : public blib::core::ISaveLoadable, public blib::memory::IAllocatorAware
         {
         public:
+            // Стабильное имя типа ресурса — тег кеша ресурсов
+            // (ResourceManager; сравнение по содержимому, не по адресу)
+            static constexpr const char* resourceTypeName = "blib.graphics.SkinMesh";
+
+            // Явный default (удалённый copy-ctor подавил бы implicit)
+            SkinMesh() = default;
+
+            // Некопируем (внутри — некопируемый Mesh). УДАЛЕНО ЯВНО:
+            // MSVC-трейт is_copy_constructible «врёт» на имплицитно-
+            // удалённом copy-ctor'е (см. SkinModel, itypeErased.h)
+            SkinMesh(const SkinMesh&) = delete;
+            SkinMesh& operator=(const SkinMesh&) = delete;
+
+            // Move — явно: удалённый copy подавил бы implicit move
+            // (нужен vector<SkinMesh>::resize — MoveInsertable)
+            SkinMesh(SkinMesh&&) = default;
+            SkinMesh& operator=(SkinMesh&&) = default;
+
             /**
              * Раскладка весов костей по вершинам против заданного
              * скелета. Кость меша ищется в скелете по имени; при

@@ -17,6 +17,7 @@
 #include <blib/core/console/console.h>
 #include <blib/core/math/quaternion.h>
 #include <blib/core/math/trigonometry.h>
+#include <blib/core/resource/resourceManager.h>
 #include <blib/graphics/blobShadow.h>
 #include <blib/graphics/color.h>
 #include <blib/graphics/impl/win/winRenderWindowUtil.h>
@@ -183,6 +184,10 @@ namespace gravelands
         constexpr float dancerScale = 0.1f;
         constexpr float dancerPositionX = 0.0f;
         constexpr float dancerPositionZ = 60.0f;
+
+        // Логический ключ тайлового меша в кеше ресурсов сцены
+        // (ResourceManager: dedup по содержимому, разделение слота)
+        constexpr const char* tilesResourceKey = "gravelands.tiles";
 
         // Поворот танцора к камере КВАТЕРНИОНОМ (стандартная конвенция:
         // угол θ вокруг +Y отображает +Z в (sinθ, 0, cosθ); камера на
@@ -783,10 +788,25 @@ namespace gravelands
 
         // --- Земля: сетка тайлов (слой Ground) ---
         {
+            // Процедурный меш строится ПРЯМО в слот кеша ресурсов
+            // сцены (Mesh move-присваивание удалено — сборка на месте),
+            // затем «опечатывается» (commit: hash + dedup-индекс)
+            blib::resource::ResourceRef tilesRef =
+                impl->scene.getResources().construct<blib::graphics::Mesh>(tilesResourceKey);
+            if (__blib_unlikely(tilesRef.isEmpty()))
+            {
+                __blib_log_error("failed to construct tiles resource slot");
+            }
+            else
+            {
+                gravelands::IsometricTileset::buildMeshInto(*tilesRef.get<blib::graphics::Mesh>());
+                tilesRef = impl->scene.getResources().commit(tilesRef);
+            }
+
             const beng::EntityID entity = impl->scene.createEntity();
             impl->scene.addComponent<beng::TransformComponent>(entity, &impl->scene);
             impl->scene.addComponent<beng::MeshRenderComponent>(
-                entity, gravelands::IsometricTileset::buildMesh(), beng::RenderLayer::Ground);
+                entity, tilesRef, beng::RenderLayer::Ground);
         }
 
         // --- Тестовая сфера (слой Opaque): toon + контур + шахматка ---
@@ -927,7 +947,7 @@ namespace gravelands
         beng::SkinnedMeshComponent& meshComp = impl->scene.addComponent<beng::SkinnedMeshComponent>(entity);
         beng::AnimatorComponent& animComp = impl->scene.addComponent<beng::AnimatorComponent>(entity);
 
-        if (__blib_unlikely(!meshComp.loadFromFile(modelPath)))
+        if (__blib_unlikely(!meshComp.loadFromFile(modelPath, impl->scene.getResources())))
         {
             __blib_log_error("failed to load model '%s'", modelPath.c_str());
             impl->scene.destroyEntity(entity);

@@ -6,6 +6,7 @@
 #include <blib/core/unsafeslicer.h>
 #include <blib/core/isaveloadable.h>
 #include <blib/core/json/json.h>
+#include <blib/system/memory/iallocatorAware.h>
 #include <blib/graphics/color.h>
 
 #include <vector>
@@ -14,12 +15,16 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_graphics_api Image : public blib::core::ISaveLoadable
+        class __blib_graphics_api Image : public blib::core::ISaveLoadable, public blib::memory::IAllocatorAware
         {
         private:
             std::vector<Color> bitmap;
 
         public:
+            // Стабильное имя типа ресурса — тег кеша ресурсов
+            // (ResourceManager; сравнение по содержимому, не по адресу)
+            static constexpr const char* resourceTypeName = "blib.graphics.Image";
+
             buint16 width;
             buint16 height;
 

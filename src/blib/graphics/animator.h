@@ -6,6 +6,7 @@
 
 #include <blib/core/isaveloadable.h>
 #include <blib/core/json/json.h>
+#include <blib/system/memory/iallocatorAware.h>
 #include <blib/graphics/animationclip.h>
 #include <blib/graphics/skelet.h>
 
@@ -16,7 +17,7 @@ namespace blib
 {
     namespace graphics
     {
-        class __blib_graphics_api Animator : public blib::core::ISaveLoadable
+        class __blib_graphics_api Animator : public blib::core::ISaveLoadable, public blib::memory::IAllocatorAware
         {
         private:
             std::vector<blib::graphics::AnimationClip> animationList;
@@ -25,6 +26,10 @@ namespace blib
             bool isPlaying = false;
 
         public:
+            // Стабильное имя типа ресурса — тег кеша ресурсов
+            // (ResourceManager; сравнение по содержимому, не по адресу)
+            static constexpr const char* resourceTypeName = "blib.graphics.Animator";
+
             const std::vector<blib::graphics::AnimationClip>& getAnimations() const { return this->animationList; }
             const blib::graphics::AnimationClip* getCurrentAnimation() const;
             double getCurrentTimeMs() const { return this->currentTimeMs; }

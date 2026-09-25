@@ -8,6 +8,7 @@
 #include <blib/config.h>
 #include <blib/core/isaveloadable.h>
 #include <blib/core/json/json.h>
+#include <blib/system/memory/iallocatorAware.h>
 #include <blib/graphics/transformMatrix.h>
 
 #include <blib/graphics/hierarchal.h>
@@ -27,9 +28,13 @@ namespace blib
             blib::graphics::TransformMatrix bindTransform;
         };
 
-        class __blib_graphics_api Bone : public blib::graphics::IHierarchal, public blib::core::ISaveLoadable
+        class __blib_graphics_api Bone : public blib::graphics::IHierarchal, public blib::core::ISaveLoadable,
+            public blib::memory::IAllocatorAware
         {
         public:
+            // Стабильное имя типа ресурса — тег кеша ресурсов
+            // (ResourceManager; сравнение по содержимому, не по адресу)
+            static constexpr const char* resourceTypeName = "blib.graphics.Bone";
 
             bool loadFromAssimp(const aiBone* pbone);
 

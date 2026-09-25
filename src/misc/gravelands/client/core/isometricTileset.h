@@ -16,7 +16,9 @@ namespace gravelands
      *   проекции изокамеры (blib::graphics::IsometricCamera), а не
      *   форма самого тайла
      * - Меш передаётся в ECS-рендер: вся отрисовка мира идёт через
-     *   сцену (MeshRenderComponent, слой Ground) — см. BENG.md
+     *   сцену (MeshRenderComponent, слой Ground) — см. BENG.md.
+     *   buildMeshInto собирает ПРЯМО в слот кеша ресурсов сцены
+     *   (Mesh move-присваивание удалено — на месте не перезалить)
      */
     class IsometricTileset
     {
@@ -27,6 +29,14 @@ namespace gravelands
          * @return Меш (move-only): передаётся в рендер-компонент
          */
         static blib::graphics::Mesh buildMesh();
+
+        /**
+         * Собрать сетку тайлов ПРЯМО в существующий меш (слот кеша
+         * ресурсов): вершинные буферы и грани перезаливаются на месте.
+         * 
+         * @param outMesh Приёмник (обычно пустой слот ResourceManager)
+         */
+        static void buildMeshInto(_Out blib::graphics::Mesh& outMesh);
     };
 
 } // namespace gravelands

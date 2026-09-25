@@ -7,6 +7,7 @@
 #include <blib/config.h>
 #include <blib/blibint.h>
 #include <blib/core/isaveloadable.h>
+#include <blib/system/memory/iallocatorAware.h>
 #include <blib/graphics/vertex.h>
 #include <blib/graphics/renderWindow.h>
 #include <blib/graphics/drawable.h>
@@ -32,10 +33,14 @@ namespace blib
         };
 
         class __blib_graphics_api Mesh : public blib::graphics::IDrawable, public blib::graphics::ITransformable,
-            public blib::core::ISaveLoadable
+            public blib::core::ISaveLoadable, public blib::memory::IAllocatorAware
         {
         private:
-            void* ctx;
+            // GL-контекст меша (VAO/VBO/EBO + сохранённый RenderContext).
+            // Аллоцируется ЛЕНИВО в bake() через аллокатор IAllocatorAware:
+            // конструктор не аллоцирует (контракт кеша ресурсов).
+            // mutable — bake() const-метод и только кеширует GL-состояние
+            mutable void* ctx;
             mutable bool baked = false;
 
             mutable blib::graphics::Shader fragmentShader;
@@ -46,13 +51,18 @@ namespace blib
             mutable blib::graphics::ShaderProgram outlineDrawer;
             void bake(blib::graphics::RenderContext& ctx) const;
         public:
+            // Стабильное имя типа ресурса — тег кеша ресурсов
+            // (ResourceManager: проверка типа слота и ключ dedup-индекса;
+            // сравнение по содержимому, не по адресу литерала)
+            static constexpr const char* resourceTypeName = "blib.graphics.Mesh";
+
             Mesh();
             ~Mesh();
 
-            // Владение сырым ctx (GlobalAllocator) и GL-ресурсами:
+            // Владение сырым ctx (аллокатор IAllocatorAware) и GL-ресурсами:
             // копирование дало бы двойное освобождение (см. GRAPHICS.md).
-            // Перемещение безопасно — ctx передаётся, источник обнуляется
-            // (нужно vector<SkinMesh>::resize — MoveInsertable)
+            // Перемещение безопасно — ctx и аллокатор передаются, источник
+            // обнуляется (нужно vector<SkinMesh>::resize — MoveInsertable)
             Mesh(const Mesh&) = delete;
             Mesh& operator=(const Mesh&) = delete;
             Mesh(Mesh&& other) noexcept;

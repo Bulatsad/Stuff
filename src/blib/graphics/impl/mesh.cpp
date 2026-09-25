@@ -2,7 +2,6 @@
 
 #include <blib/core/console/console.h>
 #include <blib/core/verifyHelper.h>
-#include <blib/system/memory/globalAllocator.h>
 #include <blib/graphics/shaderPaths.h>
 
 #include <Windows.h>
@@ -143,6 +142,23 @@ void blib::graphics::Mesh::loadFromAssimpMesh(const aiMesh* paimesh)
 
 void blib::graphics::Mesh::bake(blib::graphics::RenderContext& ctx) const
 {
+    // Ленивая аллокация GL-контекста: конструктор не аллоцирует
+    // (контракт IAllocatorAware — кеш ресурсов ставит аллокатор после
+    // конструирования). Память — через аллокатор интерфейса.
+    // allocate() не-const (Allocator мутирует SBO/impl), а bake() —
+    // const-метод, только кеширующий GL-состояние (как mutable baked):
+    // const_cast — локализованное снятие const для ленивой аллокации
+    if (this->ctx == nullptr)
+    {
+        this->ctx = const_cast<blib::graphics::Mesh*>(this)->allocate(sizeof(oglMeshContext));
+        if (__blib_unlikely(this->ctx == nullptr))
+        {
+            __blib_log_error("mesh bake: failed to allocate GL context");
+            return;
+        }
+        memset(this->ctx, 0, sizeof(oglMeshContext));
+    }
+
     // create VAO
     ctx.api.ogl.ext.__blib_glGenVertexArrays(1, &(__blib_this_context(this)->vao));
     ctx.api.ogl.ext.__blib_glBindVertexArray(__blib_this_context(this)->vao);
@@ -299,19 +315,19 @@ void blib::graphics::Mesh::bake(blib::graphics::RenderContext& ctx) const
 
 blib::graphics::Mesh::Mesh()
 {
-    // Выделяющая форма new запрещена проектом: контекст меша
-    // аллоцируется через GlobalAllocator (см. AGENTS.md)
-    this->ctx = blib::memory::GlobalAllocator::instance().allocate(sizeof(oglMeshContext));
-    memset(this->ctx, 0, sizeof(oglMeshContext));
+    // GL-контекст аллоцируется ЛЕНИВО в bake() через аллокатор
+    // IAllocatorAware: конструктор не аллоцирует динамическую память
+    // (требование кеша ресурсов — см. GRAPHICS.md, «Владение GL»)
+    this->ctx = nullptr;
 }
 
 blib::graphics::Mesh::~Mesh()
 {
-    // Симметрично конструктору: возвращаем память контекста
-    // глобальному аллокатору. GL-ресурсы (VAO/VBO/EBO) освобождаются,
-    // если они создавались (bake) и контекст рендера ещё жив —
-    // порядок разрушения гарантирует вызывающий (модель выгружается
-    // до окна/таргета)
+    // Симметрично ленивой аллокации в bake(): возвращаем память
+    // контекста через аллокатор IAllocatorAware. GL-ресурсы
+    // (VAO/VBO/EBO) освобождаются, если они создавались (bake) и
+    // контекст рендера ещё жив — порядок разрушения гарантирует
+    // вызывающий (модель выгружается до окна/таргета)
     if (this->ctx)
     {
         oglMeshContext* meshCtx = __blib_this_context(this);
@@ -325,7 +341,7 @@ blib::graphics::Mesh::~Mesh()
             meshCtx->renderContext = nullptr;
         }
 
-        blib::memory::GlobalAllocator::instance().deallocate(this->ctx, sizeof(oglMeshContext));
+        this->deallocate(this->ctx, sizeof(oglMeshContext));
         this->ctx = nullptr;
     }
 }
@@ -333,6 +349,7 @@ blib::graphics::Mesh::~Mesh()
 blib::graphics::Mesh::Mesh(Mesh&& other) noexcept
     : IDrawable()
     , ITransformable(std::move(other))
+    , blib::memory::IAllocatorAware(std::move(other))
     , ctx(other.ctx)
     , baked(other.baked)
     , fragmentShader(std::move(other.fragmentShader))
@@ -352,7 +369,12 @@ blib::graphics::Mesh::Mesh(Mesh&& other) noexcept
     , faces(std::move(other.faces))
     , material(std::move(other.material))
 {
-    // Источник обнуляется: его деструктор не тронет переданный ctx
+    // Источник обнуляется: его деструктор не тронет переданный ctx.
+    // Аллокатор: у IAllocatorAware пользовательский dtor подавляет
+    // implicit move-ctor, поэтому std::move(other) связывается с
+    // copy-ctor базы — share(): обе стороны делят impl (ref-counting),
+    // deallocate пойдёт через тот же аллокатор, что и allocate.
+    // У источника ctx == nullptr — его деструктор ничего не деаллоцирует
     other.ctx = nullptr;
 }
 

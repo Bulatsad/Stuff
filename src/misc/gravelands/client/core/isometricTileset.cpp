@@ -25,8 +25,14 @@ namespace gravelands
 
     blib::graphics::Mesh IsometricTileset::buildMesh()
     {
+        // Обёртка над buildMeshInto для move-семантики (takeMesh-стиль)
         blib::graphics::Mesh mesh;
+        IsometricTileset::buildMeshInto(mesh);
+        return mesh;
+    }
 
+    void IsometricTileset::buildMeshInto(_Out blib::graphics::Mesh& outMesh)
+    {
         // Вершин на тайл (квадрат: 4 угла) и треугольников на тайл
         const buint32 verticesPerTile = 4;
         const buint32 facesPerTile = 2;
@@ -34,10 +40,10 @@ namespace gravelands
         const buint32 tileCount = tileGridSide * tileGridSide;
         const buint32 vertexCount = tileCount * verticesPerTile;
 
-        mesh.vertices.resize(vertexCount);
-        mesh.textureCoords.resize(vertexCount);
-        mesh.normals.resize(vertexCount);
-        mesh.faces.reserve(tileCount * facesPerTile);
+        outMesh.vertices.resize(vertexCount);
+        outMesh.textureCoords.resize(vertexCount);
+        outMesh.normals.resize(vertexCount);
+        outMesh.faces.reserve(tileCount * facesPerTile);
 
         // Сдвиг, центрирующий сетку вокруг начала координат
         const float halfGrid = static_cast<float>(tileGridSide) * 0.5f;
@@ -59,16 +65,16 @@ namespace gravelands
                 // Углы квадрата: left-top, right-top, right-bottom,
                 // left-bottom (вид сверху; порядок даёт лицевые грани
                 // вверх, CCW при взгляде сверху)
-                mesh.vertices[base + 0] = blib::graphics::Vector3f(cx - halfTile, 0.0f, cz - halfTile);
-                mesh.vertices[base + 1] = blib::graphics::Vector3f(cx + halfTile, 0.0f, cz - halfTile);
-                mesh.vertices[base + 2] = blib::graphics::Vector3f(cx + halfTile, 0.0f, cz + halfTile);
-                mesh.vertices[base + 3] = blib::graphics::Vector3f(cx - halfTile, 0.0f, cz + halfTile);
+                outMesh.vertices[base + 0] = blib::graphics::Vector3f(cx - halfTile, 0.0f, cz - halfTile);
+                outMesh.vertices[base + 1] = blib::graphics::Vector3f(cx + halfTile, 0.0f, cz - halfTile);
+                outMesh.vertices[base + 2] = blib::graphics::Vector3f(cx + halfTile, 0.0f, cz + halfTile);
+                outMesh.vertices[base + 3] = blib::graphics::Vector3f(cx - halfTile, 0.0f, cz + halfTile);
 
                 // Нормали копируются по всем вершинам (одна и та же)
-                mesh.normals[base + 0] = upNormal;
-                mesh.normals[base + 1] = upNormal;
-                mesh.normals[base + 2] = upNormal;
-                mesh.normals[base + 3] = upNormal;
+                outMesh.normals[base + 0] = upNormal;
+                outMesh.normals[base + 1] = upNormal;
+                outMesh.normals[base + 2] = upNormal;
+                outMesh.normals[base + 3] = upNormal;
 
                 // UV-диапазон тайла в шахматной текстуре: каждая ячейка
                 // текстуры — один тайл (см. сборку изображения ниже)
@@ -77,29 +83,29 @@ namespace gravelands
                 const float v0 = static_cast<float>(gz) / static_cast<float>(tileGridSide);
                 const float v1 = static_cast<float>(gz + 1) / static_cast<float>(tileGridSide);
 
-                mesh.textureCoords[base + 0] = blib::graphics::Vector3f(u0, v0, 0.0f);
-                mesh.textureCoords[base + 1] = blib::graphics::Vector3f(u1, v0, 0.0f);
-                mesh.textureCoords[base + 2] = blib::graphics::Vector3f(u1, v1, 0.0f);
-                mesh.textureCoords[base + 3] = blib::graphics::Vector3f(u0, v1, 0.0f);
+                outMesh.textureCoords[base + 0] = blib::graphics::Vector3f(u0, v0, 0.0f);
+                outMesh.textureCoords[base + 1] = blib::graphics::Vector3f(u1, v0, 0.0f);
+                outMesh.textureCoords[base + 2] = blib::graphics::Vector3f(u1, v1, 0.0f);
+                outMesh.textureCoords[base + 3] = blib::graphics::Vector3f(u0, v1, 0.0f);
 
                 // Два треугольника на квадрат: (0, 3, 2) и (0, 2, 1) —
                 // обход CCW при взгляде сверху, лицевые грани вверх
                 blib::graphics::Face faceFirst;
                 faceFirst.indices = { base + 0, base + 3, base + 2 };
-                mesh.faces.push_back(faceFirst);
+                outMesh.faces.push_back(faceFirst);
 
                 blib::graphics::Face faceSecond;
                 faceSecond.indices = { base + 0, base + 2, base + 1 };
-                mesh.faces.push_back(faceSecond);
+                outMesh.faces.push_back(faceSecond);
             }
         }
 
-        mesh.primitiveType = blib::graphics::PrimitiveType::Triangle;
+        outMesh.primitiveType = blib::graphics::PrimitiveType::Triangle;
 
         __blib_log_info("tileset: grid %ux%u on XZ plane, vertices: %u, faces: %u",
             tileGridSide, tileGridSide,
-            static_cast<unsigned int>(mesh.vertices.size()),
-            static_cast<unsigned int>(mesh.faces.size()));
+            static_cast<unsigned int>(outMesh.vertices.size()),
+            static_cast<unsigned int>(outMesh.faces.size()));
 
         // Шахматная текстура сетки: клетка (gx, gz) — один пиксель.
         // Тайлы сэмплируют «свой» пиксель через UV-диапазоны выше.
@@ -126,9 +132,7 @@ namespace gravelands
             }
         }
 
-        mesh.material.diffuseImage = checkerImage;
-
-        return mesh;
+        outMesh.material.diffuseImage = checkerImage;
     }
 
 } // namespace gravelands

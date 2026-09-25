@@ -25,6 +25,9 @@ file (GLOB console_impl_src "console/impl/*.cpp")
 file (GLOB json_header_src "json/*.h")
 file (GLOB json_impl_src "json/impl/*.cpp")
 
+file (GLOB resource_header_src "resource/*.h")
+file (GLOB resource_impl_src "resource/impl/*.cpp")
+
 GroupSoureces("${HeaderGroupPrefix}/core" "${core_header_src}")
 GroupSoureces("${SourceGroupPrefix}/core" "${core_impl_src}")
 
@@ -48,6 +51,9 @@ GroupSoureces("${SourceGroupPrefix}/core/console" "${console_impl_src}")
 
 GroupSoureces("${HeaderGroupPrefix}/core/json" "${json_header_src}")
 GroupSoureces("${SourceGroupPrefix}/core/json" "${json_impl_src}")
+
+GroupSoureces("${HeaderGroupPrefix}/core/resource" "${resource_header_src}")
+GroupSoureces("${SourceGroupPrefix}/core/resource" "${resource_impl_src}")
 
 blib_add_module(blib-core
     ${core_header_src}
@@ -73,6 +79,9 @@ blib_add_module(blib-core
 
     ${json_header_src}
     ${json_impl_src}
+
+    ${resource_header_src}
+    ${resource_impl_src}
 )
 
 blib_configure_module(blib-core blib_core_export)

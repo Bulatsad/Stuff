@@ -6,6 +6,7 @@
 #include <beng/config.h>
 #include <beng/core/icomponent.h>
 
+#include <blib/core/resource/resourceManager.h>
 #include <blib/graphics/skinmodel.h>
 
 struct aiScene;
@@ -21,18 +22,20 @@ namespace beng
      * - Предоставляет модель системам (AnimationSystem продвигает
      *   анимацию, RenderSystem отрисовывает).
      *
-     * Владение памятью:
-     * - SkinModel аллоцируется через blib::memory::GlobalAllocator
-     *   (проектное правило: выделяющие new/delete запрещены);
-     * - Уничтожается в деструкторе компонента (ComponentPool
-     *   вызывает ~T() при destroy).
+     * Владение моделью — два режима:
+     * - Кеш ресурсов (основной): компонент держит ResourceRef на слот
+     *   сцены (Scene::getResources) — loadFromFile(path, rm). Модель
+     *   разделяется между сущностями, dedup по содержимому;
+     * - Owned-фолбэк (standalone): SkinModel* аллоцируется через
+     *   GlobalAllocator — нужен verifyRoundTrip (свежий компонент без
+     *   RM загружает содержимое в собственную модель) и legacy-пути.
+     *   В рантайме при живом ref'е не используется.
+     * getModel() возвращает АКТИВНУЮ модель (ref ?? owned).
      *
      * Сериализуемое состояние (ISaveLoadable):
-     * - ПОЛНОЕ содержимое модели: save() пишет {model: <SkinModel JSON> | null,
-     *   isActive}; load() восстанавливает модель целиком (скелет, веса,
-     *   геометрия, материалы с битмапами диффуза, клипы анимации) через
-     *   blib::graphics::SkinModel::fromJson — при отсутствии модели
-     *   аллоцирует её (GlobalAllocator + placement new)
+     * - ПОЛНОЕ содержимое активной модели: save() пишет {model:
+     *   <SkinModel JSON> | null, isActive}; load() восстанавливает
+     *   содержимое в активную модель (ref-слот или owned-фолбэк).
      * - GL-состояние модели не сериализуемо (перезапечётся в draw);
      *   Bone::node (aiNode*) — контекст Assimp, после восстановления
      *   nullptr (рантайм на нём не зависит)
@@ -42,12 +45,17 @@ namespace beng
      *
      * Использование:
      *   scene.addComponent<SkinnedMeshComponent>(entity);
-     *   meshComp.loadFromFile(path);
+     *   meshComp.loadFromFile(path, scene.getResources());
      */
     class __beng_api SkinnedMeshComponent : public beng::IComponent
     {
     private:
+        // Owned-фолбэк (standalone/verify): аллоцируется через
+        // GlobalAllocator при загрузке БЕЗ ResourceManager
         blib::graphics::SkinModel* model;
+
+        // Активный режим: ref на слот кеша ресурсов сцены
+        blib::resource::ResourceRef modelRef;
 
     public:
         // Стабильное имя типа — идентичность типа в таблице типов Scene
@@ -65,12 +73,24 @@ namespace beng
 
         /**
          * Загрузить модель из файла (md5mesh/fbx/obj/... — всё, что
-         * умеет Assimp). Перед загрузкой выгружает предыдущую модель.
+         * умеет Assimp) в СОБСТВЕННУЮ модель (standalone-режим).
+         * Перед загрузкой выгружает предыдущую модель.
          *
          * @param path Путь к файлу модели
          * @return true при успехе; при ошибке модель остаётся пустой
          */
         bool loadFromFile(_In const std::string& path);
+
+        /**
+         * Загрузить модель через кеш ресурсов: ключ = path. Если слот
+         * уже «опечатан» — компонент просто берёт ref на общий слот
+         * (dedup/разделение); иначе Assimp-загрузка в слот + commit.
+         *
+         * @param path Путь к файлу модели (= ключ кеша)
+         * @param rm   Кеш ресурсов сцены (scene.getResources())
+         * @return true при успехе
+         */
+        bool loadFromFile(_In const std::string& path, _In blib::resource::ResourceManager& rm);
 
         /**
          * Сменить меши (skin) у загруженной модели, сохранив скелет и
@@ -101,7 +121,9 @@ namespace beng
         void unload();
 
         /**
-         * Получить модель (может быть nullptr, если не загружена).
+         * Получить АКТИВНУЮ модель: слот кеша ресурсов (ref), либо
+         * owned-фолбэк (standalone/verify). nullptr, если модель не
+         * загружена.
          */
         blib::graphics::SkinModel* getModel();
         const blib::graphics::SkinModel* getModel() const;

@@ -7,6 +7,7 @@
 #include <blib/config.h>
 #include <blib/core/isaveloadable.h>
 #include <blib/core/json/json.h>
+#include <blib/system/memory/iallocatorAware.h>
 #include <blib/graphics/drawable.h>
 #include <blib/graphics/transformable.h>
 #include <blib/graphics/skinmesh.h>
@@ -18,9 +19,27 @@ namespace blib
     namespace graphics
     {
         class __blib_graphics_api SkinModel : public blib::graphics::IDrawable, public blib::graphics::ITransformable,
-            public blib::core::ISaveLoadable
+            public blib::core::ISaveLoadable, public blib::memory::IAllocatorAware
         {
         public:
+            // Стабильное имя типа ресурса — тег кеша ресурсов
+            // (ResourceManager; сравнение по содержимому, не по адресу)
+            static constexpr const char* resourceTypeName = "blib.graphics.SkinModel";
+
+            // Явный default (удалённый copy-ctor подавил бы implicit)
+            SkinModel() = default;
+
+            // Некопируем (внутри — некопируемые меши). УДАЛЕНО ЯВНО:
+            // MSVC-трейт is_copy_constructible «врёт» на имплицитно-
+            // удалённом copy-ctor'е, и ITypeErased::construct<SkinModel>
+            // инстанцирует мёртвую copy-ветку (см. itypeErased.h)
+            SkinModel(const SkinModel&) = delete;
+            SkinModel& operator=(const SkinModel&) = delete;
+
+            // Move — явно: удалённый copy подавил бы implicit move
+            SkinModel(SkinModel&&) = default;
+            SkinModel& operator=(SkinModel&&) = default;
+
             bool loadFromAssimp(const aiScene* paiscene, const std::string& filename = std::string(), const aiScene* panimationScene = nullptr);
             void update(float deltaTimeMs);
 

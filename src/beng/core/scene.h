@@ -9,6 +9,7 @@
 #include <blib/utilmacro.h>
 #include <blib/system/memory/stdAllocatorAdapter.h>
 #include <blib/core/console/console.h>
+#include <blib/core/resource/resourceManager.h>
 
 #include <vector>
 #include <unordered_map>
@@ -85,6 +86,17 @@ namespace beng
         Scene& operator=(const Scene&) = delete;
         Scene(Scene&&) = delete;
         Scene& operator=(Scene&&) = delete;
+
+        /**
+         * Кеш ресурсов сцены (blib::resource::ResourceManager):
+         * загруженные объекты по ключам, dedup по содержимому,
+         * refcount-доступ. Компоненты держат ResourceRef'ы на слоты;
+         * clear() (в деструкторе) уничтожает компоненты ДО деструктора
+         * кеша — внешние ref'ы обязаны умереть раньше сцены (иначе
+         * fatal в ~ResourceManager).
+         */
+        blib::resource::ResourceManager& getResources() { return this->resources; }
+        const blib::resource::ResourceManager& getResources() const { return this->resources; }
 
         // ========== Entity Management ==========
 
@@ -366,6 +378,10 @@ namespace beng
         // они хранят указатель на него. По умолчанию — DefaultAllocator
         // (прокси к GlobalAllocator).
         blib::memory::Allocator containerAllocator;
+
+        // Кеш ресурсов сцены (см. getResources). Разрушается ПОСЛЕ
+        // компонентов: clear() в деструкторе освобождает их ref'ы раньше
+        blib::resource::ResourceManager resources;
 
         // Плотный массив ID Entity (индекс = dense index)
         std::vector<EntityID, ContainerAllocator<EntityID>> entities{

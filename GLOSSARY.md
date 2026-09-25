@@ -45,6 +45,15 @@
 | **SBO** | Small buffer optimization (строки/контейнеры с встроенным малым буфером). | SYSTEM.md |
 
 | **Type erasure** | Стирание конкретного типа за общим API; в blib-system — `Allocator` (SBO + `IAllocatorImpl`) и базовый интерфейс `ITypeErased` (куча через член-`Allocator` + fn-ptr деструктор) для наследников. | SYSTEM.md |
+| **Ref-counting (Allocator)** | Разделяемое владение stateful-аллокатором: heap-контрольный блок (`SharedState`: атомарный счётчик + инстанс аллокатора), `share()` при копировании, последний владелец разрушает аллокатор и возвращает блок GlobalAllocator'у. Работает и для move-only аллокаторов. | SYSTEM.md |
+| **Промоция (Allocator)** | Первое копирование stateful-`Allocator`: аллокатор переезжает из inline-хранилища обёртки в heap-контрольный блок, обёртка переключается в shared-режим. | SYSTEM.md |
+| **IAllocatorAware** | Интерфейс владения аллокатором: класс-наследник обязан проводить все свои аллокации через член-`Allocator` (дефолт — `DefaultAllocator`); `setAllocator` вызывается до первой аллокации, конструкторы не аллоцируют. | SYSTEM.md |
+| **ResourceManager** | Кеш владеемых ISaveLoadable-ресурсов по строковым ключам (blib-core): dedup по содержимому (MD5 сериализованной формы) + refcount-доступ; файлы/пути не трогает. | RESOURCE_MANAGER.md |
+| **Слот ресурса (`ResourceEntry`)** | Запись кеша ресурсов: type-erased объект (ITypeErased) + тег типа + дайджест содержимого + intrusive refcount. | RESOURCE_MANAGER.md |
+| **ResourceRef** | Хендл на слот кеша ресурсов: копия +1 к refcount, разрушение — release; «осиротевший» слот живёт до последнего ref'а. | RESOURCE_MANAGER.md |
+| **datahash** | MD5 сериализованной формы ресурса (`save()` → `MemoryStream` → `Md5Hasher`): идентичность содержимого для dedup'а. | RESOURCE_MANAGER.md |
+| **Dedup (ресурсы)** | Разделение одного слота кеша между разными ключами с одинаковым содержимым (дайджест + тег типа); ключ-дубликат перемапливается на канонический слот. | RESOURCE_MANAGER.md |
+| **Commit (ресурс)** | «Опечатывание» слота кеша: вычисление datahash + регистрация в dedup-индексе; вызывается после наполнения объекта (native/процедурно) или внутри `preload`. | RESOURCE_MANAGER.md |
 
 ## beng
 

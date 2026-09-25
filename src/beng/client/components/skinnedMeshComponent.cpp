@@ -46,6 +46,26 @@ namespace beng
 
             return path.substr(start, end - start);
         }
+
+        // Читает файл через Assimp и грузит содержимое в указанную
+        // модель (общий код standalone- и RM-загрузки). aiScene
+        // принадлежит импортеру и живёт только внутри этого вызова —
+        // SkinModel::loadFromAssimp копирует всё нужное
+        bool loadAssimpFileIntoModel(_In blib::graphics::SkinModel& target, _In const std::string& path)
+        {
+            Assimp::Importer importer;
+            const aiScene* pscene = importer.ReadFile(path, assimpPostProcessFlags);
+            if (__blib_unlikely(!pscene))
+            {
+                __blib_return_error(false, "assimp: failed to load '%s': %s", path.c_str(), importer.GetErrorString());
+            }
+
+            if (__blib_unlikely(!target.loadFromAssimp(pscene, path)))
+            {
+                __blib_return_error(false, "failed to build model from assimp scene: %s", path.c_str());
+            }
+            return true;
+        }
     }
 
     SkinnedMeshComponent::SkinnedMeshComponent()
@@ -63,39 +83,68 @@ namespace beng
         // Повторная загрузка: сначала выгружаем старую модель
         this->unload();
 
-        // Assimp: парсим файл. aiScene принадлежит импортеру и живёт
-        // только внутри этой функции — SkinModel::loadFromAssimp
-        // копирует всё нужное в собственные структуры
-        Assimp::Importer importer;
-        const aiScene* pscene = importer.ReadFile(path, assimpPostProcessFlags);
-        if (__blib_unlikely(!pscene))
-        {
-            __blib_return_error(false, "assimp: failed to load '%s': %s", path.c_str(), importer.GetErrorString());
-        }
-
-        // Аллокация модели через GlobalAllocator + placement new
-        // (проектное правило: выделяющие new/delete запрещены)
+        // Owned-фолбэк (standalone): аллокация через GlobalAllocator +
+        // placement new (проектное правило: выделяющие new/delete запрещены)
         this->model = static_cast<blib::graphics::SkinModel*>(
             blib::memory::GlobalAllocator::instance().allocate(sizeof(blib::graphics::SkinModel)));
+        if (__blib_unlikely(this->model == nullptr))
+        {
+            __blib_return_error(false, "failed to allocate SkinModel for '%s'", path.c_str());
+        }
         new (this->model) blib::graphics::SkinModel();
 
-        if (__blib_unlikely(!this->model->loadFromAssimp(pscene, path)))
+        if (__blib_unlikely(!loadAssimpFileIntoModel(*this->model, path)))
         {
-            __blib_log_error("failed to build model from assimp scene: %s", path.c_str());
             this->unload();
             return false;
         }
 
-        __blib_log_info("model loaded: %s", path.c_str());
+        __blib_log_info("model loaded (standalone): %s", path.c_str());
+        return true;
+    }
+
+    bool SkinnedMeshComponent::loadFromFile(_In const std::string& path, _In blib::resource::ResourceManager& rm)
+    {
+        // Повторная загрузка: снимаем ref кеша и owned-модель
+        this->unload();
+
+        // Уже загруженный («опечатанный») слот — просто берём ref на
+        // общий слот: разделение модели между сущностями и dedup
+        blib::resource::ResourceRef rf = rm.get(path);
+        if (rf.isEmpty())
+        {
+            rf = rm.construct<blib::graphics::SkinModel>(path);
+            if (__blib_unlikely(rf.isEmpty()))
+            {
+                __blib_return_error(false, "failed to construct resource slot for '%s'", path.c_str());
+            }
+
+            // Загрузка идёт ПРЯМО в слот кеша (аллокатор объекта — RM)
+            if (__blib_unlikely(!loadAssimpFileIntoModel(*rf.get<blib::graphics::SkinModel>(), path)))
+            {
+                rm.unload(path);
+                return false;
+            }
+
+            rf = rm.commit(rf);
+        }
+
+        this->modelRef = rf; // копия ref'а: +1 к счётчику слота
+        __blib_log_info("model loaded (shared): %s", path.c_str());
         return true;
     }
 
     bool SkinnedMeshComponent::loadSkinFromFile(_In const std::string& path, _In bool force)
     {
-        if (__blib_unlikely(!this->model))
+        blib::graphics::SkinModel* pModel = this->getModel();
+        if (__blib_unlikely(!pModel))
         {
             __blib_return_error(false, "skin '%s': no model loaded", path.c_str());
         }
+
+        // ВНИМАНИЕ: мутация общего слота (RM-режим) устаревает его
+        // datahash — dedup-индекс более не отражает содержимое
+        // (см. BENG.md, «Кеш ресурсов»)
 
         // Сцена нужна только для проверки скелета и загрузки мешей:
         // скелет и аниматор текущей модели не трогаются
@@ -106,7 +155,7 @@ namespace beng
             __blib_return_error(false, "assimp: failed to load skin '%s': %s", path.c_str(), importer.GetErrorString());
         }
 
-        if (__blib_unlikely(!this->model->replaceMeshesFromAssimp(pscene, path, force)))
+        if (__blib_unlikely(!pModel->replaceMeshesFromAssimp(pscene, path, force)))
         {
             __blib_return_error(false, "failed to replace skin from '%s'", path.c_str());
         }
@@ -117,7 +166,8 @@ namespace beng
 
     bool SkinnedMeshComponent::loadAnimationsFromFile(_In const std::string& path)
     {
-        if (__blib_unlikely(!this->model))
+        blib::graphics::SkinModel* pModel = this->getModel();
+        if (__blib_unlikely(!pModel))
         {
             __blib_return_error(false, "animations '%s': no model loaded", path.c_str());
         }
@@ -129,13 +179,13 @@ namespace beng
             __blib_return_error(false, "assimp: failed to load animations '%s': %s", path.c_str(), importer.GetErrorString());
         }
 
-        blib::graphics::Animator& animator = this->model->getAnimator();
+        blib::graphics::Animator& animator = pModel->getAnimator();
         const size_t clipsBefore = animator.getAnimations().size();
 
         // Имя файла — имя единственного клипа (см. Animator::appendFromAssimp);
         // скелет задан, чтобы каналы привязались к костям по дереву
         // файла анимации (декомпозиция FBX у него может отличаться)
-        if (__blib_unlikely(!animator.appendFromAssimp(pscene, &this->model->getSkelet(), extractFileStem(path))))
+        if (__blib_unlikely(!animator.appendFromAssimp(pscene, &pModel->getSkelet(), extractFileStem(path))))
         {
             __blib_return_error(false, "failed to add animations from '%s'", path.c_str());
         }
@@ -186,6 +236,10 @@ namespace beng
 
     void SkinnedMeshComponent::unload()
     {
+        // Снять ref кеша ресурсов: слот живёт, пока его держат другие
+        // ключи/ref'ы (dedup-разделение)
+        this->modelRef = blib::resource::ResourceRef();
+
         if (this->model)
         {
             // Явный деструктор + возврат памяти глобальному аллокатору
@@ -197,22 +251,26 @@ namespace beng
 
     blib::graphics::SkinModel* SkinnedMeshComponent::getModel()
     {
-        return this->model;
+        blib::graphics::SkinModel* pRefModel = this->modelRef.get<blib::graphics::SkinModel>();
+        return (pRefModel != nullptr) ? pRefModel : this->model;
     }
 
     const blib::graphics::SkinModel* SkinnedMeshComponent::getModel() const
     {
-        return this->model;
+        const blib::graphics::SkinModel* pRefModel = this->modelRef.get<blib::graphics::SkinModel>();
+        return (pRefModel != nullptr) ? pRefModel : this->model;
     }
 
     blib::core::SaveStatus SkinnedMeshComponent::save(_In blib::core::IOutputStream& os) const
     {
         blib::core::json::JsonValue doc = blib::core::json::JsonValue::makeObject();
 
-        // Полное содержимое модели или null («модель не загружена»)
-        if (this->model)
+        // Полное содержимое АКТИВНОЙ модели или null («модель не
+        // загружена»)
+        const blib::graphics::SkinModel* pModel = this->getModel();
+        if (pModel)
         {
-            doc.set(keyModel, this->model->toJson());
+            doc.set(keyModel, pModel->toJson());
         }
         else
         {
@@ -257,10 +315,14 @@ namespace beng
             return blib::core::LoadStatus::None;
         }
 
-        // Модель в файле есть — аллоцировать при отсутствии
-        // (GlobalAllocator + placement new, как в loadFromFile)
-        if (this->model == nullptr)
+        // Модель в файле есть — восстановить в АКТИВНУЮ модель
+        // (ref-слот или owned-фолбэк)
+        blib::graphics::SkinModel* pModel = this->getModel();
+        if (pModel == nullptr)
         {
+            // Нет ни ref'а, ни owned-модели: standalone/verify-путь —
+            // аллоцировать owned-фолбэк (GlobalAllocator + placement new,
+            // как в standalone-loadFromFile)
             this->model = static_cast<blib::graphics::SkinModel*>(
                 blib::memory::GlobalAllocator::instance().allocate(sizeof(blib::graphics::SkinModel)));
             if (__blib_unlikely(this->model == nullptr))
@@ -269,12 +331,13 @@ namespace beng
                     "SkinnedMeshComponent: failed to allocate SkinModel");
             }
             new (this->model) blib::graphics::SkinModel();
+            pModel = this->model;
         }
 
         // Восстановить содержимое модели целиком (скелет, веса,
         // геометрия, материалы, клипы). Перезапись ЗАПЕЧЁННОЙ модели
         // требует живого RenderContext — см. SkinModel::fromJson
-        if (__blib_unlikely(this->model->fromJson(modelNode) != blib::core::LoadStatus::None))
+        if (__blib_unlikely(pModel->fromJson(modelNode) != blib::core::LoadStatus::None))
         {
             __blib_return_error(blib::core::LoadStatus::InvalidData,
                 "SkinnedMeshComponent: malformed model data");
@@ -296,17 +359,21 @@ namespace beng
 
         const SkinnedMeshComponent& o = static_cast<const SkinnedMeshComponent&>(other);
 
-        // Базовые поля + модель: null-состояние должно совпадать, а
-        // при наличии моделей — полное сравнение их содержимого
+        // Базовые поля + АКТИВНАЯ модель: null-состояние должно
+        // совпадать, а при наличии моделей — полное сравнение
+        // содержимого (ref-слот и owned-фолбэк сравнимы между собой)
+        const blib::graphics::SkinModel* pModel = this->getModel();
+        const blib::graphics::SkinModel* pOtherModel = o.getModel();
+
         if (getOwnerId() != o.getOwnerId() || isActive != o.isActive)
         {
             return false;
         }
-        if ((model == nullptr) != (o.model == nullptr))
+        if ((pModel == nullptr) != (pOtherModel == nullptr))
         {
             return false;
         }
-        if (model && !model->strongCompare(*o.model, session))
+        if (pModel && !pModel->strongCompare(*pOtherModel, session))
         {
             return false;
         }

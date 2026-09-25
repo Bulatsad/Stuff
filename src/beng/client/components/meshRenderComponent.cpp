@@ -20,6 +20,13 @@ namespace beng
     {
     }
 
+    MeshRenderComponent::MeshRenderComponent(_In const blib::resource::ResourceRef& meshResource, RenderLayer renderLayer)
+        : mesh()
+        , meshRef(meshResource)
+        , layer(renderLayer)
+    {
+    }
+
     MeshRenderComponent::MeshRenderComponent()
         : mesh()
         , layer(RenderLayer::Opaque)
@@ -28,14 +35,22 @@ namespace beng
 
     MeshRenderComponent::~MeshRenderComponent() = default;
 
+    void MeshRenderComponent::setMeshResource(_In const blib::resource::ResourceRef& meshResource)
+    {
+        // Копия ref'а: +1 к счётчику слота; предыдущий ref снимается
+        this->meshRef = meshResource;
+    }
+
     blib::graphics::Mesh& MeshRenderComponent::getMesh()
     {
-        return this->mesh;
+        blib::graphics::Mesh* pRefMesh = this->meshRef.get<blib::graphics::Mesh>();
+        return (pRefMesh != nullptr) ? *pRefMesh : this->mesh;
     }
 
     const blib::graphics::Mesh& MeshRenderComponent::getMesh() const
     {
-        return this->mesh;
+        const blib::graphics::Mesh* pRefMesh = this->meshRef.get<blib::graphics::Mesh>();
+        return (pRefMesh != nullptr) ? *pRefMesh : this->mesh;
     }
 
     RenderLayer MeshRenderComponent::getLayer() const
@@ -48,7 +63,7 @@ namespace beng
         blib::core::json::JsonValue doc = blib::core::json::JsonValue::makeObject();
 
         doc.set(keyLayer, blib::core::json::JsonValue(static_cast<buint8>(layer)));
-        doc.set(keyMesh, mesh.toJson());
+        doc.set(keyMesh, this->getMesh().toJson());
         doc.set(keyIsActive, blib::core::json::JsonValue(isActive));
 
         if (__blib_unlikely(doc.writeTo(os) != blib::core::json::JsonError::None))
@@ -88,7 +103,7 @@ namespace beng
                 static_cast<unsigned int>(layerValue));
         }
 
-        if (__blib_unlikely(mesh.fromJson(doc.get(keyMesh)) != blib::core::LoadStatus::None))
+        if (__blib_unlikely(this->getMesh().fromJson(doc.get(keyMesh)) != blib::core::LoadStatus::None))
         {
             __blib_return_error(blib::core::LoadStatus::InvalidData,
                 "MeshRenderComponent: malformed mesh data");
@@ -111,11 +126,12 @@ namespace beng
 
         const MeshRenderComponent& o = static_cast<const MeshRenderComponent&>(other);
 
-        // Базовые поля + слой + вся геометрия меша (делегирование Mesh)
+        // Базовые поля + слой + вся геометрия АКТИВНОГО меша
+        // (делегирование Mesh; ref-меш и owned-меш сравнимы между собой)
         return getOwnerId() == o.getOwnerId() &&
             isActive == o.isActive &&
             layer == o.layer &&
-            mesh.strongCompare(o.mesh, session);
+            this->getMesh().strongCompare(o.getMesh(), session);
     }
 
     bool MeshRenderComponent::verify() const

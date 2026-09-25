@@ -3,6 +3,7 @@
 #include <beng/config.h>
 #include <beng/core/icomponent.h>
 
+#include <blib/core/resource/resourceManager.h>
 #include <blib/graphics/mesh.h>
 
 namespace beng
@@ -31,11 +32,18 @@ namespace beng
      * Назначение:
      * - Владеет blib::graphics::Mesh по значению (move-only: меш
      *   передаётся из билдера/примитива и живёт в компоненте до
-     *   уничтожения сущности);
+     *   уничтожения сущности) — owned-режим;
+     * - Либо держит ResourceRef на слот кеша ресурсов сцены
+     *   (Scene::getResources) — меш разделяется между сущностями,
+     *   dedup по содержимому;
      * - Слой отрисовки определяет порядок и поведение (blend,
      *   alpha-test) — см. RenderLayer;
      * - Трансформация сущности — через TransformComponent (читает
      *   RenderSystem).
+     *
+     * getMesh() возвращает АКТИВНЫЙ меш (ref ?? owned). Owned-меш
+     * остаётся пустым в ref-режиме и служит фолбэком для
+     * verifyRoundTrip (standalone-загрузка без RM).
      *
      * Компонент некопируем (Mesh владеет GL-ресурсами); ComponentPool
      * конструирует компоненты placement-new и не перемещает их —
@@ -43,11 +51,17 @@ namespace beng
      *
      * Использование:
      *   scene.addComponent<MeshRenderComponent>(entity, std::move(mesh), RenderLayer::Ground);
+     *   scene.addComponent<MeshRenderComponent>(entity, resourceRef, RenderLayer::Ground);
      */
     class __beng_api MeshRenderComponent : public beng::IComponent
     {
     private:
+        // Owned-меш (фолбэк для verify/standalone; пуст в ref-режиме)
         blib::graphics::Mesh mesh;
+
+        // Активный режим: ref на слот кеша ресурсов сцены
+        blib::resource::ResourceRef meshRef;
+
         RenderLayer layer;
 
     public:
@@ -61,6 +75,13 @@ namespace beng
         MeshRenderComponent(blib::graphics::Mesh&& sourceMesh, RenderLayer renderLayer = RenderLayer::Opaque);
 
         /**
+         * Конструктор от ref'а на слот кеша ресурсов: меш разделяется
+         * (owned-меш остаётся пустым фолбэком).
+         */
+        MeshRenderComponent(_In const blib::resource::ResourceRef& meshResource,
+            RenderLayer renderLayer = RenderLayer::Opaque);
+
+        /**
          * Конструктор по умолчанию: пустой меш, слой Opaque.
          * Нужен verifyRoundTrip (ISaveLoadable::verify).
          */
@@ -71,6 +92,12 @@ namespace beng
         MeshRenderComponent(const MeshRenderComponent&) = delete;
         MeshRenderComponent& operator=(const MeshRenderComponent&) = delete;
 
+        /**
+         * Переключить компонент на слот кеша ресурсов (снимает
+         * предыдущий ref; owned-меш не трогается).
+         */
+        void setMeshResource(_In const blib::resource::ResourceRef& meshResource);
+
         blib::graphics::Mesh& getMesh();
         const blib::graphics::Mesh& getMesh() const;
         RenderLayer getLayer() const;
@@ -78,11 +105,14 @@ namespace beng
         // ========== ISaveLoadable: сериализация и сравнение ==========
         //
         // Формат save: JSON-объект {layer, mesh{...все CPU-данные...,
-        // material{...}}, isActive}. Меш хранит геометрию на CPU
-        // (публичные векторы) — сериализуема бит-в-бит; GL-хендлы
-        // (Texture) не сериализуются — пересоздаются bake().
-        // JSON-объём пропорционален геометрии (у игровых примитивов
-        // и спрайтов — малый). verify(): standalone-roundtrip.
+        // material{...}}, isActive} — содержимое АКТИВНОГО меша
+        // (ref ?? owned). Меш хранит геометрию на CPU (публичные
+        // векторы) — сериализуема бит-в-бит; GL-хендлы (Texture) не
+        // сериализуются — пересоздаются bake(). load() восстанавливает
+        // в активный меш: owned-фолбэк для свежих компонентов без ref'а
+        // (verifyRoundTrip). JSON-объём пропорционален геометрии
+        // (у игровых примитивов и спрайтов — малый). verify():
+        // standalone-roundtrip.
 
         /**
          * Сохранить состояние компонента в поток (JSON-объект).

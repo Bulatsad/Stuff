@@ -2,13 +2,13 @@
 
 > Слой: `blib`. Переносимое ядро: math, console, streams, алгоритмы, PDL, утилиты.
 > Шпаргалка по инвариантам и граблям. **Обновлять при изменениях кода модуля** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-21
+> Сверено: 2026-09-24
 
 ---
 
 ## Назначение и границы
 
-- Переносимое ядро blib: математика, консоль/логирование, потоки ввода-вывода, строки/папки, алгоритмы (hash, compression, DFT/FFT), PDL-парсер, iterator/linkedList.
+- Переносимое ядро blib: математика, консоль/логирование, потоки ввода-вывода, строки/папки, алгоритмы (hash, compression, DFT/FFT), PDL-парсер, iterator/linkedList, **кеш ресурсов (ResourceManager)**.
 - Зависит только от `blib-system` (аллокаторы, очереди, синхронизация).
 - Не знает о графике/звуке/сети. Графическое консольное окно — в `blib-graphics` (`ConsoleWindow`).
 - Не в этом доке: аллокаторы и очереди (`system/SYSTEM.md`), рендер (`graphics/GRAPHICS.md`).
@@ -29,6 +29,7 @@
 | Сжатие | `algorithm/compression/huffmanCompressor.h`, `icompressor.h` |
 | DFT/FFT | `algorithm/dft.h`, `algorithm/dftExp.h` |
 | PDL | `pdl/pdl.h`, `pdl/standard.txt`, `pdl/demo*.pdl` |
+| Кеш ресурсов | `resource/resourceManager.h`, `resource/impl/resourceManager.cpp` (док — `resource/RESOURCE_MANAGER.md`) |
 | Iterator / LinkedList | `iterator.h`, `linkedList.h` |
 | Прочее | `flags.h`, `unsafeslicer.h`, `alignedAllocator.h`, `bytearray.h`, `time.h` (legacy) |
 
@@ -85,6 +86,12 @@
 - **`JsonWriter`** — компактный вывод при `indentSpaces == 0`, иначе pretty; пустые контейнеры всегда `[]`/`{}`; эскейпит `"`, `\`, управляющие (`\u00XX`; `/` не экранируется), валидирует UTF-8 на записи. `JsonValue::writeTo` — эквивалент writer'а.
 - **Память — строго GlobalAllocator:** контейнеры — `std::basic_string`/`std::vector` со `StdAllocatorAdapter`, указывающим на `blib::memory::Allocator` документа. **Инвариант стабильного адреса:** аллокатор живёт в heap (через `GlobalAllocator`), корень поддерева владеет им (`ownsAlloc`), узлы держат невладеющий указатель — поэтому перемещения узлов (реаллокации векторов) безопасны. Глубокое копирование — один свежий аллокатор на дерево; move — перенос указателей. Неудача выделения аллокатора/узла в конструкторах — `__blib_fatal`; в парсере — `JsonError::AllocationFailed`. `std`-контейнеры при OOM бросают `bad_alloc` (не ловим).
 - Ошибки — `JsonError` (None = 0), `__blib_unlikely` + `__blib_return_error` + лог через Console с байтовым смещением.
+
+## Кеш ресурсов (`blib::resource`)
+
+- `ResourceManager` — кеш владеемых ISaveLoadable-ресурсов по строковым ключам: `construct<T>` / `preload(rf, is)` / `commit(rf)` / `get` / `unload` / `unloadAll`; dedup по MD5 сериализованной формы (save → MemoryStream → Md5Hasher) с индексом `byData[(digest, тег типа)]`; время жизни — intrusive refcount (`ResourceRef` = ключи + хендлы, `unloadAll` фаталит при утечке хендлов).
+- Требования к типу: ISaveLoadable + IAllocatorAware + тег `T::resourceTypeName`. Файлы не трогает — загрузка контента на вызывающем.
+- Детали, инварианты и грабли — отдельный док `resource/RESOURCE_MANAGER.md`.
 
 ## Строки, папки, утилиты
 
@@ -163,5 +170,6 @@
 - `../BLIB.md` — общая карта и философия blib.
 - `../system/SYSTEM.md` — аллокаторы и очереди (зависимость core).
 - `../graphics/GRAPHICS.md` — графическое консольное окно (`ConsoleWindow`) и ассеты.
+- `resource/RESOURCE_MANAGER.md` — кеш ресурсов (инварианты, грабли, TODO).
 - `../test/TESTING.md` — группы тестов core.
 - `AGENTS.md` — правила логирования/ошибок/памяти.

@@ -16,7 +16,7 @@ target_link_libraries(blib_test_main PRIVATE blib-core)
 set_target_properties(blib_test_main PROPERTIES FOLDER "blib/tests")
 
 # Test group list: group name == file suffix test<group>.cpp
-set(blib_test_groups angle matrix pdl quaternion vector allocator typeerased iterator stream binary compression hash circlequeue console skinmesh json)
+set(blib_test_groups angle matrix pdl quaternion vector allocator allocatoraware typeerased iterator stream binary compression hash circlequeue console skinmesh json resource)
 
 # Per-group source lists (по умолчанию — src/impl/test<group>.cpp).
 # Группа json разбита на файлы по зонам ответственности:

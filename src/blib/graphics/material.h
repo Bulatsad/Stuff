@@ -10,6 +10,7 @@
 #include <blib/core/folder.h>
 #include <blib/core/isaveloadable.h>
 #include <blib/core/json/json.h>
+#include <blib/system/memory/iallocatorAware.h>
 #include <blib/graphics/vector.h>
 #include <blib/graphics/texture.h>
 #include <blib/graphics/image.h>
@@ -41,9 +42,12 @@ namespace blib
             Toon = 1
         };
 
-        class __blib_graphics_api Material : public blib::core::ISaveLoadable
+        class __blib_graphics_api Material : public blib::core::ISaveLoadable, public blib::memory::IAllocatorAware
         {
         public:
+            // Стабильное имя типа ресурса — тег кеша ресурсов
+            // (ResourceManager; сравнение по содержимому, не по адресу)
+            static constexpr const char* resourceTypeName = "blib.graphics.Material";
 
             std::string m_name;
 

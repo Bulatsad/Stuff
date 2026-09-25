@@ -2,7 +2,7 @@
 
 > Слой: `blib`. OpenGL/WGL, окно, ассеты, скелетная анимация, ImGui.
 > Шпаргалка по инвариантам, владению GL и граблям. **Обновлять при изменениях кода модуля** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-22
+> Сверено: 2026-09-24
 
 ---
 
@@ -97,14 +97,20 @@
 
 ## Ассеты
 
+- **Все сериализуемые ассеты — `blib::memory::IAllocatorAware`** (2026-09-24): `Mesh`, `SkinMesh`, `Material`, `Image`, `SkinModel`, `Skelet`, `Bone`, `Animator`, `AnimationClip`. Дефолтный аллокатор — `DefaultAllocator` (прокси к GlobalAllocator), поэтому поведение без `setAllocator` не изменилось. Каждый класс несёт `static constexpr const char* resourceTypeName` («blib.graphics.Mesh» и т.д.) — стабильный тег типа для кеша ресурсов blib-core (`RESOURCE_MANAGER.md`; сравнение тегов — по содержимому строки, не по адресу литерала).
+- **Контракт IAllocatorAware:** конструктор не аллоцирует динамическую память (аллокатор настраивается после конструирования), `deallocate` идёт через тот же аллокатор, что и `allocate`. Реализовано для `Mesh` (см. ниже); остальные классы аллоцируют только через std-контейнеры (см. «Долг»).
+- **Вложенные ресурсы** (`SkinModel` → `SkinMesh`/`Mesh`/`Material`/`Image` → …) имеют **собственные** аллокаторы: `setAllocator` на корне НЕ пропагируется вниз. При v1-аллокаторе кеша (DefaultAllocator) источник памяти у всех один — GlobalAllocator; пропагация понадобится, только когда кеш раздаёт не-дефолтные аллокаторы (см. TODO).
+- **Долг (TODO):** std-контейнеры ассетов (`Mesh::vertices`, `Image::bitmap`, `Bone::chain` и т.д.) остаются на std::allocator. Перевод на `StdAllocatorAdapter` с self-pointing аллокатором требует явной rule-of-five на каждом классе (move — element-wise move-assign в теле: move-ctor вектора украл бы буфер с адаптером-указателем на аллокатор источника → висячий указатель; см. SYSTEM.md, грабля `PoolAllocatorImpl`).
+
 ### Mesh
 
 - CPU-данные: `vertices` (Vector3f), `textureCoords`, `normals`, `boneIds` (Vector4i), `boneWeights` (Vector4f), `faces`, `material`.
 - GL-атрибуты: position=0, textureCoords=1, boneIds=2 (`glVertexAttribIPointer`, GL_INT), boneWeights=3, normals=5 (VBO заполняется только при `normals.size() == vertices.size()`).
 - **Ленивый `bake`** при первом `draw`: VAO + 6 VBO + EBO, компиляция шейдеров, `material.bake(ctx)`, сохранение указателя на `RenderContext`.
+- **Ленивый `ctx` (2026-09-24):** GL-контекст (`oglMeshContext`) аллоцируется в `bake` через `IAllocatorAware::allocate` (конструктор пуст — контракт кеша ресурсов). `allocate()` не-const → в const-`bake` снятие const через `const_cast` (кеш GL-состояния, как `mutable baked`).
 - Выбор вершинного шейдера: `boneIds.empty() ? MeshVertexShader : SkinMeshVertexShader`.
 - `draw(ctx)` и `draw(ctx, const std::vector<TransformMatrix>* boneMatrices)`; второй путь — скиннинг.
-- **`Mesh` некопируем** (copy удалён): владеет сырым `ctx` (`GlobalAllocator`) и GL-ресурсами. **Перемещение безопасно** — ctx передаётся, источник обнуляется (нужно `vector<SkinMesh>::resize`, MoveInsertable). Векторы мешей заполняются через `resize`/`swap` (см. `SkinModel`).
+- **`Mesh` некопируем** (copy удалён): владеет сырым `ctx` (аллокатор IAllocatorAware) и GL-ресурсами. **Перемещение безопасно** — ctx передаётся, источник обнуляется (нужно `vector<SkinMesh>::resize`, MoveInsertable). Аллокатор: у `IAllocatorAware` пользовательский dtor подавляет implicit move-ctor, поэтому `std::move(other)` в move-ctor связывается с copy-ctor базы — share() (обе стороны делят impl по ref-counting; `deallocate` ctx пойдёт через тот же impl). Векторы мешей заполняются через `resize`/`swap` (см. `SkinModel`).
 
 ### Material
 
@@ -195,7 +201,7 @@
 ## Владение GL и порядок разрушения
 
 - `RenderContext` принадлежит `IRenderTarget` по значению; каждый таргет загружает GL-указатели в конструкторе.
-- `Mesh`: `ctx` — GlobalAllocator, GL-ресурсы (VAO/VBO/EBO) — лениво в `bake`, освобождаются в `~Mesh`, если сохранён `RenderContext*`.
+- `Mesh`: `ctx` — аллокатор `IAllocatorAware` (лениво в `bake`, освобождается в `~Mesh` тем же аллокатором), GL-ресурсы (VAO/VBO/EBO) — лениво в `bake`, освобождаются в `~Mesh`, если сохранён `RenderContext*`.
 - `Material`: GL-текстура — в `bake`, освобождается в деструкторе через `pRenderContext`.
 - **Порядок обязателен: модели/меши/материалы выгружаются раньше окна и рендер-таргета** (иначе GL-контекст уже мёртв). Так сделано в `ViewerCore::shutdown` и `SkinnedMeshComponent`.
 - `Texture` живёт до явного `free(ctx)`; копирование `Texture` поверхностное (копия и оригинал указывают на один GL-объект) — не копировать.
@@ -233,6 +239,8 @@
 ## TODO
 
 - [ ] Обсудить каталог известных багов модуля (отдельная задача).
+- [ ] Перевод std-контейнеров ассетов на `StdAllocatorAdapter` с аллокатором `IAllocatorAware` (rule-of-five: move — element-wise move-assign; см. раздел «Ассеты», «Долг»).
+- [ ] Пропагация `setAllocator` вложенным ресурсам (SkinModel → меши → материалы → изображения) при загрузке — нужна только для не-дефолтных аллокаторов кеша ресурсов.
 - [ ] sRGB-конвейер: GL_SRGB8_ALPHA8-текстуры + линейная работа + гамма 2.2 в пост-пассе (сейчас gammaOutput = 1.0, см. «Пост-процессинг»).
 - [ ] MSAA/разрешение рендера (FXAA в пост-пассе) — сейчас сглаживания нет, ramp/контуры будут алиасить.
 - [ ] Триангуляция/рендер мешей — TODO в `mesh.cpp`.

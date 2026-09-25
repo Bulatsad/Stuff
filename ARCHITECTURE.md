@@ -4,7 +4,7 @@
 > (`blib` → `beng` → `game`), требования к движку beng и целевую
 > архитектуру референсной игры (диаблоид). Статус: план, не код.
 > Обновляется вместе с развитием кодовой базы.
-> Сверено: 2026-09-21
+> Сверено: 2026-09-24
 
 ---
 
@@ -58,7 +58,7 @@
 | Таргет | Назначение | Зависимости |
 |--------|------------|-------------|
 | `beng-core` | общее ядро: ECS, Application, тикрейт, интерфейсы модулей, рефлексия, сетевой фрейминг | blib-core, blib-system |
-| `beng-client` | клиентская среда: RenderModule, InputModule, AudioModule, ResourceManager, рендер-ECS, сетевой клиент | beng-core, blib-graphics, blib-sound |
+| `beng-client` | клиентская среда: RenderModule, InputModule, AudioModule, рендер-ECS, сетевой клиент | beng-core, blib-graphics, blib-sound |
 | `beng-server` | headless-сервер: NetworkServer, WorldManager (save/load), снапшоты | beng-core, blib-network |
 | `beng-editor` | каркас эдитора: докинг, Hierarchy, Inspector, вьюпорт, gizmo, selection, undo/redo | beng-client, ImGui |
 
@@ -164,7 +164,7 @@ core-библиотеку — см. раздел про эдитор.
 | `Scene`, `Entity`, пулы, `ISystem` | beng-core | есть |
 | `TransformComponent`, `TransformSystem` | beng-core | есть |
 | `CameraComponent`, `MeshRenderComponent` (слои `RenderLayer`) | beng-client | рендер-представление; **вся отрисовка — только через Scene/RenderSystem** (см. BENG.md) |
-| `ResourceManager` (меш/текстура/звук) | beng-client | кеш по ключам |
+| `ResourceManager` (кеш ISaveLoadable: меш/текстура/звук/данные) | blib-core | кеш по ключам, dedup по содержимому, refcount-доступ (сделан — см. RESOURCE_MANAGER.md) |
 | `UnitComponent`, `InventoryComponent`, `SkillComponent` | gravelands-common | определения, не логика |
 | `MovementSystem`, `CombatSystem`, `LootSystem` | gravelands-server-core | только сервер |
 | `InputSystem`, `CameraFollowSystem`, `InterpolationSystem` | gravelands-client-core | только клиент |
@@ -272,8 +272,10 @@ src/
 2. **beng-server + gravelands-server-core**: TCP-сервер, снапшоты, WorldManager;
    простейшая симуляция (движение юнитов, сессия игрока).
 3. **beng-client + gravelands-client-core**: RenderModule/InputModule/AudioModule,
-   ResourceManager, рендер-ECS (спрайтовая изометрия на базе isometricTileset);
-   подключение клиента, интерполяция.
+   рендер-ECS (спрайтовая изометрия на базе isometricTileset);
+   подключение клиента, интерполяция. *(ResourceManager сделан раньше
+   плана — в blib-core: кеш ISaveLoadable с dedup и refcount, см.
+   RESOURCE_MANAGER.md.)*
 4. **Геймплей-петля диаблоида**: бой, лут, скиллы (gravelands-common/server),
    UI (ImGui), звук.
 5. **beng-editor + gravelands-editor**: панели, вьюпорт, Inspector через

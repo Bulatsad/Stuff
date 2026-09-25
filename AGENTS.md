@@ -13,7 +13,7 @@
 ### Основные компоненты:
 | Модуль   | Тип        | Назначение |
 |----------|------------|------------|
-| `blib`   | library    | Сервисы: math, graphics (OpenGL-обёртка), sound (WinMM), network (winsock), thread, algorithm (FFT). Кроссплатформенный по задумке |
+| `blib`   | library    | Сервисы: math, graphics (OpenGL-обёртка), sound (WinMM), network (winsock), thread, algorithm (FFT), кеш ресурсов (ResourceManager). Кроссплатформенный по задумке |
 | `beng`   | library    | Bulat Engine: ECS-ядро (Scene, Entity, ComponentPool, System, TransformComponent). Целевые таргеты: beng-core / beng-client / beng-server / beng-editor (см. ARCHITECTURE.md) |
 | `model_viewer` | executable | 3D-вьювер: загрузка моделей через Assimp, скелетная анимация (.md5mesh), ImGui (Windows, поверх blib-graphics). Будущая основа 3D-ветки |
 | `vochat` | executable | Voice chat: запись/воспроизведение звука, FFT, UDP/TCP стриминг (отдельный инструмент) |
@@ -38,9 +38,10 @@
 | blib (общая карта и философия) | `src/blib/BLIB.md` |
 | blib-system (память, потоки) | `src/blib/system/SYSTEM.md` |
 | blib-system: memory (авто-debug-аллокатор) | `src/blib/system/memory/AUTO_DEBUG_ALLOCATOR.md` |
-| blib-core (math, console, streams, алгоритмы) | `src/blib/core/CORE.md` |
+| blib-core (math, console, streams, алгоритмы, кеш ресурсов) | `src/blib/core/CORE.md` |
 | blib-graphics (рендер, ассеты, скелет/анимация) | `src/blib/graphics/GRAPHICS.md` |
 | blib-sound (WinMM) | `src/blib/sound/SOUND.md` |
+| blib-core: resource (кеш ресурсов, ResourceManager) | `src/blib/core/resource/RESOURCE_MANAGER.md` |
 | blib-network (winsock) | `src/blib/network/NETWORK.md` |
 | blib/test (фреймворк и группы тестов) | `src/blib/test/TESTING.md` |
 | beng (ядро / клиент / эдитор) | `src/beng/BENG.md` |

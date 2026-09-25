@@ -3,7 +3,7 @@
 > Слой: `game` (`src/misc/gravelands`). Шпаргалка по устройству игры: таргеты, камера, тайлы, таймстеп.
 > Не дублирует правила проекта (`AGENTS.md`) и roadmap (`ARCHITECTURE.md`) — только ссылается.
 > **Обновлять при любом изменении кода gravelands** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-21
+> Сверено: 2026-09-24
 
 ---
 
@@ -54,12 +54,12 @@
 
 | Объект | Компоненты | Слой RenderLayer |
 |--------|-----------|------------------|
-| Тайлы (сетка 10×10 квадратов на XZ, шахматная текстура) | `Transform` + `MeshRenderComponent` (`IsometricTileset::buildMesh()`) | `Ground` |
+| Тайлы (сетка 10×10 квадратов на XZ, шахматная текстура) | `Transform` + `MeshRenderComponent` (ref на слот кеша `gravelands.tiles`; `IsometricTileset::buildMeshInto` собирает прямо в слот) | `Ground` |
 | Тени (сфера r=30, танцор r=8, деревья r=16; радиальный градиент, подъём 0.5) | `Transform` + `MeshRenderComponent` (`BlobShadow::takeMesh()`) | `Shadow` |
 | Привязка тени танцора к root-motion (строго под моделью) | `BlobShadowComponent` + `BlobShadowSystem` (кость `mixamorig:Hips`) | — |
 | Деревья (3 квада 40×70, процедурная текстура, alpha-test, поворот к камере) | `Transform` + `MeshRenderComponent` (`SpritePlane::takeMesh()`) | `AlphaTested` |
 | Сфера (r=25, шахматка, Toon + контур 0.6) | `Transform` + `MeshRenderComponent` (`Sphere::takeMesh()`) | `Opaque` |
-| Танцор (`resources\Hip Hop Dancing.fbx`, масштаб 0.1, позиция (0,0,60)) | `Transform` + `SkinnedMeshComponent` + `AnimatorComponent` | `Opaque` (скиннинг) |
+| Танцор (`resources\Hip Hop Dancing.fbx`, масштаб 0.1, позиция (0,0,60)) | `Transform` + `SkinnedMeshComponent` (ref на слот кеша сцены: `loadFromFile(path, scene.getResources())`) + `AnimatorComponent` | `Opaque` (скиннинг) |
 
 - **Камера** (`blib::graphics::IsometricCamera`): ракурс фиксирован (pitch 55°, yaw 45°, FOV 30° — лёгкая перспектива); WASD двигает `target` камеры в плоскости земли; `Add`/`Subtract` — зум. После изменений обязателен `camera.update()`.
 - **Поворот плоскостей к камере**: через КВАТЕРНИОН (`TransformComponent`): направление **к** камере (`camera.getPosition() - getTarget()`), `yaw = atan2(dir.x, dir.z)` (стандартная конвенция кватерниона). У Euler-`rotateY` (blib-graphics) знак противоположный — см. CORE.md «Грабли math».
@@ -78,6 +78,7 @@
 
 ## Подводные камни / известные баги
 
+- **Кеш ресурсов (2026-09-24):** тайлы и танцор грузятся через `scene.getResources()` (`blib::resource::ResourceManager`, см. RESOURCE_MANAGER.md): тайлы — процедурная сборка в слот + `commit`; танцор — Assimp-загрузка в слот + `commit`, повторная загрузка берёт общий слот. Сфера/деревья/тени остаются owned-мешами (`takeMesh`) — их типы (`Sphere`/`SpritePlane`/`BlobShadow`) не ISaveLoadable. Порядок жизни: сцена (и кеш в ней) разрушаются раньше окна — ref'ы компонентов отпускаются в `Scene::clear()` до деструктора кеша.
 - **Порядок выгрузки GL:** в `ClientCoreImpl` сцена (меши) объявлена ПОСЛЕ окна/таргета и разрушается РАНЬШЕ них — GL-контекст на момент освобождения ресурсов мешей жив (см. GRAPHICS.md «Владение GL»). Новые графические члены добавлять только перед `time` (после окна/таргета).
 - **Изокамера:** `moveTarget` двигает цель в мировых координатах — движение по диагонали (W+D) быстрее одиночного; для геймплея нужна нормализация в `updateCamera`. Дистанция кламплена `[5, 100000]`, pitch `[1, 89]` — вырождение `lookAt` исключено.
 - **Шахматная текстура тайлов** — 1 пиксель на клетку с LINEAR-фильтрацией: на границах ячеек лёгкое «просачивание» соседнего цвета. Терпимо для отладки; при появлении настоящих тайловых текстур заменить.
@@ -93,7 +94,7 @@
 - [ ] Свет в ECS (`LightComponent`/свет сцены) — сейчас свет живёт в `RenderContext` (состояние презентации); разобраться отдельно.
 - [ ] Полупрозрачность + сортировка, MSAA/FXAA, sRGB-конвейер (GRAPHICS.md TODO) — отдельными заходами, если понадобятся.
 - [ ] Толщина контура должна масштабироваться от размера объекта/дистанции (сейчас фикс. мировые единицы).
-- [ ] `ResourceManager`, рендер-ECS на базе beng-client (RenderSystem, CameraComponent) — тайлы и сферы переедут в ECS.
+- [x] **ResourceManager + миграция танцора и тайлов** (2026-09-24): кеш `ISaveLoadable` в blib-core (dedup по MD5 сериализованной формы, `ResourceRef`-refcount, слот в `Scene::getResources()`); тайлы собираются в слот кеша, танцор грузится через кеш с разделением слота. Сфера/деревья/тени — вне кеша (типы не ISaveLoadable); компоненты в dual-mode (ref ?? owned-фолбэк для verifyRoundTrip).
 - [ ] Сетевой слой: TCP-команды/снапшоты, запуск локального сервера при одиночной игре.
 - [ ] Спрайтовые персонажи/интерполяция между снапшотами (клиент).
 - [ ] Normalize движения камеры по диагонали, подгон скорости к дистанции зума.
