@@ -2,7 +2,7 @@
 
 > Слой: `blib`. Запись/воспроизведение звука (WinMM). **Статус: Windows-only, недоделан — в проде не использовать.**
 > Шпаргалка по устройству. **Обновлять при изменениях кода модуля** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-21
+> Сверено: 2026-09-25
 
 ---
 
@@ -35,7 +35,7 @@
 
 - **`SoundFormat`**: `channel`, `bitRate`, `sampleRate`; `isEmpty()` — true, если любой параметр 0. **Внимание:** порядок аргументов конструктора `(channel, sampleRate, bitRate)` не совпадает с порядком полей.
 - **`SoundDevice`**: `name` + `supportedFormats` (`SoundFormats`); default-ctor удалён.
-- **`SoundBufferTemplate<Allocator = CacheAlignedAllocator<uint8_t>>`**: владеет сэмплами (`getData/getSize/getFormat`), есть ctor из внешней памяти `(format, size, payloadSize, pdata)`. Размер вычисляется из длительности (мс) × sampleRate × bitRate/8 × channel.
+- **`SoundBufferTemplate<Allocator = CacheLineAlignedAllocator>`**: владеет сэмплами (`getData/getSize/getFormat`), есть ctor из внешней памяти `(format, size, payloadSize, pdata)`. Размер вычисляется из длительности (мс) × sampleRate × bitRate/8 × channel.
 - **`RealTimeSoundPlayer` / `RealTimeSoundRecorder`** — frame-API: `getDevices/select/setFormat/setBufferInfo/open/close`; обмен буферами через `acquireBuffer()` / `releaseBuffer(frame)`; у рекордера ещё `start/stop/isBufferReady`. Устройство по умолчанию — `WAVE_MAPPER`.
 - **`SoundPlayer` / `SoundRecorder`** — высокоуровневые: владеют `std::thread`-ом обработки и накопленными `SoundBuffers`; `SoundPlayer::play/setData/stop`, `SoundRecorder::start/stop/getBuffer`.
 
@@ -53,7 +53,7 @@
 
 ## Инварианты
 
-- **Владение:** `SoundBuffer` владеет своей памятью (аллокатор по умолчанию — `CacheAlignedAllocator` из `core/alignedAllocator.h`, не GlobalAllocator). `RealTimeSoundFrame` — невладеющая пара (заголовок + буфер).
+- **Владение:** `SoundBuffer` владеет своей памятью (аллокатор по умолчанию — `blib::memory::CacheLineAlignedAllocator` из `system/memory/allocators/alignedAllocator.h`, бэкинг — GlobalAllocator). `RealTimeSoundFrame` — невладеющая пара (заголовок + буфер).
 - **Thread-safety:** `RealTimeSoundPlayer/Recorder` рассчитаны на SPSC-обмен (поток пользователя ↔ колбэк WinMM); `SoundPlayer::playing` — `atomic<bool>`, `SoundRecorder::capturing` — обычный `bool`.
 - `open()` обязателен перед `acquire/release`; формат с `isEmpty()` → `open` вернёт `false`.
 - Лимитов/констант у формата нет; количество и длительность буферов задаются `setBufferInfo` (высокоуровневый `SoundPlayer` использует фиксированные значения).

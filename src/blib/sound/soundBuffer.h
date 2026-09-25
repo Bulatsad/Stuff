@@ -3,12 +3,13 @@
 #include<blib/sound/soundFormat.h>
 #include<memory>
 
-#include<blib/core/alignedAllocator.h>
+#include<blib/system/memory/allocators/alignedAllocator.h>
 #include<blib/align.h>
+#include<blib/inline.h>
 
 namespace blib
 {
-    template<class Allocator = blib::CacheAlignedAllocator<uint8_t> >
+    template<class Allocator = blib::memory::CacheLineAlignedAllocator>
     class __blib_cache_aligned SoundBufferTemplate
     {
     public:
@@ -85,7 +86,7 @@ __blib_inline blib::SoundBufferTemplate<Allocator>::SoundBufferTemplate(const So
 template<class Allocator>
 __blib_inline blib::SoundBufferTemplate<Allocator>::~SoundBufferTemplate()
 {
-    this->allocator.deallocate(reinterpret_cast<typename Allocator::type*>(this->pdata), this->size);
+    this->allocator.deallocate(this->pdata, this->size);
     
     //memset(this, 0, sizeof(SoundBufferTemplate<Allocator>));
 }

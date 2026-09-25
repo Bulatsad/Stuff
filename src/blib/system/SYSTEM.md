@@ -2,7 +2,7 @@
 
 > Слой: `blib`, нижний модуль. Память, потоки, синхронизация, базовые заголовки.
 > Шпаргалка по инвариантам и граблям. **Обновлять при изменениях кода модуля** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-24
+> Сверено: 2026-09-25
 
 ---
 
@@ -25,7 +25,7 @@
 | Базовый интерфейс type erasure | `src/blib/system/memory/itypeErased.h` |
 | Интерфейс владения аллокатором | `src/blib/system/memory/iallocatorAware.h` |
 | SBO-хранилище | `src/blib/system/memory/sbo.h` |
-| Дефолтный/debug/malloc/pool | `src/blib/system/memory/defaultAllocator.h`, `allocators/debugAllocator.h`, `allocators/mallocAllocator.h`, `allocators/poolAllocator.h` |
+| Дефолтный/debug/malloc/pool/aligned | `src/blib/system/memory/defaultAllocator.h`, `allocators/debugAllocator.h`, `allocators/mallocAllocator.h`, `allocators/poolAllocator.h`, `allocators/alignedAllocator.h` |
 | Адаптер под STL | `src/blib/system/memory/stdAllocatorAdapter.h` |
 | Read/write lock | `src/blib/system/thread/rwlock.h` + `impl/win|linux/rwlock.cpp` |
 | RAII-мьютекс | `src/blib/system/thread/mutexLocker.h` |
@@ -91,6 +91,7 @@
 | `DebugAllocator<T>` | Header+guard+poison; **+40 байт** на аллокацию; **не thread-safe**; включается при `BLIB_DEBUG` (см. `AUTO_DEBUG_ALLOCATOR.md`) |
 | `MallocAllocator` | `std::malloc/free`, мимо статистики GlobalAllocator; stateless |
 | `PoolAllocator` | Чанки + intrusive free list + **инлайн-битмап** (1 бит на блок); **не thread-safe**; `allocate` принимает только точный `blockSize`; в debug `blockSize += 40`; явного alignment нет; **итерация по занятым блокам** O(N) (begin()/end(), const-версии; в debug пробрасывается через `DebugAllocator` с поправкой адресов на debug-offset); release-детекты double-free/чужого ptr — warning в stderr + no-op |
+| `AlignedAllocator<Alignment>` | Stateless; гарантированное выравнивание блоков по `Alignment` (степень двойки, ≥ 16); бэкинг — **только GlobalAllocator** (overallocation + Header с исходным ptr/размером); overhead: 16 байт header + до `Alignment - 1`; **сознательно без DebugAllocator** (front-guard сдвигает адрес на 32 байта и ломает выравнивание); alias `CacheLineAlignedAllocator` = `AlignedAllocator<__blib_cache_size>` (потребитель — `blib-sound`, SoundBufferTemplate) |
 | `StdAllocatorAdapter<T>` | Мост для STL-контейнеров; **не владеет** `Allocator*` (время жизни обеспечивает вызывающий) |
 
 ---
@@ -118,7 +119,7 @@
 - Итератор `PoolAllocator` обходит **только занятые** блоки (свободные пропускаются по free list); пустой/полностью свободный пул даёт `begin() == end()`; порядок — чанки по порядку выделения, внутри чанка по возрастанию адресов; `*it` возвращает тот же адрес, что и `allocate()` (в debug — через offset-проброс в `DebugAllocator`), поэтому каждый элемент можно деаллоцировать.
 - Итераторы `PoolAllocator` инвалидируются `allocate()` (возможен `push_back` в `chunks`), деструктором и перемещением пула; инкремент на `end()` — UB.
 - `GlobalAllocator::allocate(0)` не определён; `DebugAllocator`/`MallocAllocator` при 0 возвращают `nullptr`.
-- Потокобезопасность: `GlobalAllocator`/`DefaultAllocator`/`MallocAllocator` — да; `DebugAllocator`/`PoolAllocator`/`SBO`/`StdAllocatorAdapter` — нет.
+- Потокобезопасность: `GlobalAllocator`/`DefaultAllocator`/`MallocAllocator`/`AlignedAllocator` — да; `DebugAllocator`/`PoolAllocator`/`SBO`/`StdAllocatorAdapter` — нет.
 - `SBO` не вызывает деструктор автоматически — обязателен явный `destroy()`.
 
 ---
@@ -145,7 +146,7 @@
 
 - [ ] Обсудить каталог известных багов модуля (отдельная задача).
 - [x] Реализовать `share()/deepCopy()` для stateful-аллокаторов (ref-counting) — сделано 2026-09-24 (lazy-промоция, union-хранение; `deepCopy` для move-only остаётся `nullptr` + stderr).
-- [ ] Потокобезопасный `PoolAllocator`, кастомный alignment, кэш `getApproximateFreeBlocks`.
+- [ ] Потокобезопасный `PoolAllocator`, кастомный alignment у `PoolAllocator` (у `AlignedAllocator` alignment есть, 2026-09-25), кэш `getApproximateFreeBlocks`.
 - [ ] Конвертировать `PoolAllocatorImpl` с голых `size_t` на blib-типы (затронет публичные сигнатуры и вызовы из `ComponentPool`).
 - [ ] Починить утечку в SPSC `reset()`.
 - [ ] Актуализировать комментарии: размер `Allocator`, `constructInHeap`, `StdAllocatorAdapter` про исключения.
