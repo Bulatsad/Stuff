@@ -1303,7 +1303,6 @@ BLIB_TEST_CASE("Allocator: stateless allocator uses SBO (no heap allocation)")
 
 BLIB_TEST_CASE("Allocator: copy constructor")
 {
-#ifndef BLIB_DEBUG_ALLOCATOR_ENABLED
 	Allocator alloc1;
 	Allocator alloc2(alloc1);
 	
@@ -1315,9 +1314,6 @@ BLIB_TEST_CASE("Allocator: copy constructor")
 	
 	alloc1.deallocate(ptr1, 64);
 	alloc2.deallocate(ptr2, 64);
-#else
-	__blib_log_info("  SKIPPED (copy not supported for stateful allocators in debug mode)");
-#endif
 }
 
 BLIB_TEST_CASE("Allocator: move constructor transfers ownership")
@@ -1612,12 +1608,11 @@ BLIB_TEST_CASE("Integration: performance comparison (informational)")
 }
 
 // ============================================================
-// 9. Allocator Ownership Tests (copy/move/clone после починки владения)
+// 9. Allocator Ownership Tests (copy/move/clone, ref-counting)
 // ============================================================
 
 BLIB_TEST_CASE("Allocator: copy ctor allocates impl in heap (GA tracked)")
 {
-#ifndef BLIB_DEBUG_ALLOCATOR_ENABLED
 	auto& ga = GlobalAllocator::instance();
 	size_t countBefore = ga.getAllocationCount();
 	
@@ -1625,27 +1620,32 @@ BLIB_TEST_CASE("Allocator: copy ctor allocates impl in heap (GA tracked)")
 		Allocator alloc1;
 		Allocator alloc2(alloc1);
 		
-		// share() создаёт heap-копию impl через GlobalAllocator
+		// share() создаёт heap-копию impl через GlobalAllocator.
+		// Release (stateless): 1 аллокация (heap-wrapper).
+		// Debug (stateful): 2 аллокации - контрольный блок SharedState
+		// (промоция) + heap-wrapper новой копии.
+#ifdef BLIB_DEBUG_ALLOCATOR_ENABLED
+		size_t expectedAllocs = 2;
+#else
+		size_t expectedAllocs = 1;
+#endif
 		size_t countDuring = ga.getAllocationCount();
-		BLIB_TEST_CHECK(countDuring == countBefore + 1);
+		BLIB_TEST_CHECK(countDuring == countBefore + expectedAllocs);
 		
-		// Обе копии работают (stateless DefaultAllocator)
+		// Обе копии работают (в release - stateless DefaultAllocator,
+		// в debug - разделяемый stateful через ref-counting)
 		void* ptr = alloc2.allocate(64);
 		BLIB_TEST_CHECK(ptr != nullptr);
 		alloc2.deallocate(ptr, 64);
 	}
 	
-	// destroyImpl должен вернуть heap-копию в GlobalAllocator
+	// destroyImpl должен вернуть heap-копии в GlobalAllocator
 	size_t countAfter = ga.getAllocationCount();
 	BLIB_TEST_CHECK(countAfter == countBefore);
-#else
-	__blib_log_info("  SKIPPED (copy not supported for stateful allocators in debug mode)");
-#endif
 }
 
 BLIB_TEST_CASE("Allocator: copy of copy keeps GA balanced")
 {
-#ifndef BLIB_DEBUG_ALLOCATOR_ENABLED
 	auto& ga = GlobalAllocator::instance();
 	size_t countBefore = ga.getAllocationCount();
 	
@@ -1654,19 +1654,26 @@ BLIB_TEST_CASE("Allocator: copy of copy keeps GA balanced")
 		Allocator a2(a1);
 		Allocator a3(a2);
 		
-		// Две heap-копии impl (по одной на копирование)
-		BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore + 2);
+		// Heap-копии impl: release - по одной на копирование (+2);
+		// debug - первое копирование +2 (SharedState + wrapper),
+		// второе +1 (только wrapper, состояние уже разделяемое).
+#ifdef BLIB_DEBUG_ALLOCATOR_ENABLED
+		size_t expectedAllocs = 3;
+#else
+		size_t expectedAllocs = 2;
+#endif
+		BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore + expectedAllocs);
+		
+		void* ptr = a3.allocate(64);
+		BLIB_TEST_CHECK(ptr != nullptr);
+		a3.deallocate(ptr, 64);
 	}
 	
 	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
-#else
-	__blib_log_info("  SKIPPED (copy not supported for stateful allocators in debug mode)");
-#endif
 }
 
 BLIB_TEST_CASE("Allocator: clone() creates independent copy (stateless)")
 {
-#ifndef BLIB_DEBUG_ALLOCATOR_ENABLED
 	auto& ga = GlobalAllocator::instance();
 	size_t countBefore = ga.getAllocationCount();
 	
@@ -1683,32 +1690,186 @@ BLIB_TEST_CASE("Allocator: clone() creates independent copy (stateless)")
 	}
 	
 	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
-#else
-	__blib_log_info("  SKIPPED (deepCopy not supported for stateful allocators in debug mode)");
-#endif
 }
 
-BLIB_TEST_CASE("Allocator: stateful copy and clone give dead allocator (known defect)")
+// --- Ref-counting stateful-аллокаторов (share/deepCopy) ---
+// Тесты выше покрывают копирование дефолтного Allocator.
+// Здесь - специфика stateful-аллокаторов: разделение состояния,
+// промоция при первом копировании, независимые копии (deepCopy).
+
+/**
+ * Копируемый stateful аллокатор для тестов deepCopy():
+ * имеет состояние (magic) и implicit copy ctor/assign.
+ * Размер мал (влезает в SBO), аллоцирует через GlobalAllocator.
+ */
+struct CopyableStatefulAllocator
 {
-	// TODO: Убрать/переписать этот тест после реализации share()/deepCopy()
-	// для stateful аллокаторов (AllocatorImplWrapper сейчас возвращает nullptr).
-	// Тест фиксирует ТЕКУЩЕЕ поведение, чтобы дефект был виден.
-	
+	buint32 magic;
+
+	explicit CopyableStatefulAllocator(buint32 a_magic = 0x1234ABCDu)
+		: magic(a_magic)
+	{
+	}
+
+	void* allocate(size_t size)
+	{
+		return GlobalAllocator::instance().allocate(size);
+	}
+
+	void deallocate(void* ptr, size_t size)
+	{
+		GlobalAllocator::instance().deallocate(ptr, size);
+	}
+};
+
+BLIB_TEST_CASE("Allocator: copy of stateful PoolAllocator shares state (ref-counted)")
+{
+	auto& ga = GlobalAllocator::instance();
+	size_t countBefore = ga.getAllocationCount();
+	size_t allocBefore = ga.getCurrentAllocated();
+
+	{
+		PoolAllocator pool(64, 128);
+		Allocator orig(std::move(pool));
+
+		void* ptrOrig = orig.allocate(64);
+		BLIB_TEST_CHECK(ptrOrig != nullptr);
+
+		// Копия разделяет состояние (та же инстанция пула):
+		// allocate работает и выдаёт другой блок того же пула.
+		Allocator copy(orig);
+		void* ptrCopy = copy.allocate(64);
+		BLIB_TEST_CHECK(ptrCopy != nullptr);
+		BLIB_TEST_CHECK(ptrCopy != ptrOrig);
+
+		// Цепочка копий - все разделяют один пул.
+		Allocator copy2(copy);
+		void* ptrCopy2 = copy2.allocate(64);
+		BLIB_TEST_CHECK(ptrCopy2 != nullptr);
+
+		// Деаллокация через любую копию (общая инстанция пула).
+		orig.deallocate(ptrOrig, 64);
+		copy.deallocate(ptrCopy, 64);
+		copy2.deallocate(ptrCopy2, 64);
+	}
+
+	// Контрольный блок и обёртки возвращены GlobalAllocator'у.
+	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
+	BLIB_TEST_CHECK(ga.getCurrentAllocated() == allocBefore);
+}
+
+BLIB_TEST_CASE("Allocator: shared copies outlive original (ref-counting)")
+{
+	auto& ga = GlobalAllocator::instance();
+	size_t countBefore = ga.getAllocationCount();
+
+	{
+		Allocator copy;
+		{
+			PoolAllocator pool(64, 128);
+			Allocator orig(std::move(pool));
+
+			void* p = orig.allocate(64);
+			BLIB_TEST_CHECK(p != nullptr);
+			orig.deallocate(p, 64);
+
+			// Промоция: состояние переезжает в heap-контрольный блок.
+			copy = orig;
+		}
+		// orig уничтожен - аллокатор живёт в контрольном блоке,
+		// copy продолжает работать.
+		void* p = copy.allocate(64);
+		BLIB_TEST_CHECK(p != nullptr);
+		copy.deallocate(p, 64);
+	}
+
+	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
+}
+
+BLIB_TEST_CASE("Allocator: copy from const Allocator promotes source")
+{
 	PoolAllocator pool(64, 128);
 	Allocator orig(std::move(pool));
-	
-	void* ptr = orig.allocate(64);
-	BLIB_TEST_CHECK(ptr != nullptr);
-	
-	// Копия stateful-аллокатора: share() == nullptr -> impl == nullptr
-	Allocator copy(orig);
-	BLIB_TEST_CHECK(copy.allocate(64) == nullptr);
-	
-	// clone() stateful-аллокатора: deepCopy() == nullptr -> impl == nullptr
+
+	// Копирование из const-ссылки: промоция мутирует impl-источник,
+	// но объект остаётся работоспособным.
+	const Allocator& constRef = orig;
+	Allocator copy(constRef);
+
+	void* ptr1 = orig.allocate(64);
+	BLIB_TEST_CHECK(ptr1 != nullptr);
+
+	void* ptr2 = copy.allocate(64);
+	BLIB_TEST_CHECK(ptr2 != nullptr);
+
+	orig.deallocate(ptr1, 64);
+	copy.deallocate(ptr2, 64);
+}
+
+BLIB_TEST_CASE("Allocator: clone() of move-only stateful gives dead allocator")
+{
+	PoolAllocator pool(64, 128);
+	Allocator orig(std::move(pool));
+
+	// PoolAllocatorImpl move-only: независимая копия невыразима -
+	// deepCopy() возвращает nullptr (диагностика в stderr).
 	Allocator cloned = orig.clone();
 	BLIB_TEST_CHECK(cloned.allocate(64) == nullptr);
-	
+
+	// Источник не затронут.
+	void* ptr = orig.allocate(64);
+	BLIB_TEST_CHECK(ptr != nullptr);
 	orig.deallocate(ptr, 64);
+}
+
+BLIB_TEST_CASE("Allocator: clone() of copyable stateful creates independent copy")
+{
+	auto& ga = GlobalAllocator::instance();
+	size_t countBefore = ga.getAllocationCount();
+
+	{
+		CopyableStatefulAllocator a(0xAAAA0001u);
+		Allocator orig(std::move(a));
+
+		Allocator cloned = orig.clone();
+		void* ptr1 = cloned.allocate(64);
+		BLIB_TEST_CHECK(ptr1 != nullptr);
+		cloned.deallocate(ptr1, 64);
+
+		// Оригинал независим и работает.
+		void* ptr2 = orig.allocate(32);
+		BLIB_TEST_CHECK(ptr2 != nullptr);
+		orig.deallocate(ptr2, 32);
+	}
+
+	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
+}
+
+BLIB_TEST_CASE("Allocator: deepCopy of shared stateful creates independent copy")
+{
+	auto& ga = GlobalAllocator::instance();
+	size_t countBefore = ga.getAllocationCount();
+
+	{
+		CopyableStatefulAllocator a(0xBBBB0002u);
+		Allocator orig(std::move(a));
+
+		Allocator copy(orig); // Промоция в shared-режим
+		Allocator cloned = copy.clone(); // deepCopy из контрольного блока
+
+		void* ptr1 = orig.allocate(64);
+		void* ptr2 = copy.allocate(64);
+		void* ptr3 = cloned.allocate(64);
+		BLIB_TEST_CHECK(ptr1 != nullptr);
+		BLIB_TEST_CHECK(ptr2 != nullptr);
+		BLIB_TEST_CHECK(ptr3 != nullptr);
+
+		orig.deallocate(ptr1, 64);
+		copy.deallocate(ptr2, 64);
+		cloned.deallocate(ptr3, 64);
+	}
+
+	BLIB_TEST_CHECK(ga.getAllocationCount() == countBefore);
 }
 
 BLIB_TEST_CASE("Allocator: move ctor with stateful PoolAllocator (no leak)")

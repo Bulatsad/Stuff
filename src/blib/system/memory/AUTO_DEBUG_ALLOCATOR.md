@@ -1,7 +1,7 @@
 # Автоматический Debug Allocator
 
 > См. также: `../SYSTEM.md` (карта blib-system), `../../BLIB.md` (философия blib).
-> Сверено: 2026-09-21
+> Сверено: 2026-09-24
 
 ## Обзор изменений
 
@@ -202,6 +202,9 @@ alloc.deallocate(ptr, 256);  // ABORT: Double-free detected!
 - ✅ API не изменился: `DefaultAllocator` остаётся публичным именем
 - ⚠️ Traits изменился: в debug `isStateless = false` вместо `true`
   - Это корректно и обрабатывается автоматически
+- ✅ Копирование `Allocator` в debug работает: stateful `DebugAllocator`
+  разделяется через ref-counting (`share()`), `clone()` независим
+  (см. SYSTEM.md — «Allocator — type-erased обёртка»)
 
 ---
 

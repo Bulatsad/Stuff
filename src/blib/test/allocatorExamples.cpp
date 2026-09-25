@@ -250,20 +250,23 @@ void example6_copyAndMove()
     void* ptr1 = alloc1.allocate(64);
     __blib_log_info("Allocated through alloc1: %p", ptr1);
 
-    // Копирование - создаёт shared копию (для stateful - делит состояние)
+    // Копирование - shared ownership: stateful-аллокаторы разделяют
+    // состояние через ref-counting (оба аллоцируют из одного пула)
     blib::memory::Allocator alloc2 = alloc1;
     void* ptr2 = alloc2.allocate(64);
     __blib_log_info("Allocated through alloc2 (shared): %p", ptr2);
 
-    // Глубокое копирование - независимая копия
+    // Глубокое копирование - независимая копия. Работает только для
+    // copy-constructible аллокаторов; PoolAllocatorImpl move-only,
+    // поэтому clone() даст «мёртвый» аллокатор (allocate -> nullptr).
     blib::memory::Allocator alloc3 = alloc1.clone();
     void* ptr3 = alloc3.allocate(64);
-    __blib_log_info("Allocated through alloc3 (cloned): %p", ptr3);
+    __blib_log_info("Allocated through alloc3 (cloned, move-only => dead): %p", ptr3);
 
     // Cleanup
     alloc1.deallocate(ptr1, 64);
     alloc2.deallocate(ptr2, 64);
-    alloc3.deallocate(ptr3, 64);
+    // ptr3 == nullptr (clone() невозможен для move-only пула) - не освобождаем
 }
 
 // ============================================================================

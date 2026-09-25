@@ -48,7 +48,7 @@ namespace memory
 	 * - Конструкторы T не должны бросать (исключения запрещены проектом).
 	 * - Alignment erased-объекта определяется аллокатором (как и везде в модуле).
 	 */
-	class ITypeErased
+	class __blib_system_api ITypeErased
 	{
 	public:
 		/**
@@ -61,9 +61,10 @@ namespace memory
 		/**
 		 * Конструктор копирования: deep copy содержимого other.
 		 *
-		 * - Аллокатор НЕ копируется: копирование stateful-Allocator даёт
-		 *   «мёртвый» аллокатор (известный дефект Allocator, см. SYSTEM.md) —
-		 *   копия использует собственный DefaultAllocator.
+		 * - Аллокатор НЕ копируется: копия использует собственный
+		 *   DefaultAllocator (дизайнерское решение: копия не должна
+		 *   разделять аллокатор источника; deallocate обязан идти
+		 *   через выделивший аллокатор).
 		 * - Содержимое — свежая аллокация через copyConstructFrom.
 		 * - При OOM или не-копируемом T объект остаётся пустым
 		 *   (исключений в проекте нет — вызывающий проверяет isEmpty()).
@@ -114,6 +115,11 @@ namespace memory
 		bool isEmpty() const noexcept
 		{
 			return this->pdata == nullptr;
+		}
+
+		virtual std::string name() const
+		{
+			return "blib::memory::ITypeErased";
 		}
 
 	protected:
@@ -340,6 +346,23 @@ namespace memory
 	inline ITypeErased::~ITypeErased()
 	{
 		this->destroyErased();
+	}
+
+	template<class T>
+	T&& ite_cast(ITypeErased&& ite)
+	{
+		if (ite.name() == T::name())
+			return reinterpret_cast<T>(ite);
+		else
+		{
+			if constexpr (std::is_pointer_v<T>)
+				return nullptr;
+			else
+			{
+				fprintf(stderr, "Error at ite_cast");
+				std::terminate();
+			}
+		}
 	}
 
 } // namespace memory

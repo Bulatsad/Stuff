@@ -43,9 +43,10 @@ namespace memory
     {
         if (other.impl)
         {
-            // Создаём shared копию через share()
-            // share() выделяет heap-объект через GlobalAllocator,
-            // освобождение происходит в destroyImpl() (путь 3)
+            // Создаём shared копию через share().
+            // - Stateless: heap-копия impl (освобождение - destroyImpl путь 3)
+            // - Stateful: ref-counting; первое копирование переводит источник
+            //   в shared-режим (аллокатор переезжает в heap-контрольный блок)
             impl = other.shareImpl();
         }
     }
@@ -194,6 +195,8 @@ namespace memory
         {
             return nullptr;
         }
+        // share() не const: для stateful промоция мутирует impl-источник.
+        // Легально: impl указывает на не-const объект (pointee не const).
         return impl->share();
     }
 
