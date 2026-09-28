@@ -19,9 +19,11 @@
 
 #include <blib/core/console/console.h>
 #include <blib/core/math/angle.h>
+#include <blib/core/math/trigonometry.h>
 #include <blib/core/math/utilfuncs.h>
 #include <blib/graphics/impl/win/winRenderWindowUtil.h>
 #include <blib/graphics/keyboard.h>
+#include <blib/graphics/lineRenderer.h>
 #include <blib/graphics/orbitCamera.h>
 #include <blib/graphics/rendertarget.h>
 #include <blib/graphics/renderWindow.h>
@@ -100,13 +102,75 @@ namespace beng
             constexpr const char* clearCommandName = "clear";
             constexpr const char* clearCommandHelp = "clears the console output";
 
-            // Gizmo-манипулятор: масштаб экранных пикселей в мировые
-            // единицы на дистанции камеры (как панорама в ViewportPanel)
+            // Gizmo-манипулятор: длина осей/радиус окружностей (мир. ед.)
+            constexpr float gizmoAxisLength = 25.0f;
+
+            // Масштаб экранных пикселей в мировые единицы на дистанции
+            // камеры (как панорама в ViewportPanel)
             constexpr float gizmoPanScalePerPixel = 0.0015f;
 
-            // Клавиша-модификатор манипулятора: G + ЛКМ-драг двигает
-            // выбранную сущность (см. updateGizmoDrag)
-            constexpr blib::graphics::Keyboard::Key gizmoModifierKey = blib::graphics::Keyboard::Key::G;
+            // Порог близости курсора к оси/окружности (в пикселях) —
+            // ось становится активной (подсветка/драг)
+            constexpr float gizmoAxisHitPixelThreshold = 10.0f;
+
+            // Скорость вращения в режиме Rotate (градус/пиксель)
+            constexpr float gizmoRotateSpeedDegPerPixel = 0.3f;
+
+            // Сегменты окружностей gizmo (режим Rotate)
+            constexpr buint32 gizmoCircleSegments = 48;
+            constexpr float twoPi = 6.2831853f;
+
+            // Минимальный компонент масштаба (защита от вырождения)
+            constexpr float gizmoMinScaleComponent = 0.01f;
+
+            // Цвета осей X/Y/Z и подсветки активной оси
+            constexpr buint8 gizmoAxisXColorR = 255;
+            constexpr buint8 gizmoAxisXColorG = 90;
+            constexpr buint8 gizmoAxisXColorB = 90;
+            constexpr buint8 gizmoAxisYColorR = 90;
+            constexpr buint8 gizmoAxisYColorG = 255;
+            constexpr buint8 gizmoAxisYColorB = 90;
+            constexpr buint8 gizmoAxisZColorR = 90;
+            constexpr buint8 gizmoAxisZColorG = 90;
+            constexpr buint8 gizmoAxisZColorB = 255;
+            constexpr buint8 gizmoHotColorR = 255;
+            constexpr buint8 gizmoHotColorG = 255;
+            constexpr buint8 gizmoHotColorB = 80;
+            constexpr buint8 gizmoAxisAlpha = 255;
+
+            // «Оси нет» (горячая ось отсутствует)
+            constexpr buint8 gizmoNoAxis = 0xFF;
+
+            // «Бесконечность» для hit-тестов (луч промахнулся)
+            constexpr float gizmoNoHitDistance = 100000.0f;
+
+            // Клавиши режимов gizmo (как в Unity/Unreal)
+            constexpr blib::graphics::Keyboard::Key gizmoTranslateKey = blib::graphics::Keyboard::Key::W;
+            constexpr blib::graphics::Keyboard::Key gizmoRotateKey = blib::graphics::Keyboard::Key::E;
+            constexpr blib::graphics::Keyboard::Key gizmoScaleKey = blib::graphics::Keyboard::Key::R;
+
+            // Окружность gizmo (режим Rotate): аппроксимация отрезками в
+            // плоскости, натянутой на базисные векторы u/v (нормаль — ось
+            // вращения). Сегменты — gizmoCircleSegments
+            void addGizmoCircle(
+                _In blib::graphics::LineRenderer& gizmo,
+                _In const blib::math::Vector<float, 3>& center,
+                _In const blib::math::Vector<float, 3>& basisU,
+                _In const blib::math::Vector<float, 3>& basisV,
+                _In const blib::graphics::Color& color)
+            {
+                const float angleStep = twoPi / static_cast<float>(gizmoCircleSegments);
+                blib::math::Vector<float, 3> previous = center + basisU * gizmoAxisLength;
+                for (buint32 i = 1; i <= gizmoCircleSegments; ++i)
+                {
+                    const float angle = angleStep * static_cast<float>(i);
+                    const blib::math::Vector<float, 3> point = center +
+                        basisU * (blib::math::cos(angle) * gizmoAxisLength) +
+                        basisV * (blib::math::sin(angle) * gizmoAxisLength);
+                    gizmo.addLine(previous, point, color);
+                    previous = point;
+                }
+            }
         }
 
         // ---------------------------------------------------------------
@@ -149,6 +213,33 @@ namespace beng
             // Устаревший выбор сбрасывает панель иерархии
             EntityID selectedEntity;
 
+            // История команд эдитора (undo/redo): правки полей, gizmo,
+            // сущности/компоненты. Объявлена ПОСЛЕ сцены — разрушается
+            // РАНЬШЕ неё: команды уничтожаются при живой сцене
+            CommandHistory commandHistory;
+
+            // Режим gizmo-манипулятора (W/E/R)
+            GizmoMode gizmoMode;
+
+            // Отрисовка gizmo (стрелки/окружности). LineRenderer не
+            // освобождает GL-ресурсы — живёт до гашения каркаса
+            blib::graphics::LineRenderer gizmoRenderer;
+
+            // Состояние активного драга за стрелку/окружность
+            struct GizmoDragState
+            {
+                bool active;
+                buint8 axis;        // 0=X, 1=Y, 2=Z
+                EntityID entity;
+                TransformSnapshot startTrs;
+            } gizmoDrag;
+
+            // Горячая ось gizmo (подсветка; gizmoNoAxis — нет)
+            buint8 gizmoHotAxis;
+
+            // В этом кадре начался драг за стрелку — клик не пикает
+            bool gizmoDragBeganThisFrame;
+
             // Панели хоста: регистрируются через registerPanel
             // (указатели — каркас панелями не владеет, см. IPanel)
             struct RegisteredPanel
@@ -187,6 +278,12 @@ namespace beng
                 , sceneHierarchyPanel()
                 , inspectorPanel()
                 , selectedEntity(beng::invalidEntity)
+                , commandHistory()
+                , gizmoMode(GizmoMode::Translate)
+                , gizmoRenderer()
+                , gizmoDrag{ false, gizmoNoAxis, invalidEntity, TransformSnapshot() }
+                , gizmoHotAxis(gizmoNoAxis)
+                , gizmoDragBeganThisFrame(false)
                 , panelListAllocator()
                 , panels(blib::memory::StdAllocatorAdapter<RegisteredPanel>(&this->panelListAllocator))
                 , windowTitle(title)
@@ -227,6 +324,17 @@ namespace beng
         bool EditorApplication::onEscapePressed()
         {
             return false;
+        }
+
+        void EditorApplication::onViewportClick(
+            _In const blib::math::Vector<float, 3>& rayOrigin,
+            _In const blib::math::Vector<float, 3>& rayDirection)
+        {
+            // По умолчанию клик никого не выбирает (эдитор без игры
+            // пикать нечего — пустая сцена). Хосты переопределяют:
+            // ray-picking по своим типам + selectEntity
+            (void)rayOrigin;
+            (void)rayDirection;
         }
 
         EditorApplication::EditorApplication()
@@ -301,14 +409,23 @@ namespace beng
             {
                 this->impl->sceneHierarchyPanel.setScene(&this->impl->scene);
                 this->impl->sceneHierarchyPanel.setSelectionRef(&this->impl->selectedEntity);
+                this->impl->sceneHierarchyPanel.setCommandHistory(&this->impl->commandHistory);
                 this->impl->inspectorPanel.setScene(&this->impl->scene);
                 this->impl->inspectorPanel.setSelectionSource(&this->impl->selectedEntity);
+                this->impl->inspectorPanel.setCommandHistory(&this->impl->commandHistory);
 
                 this->impl->panels.push_back(EditorApplicationImpl::RegisteredPanel{
                     &this->impl->sceneHierarchyPanel, PanelZone::LeftTop });
                 this->impl->panels.push_back(EditorApplicationImpl::RegisteredPanel{
                     &this->impl->inspectorPanel, PanelZone::Right });
             }
+
+            // Камера вьюпорта не должна захватываться кликом по стрелке
+            // gizmo: вращение блокируется, пока курсор над осью/окружностью
+            // или идёт драг манипулятора
+            this->impl->viewportPanel.setRotationBlockPredicate([this]() -> bool {
+                return this->impl->gizmoDrag.active || this->impl->gizmoHotAxis != gizmoNoAxis;
+            });
 
             // ImGui + WndProc-хук
             IMGUI_CHECKVERSION();
@@ -381,6 +498,56 @@ namespace beng
                 }
             }
 
+            // Горячие клавиши эдитора — только при закрытой консоли
+            // (печать в консоли не должна «протекать» в правки)
+            if (!this->impl->showConsole)
+            {
+                // W/E/R — режимы gizmo (как в Unity/Unreal)
+                if (blib::graphics::Keyboard::isKeyJustPressed(gizmoTranslateKey))
+                {
+                    this->impl->gizmoMode = GizmoMode::Translate;
+                }
+                if (blib::graphics::Keyboard::isKeyJustPressed(gizmoRotateKey))
+                {
+                    this->impl->gizmoMode = GizmoMode::Rotate;
+                }
+                if (blib::graphics::Keyboard::isKeyJustPressed(gizmoScaleKey))
+                {
+                    this->impl->gizmoMode = GizmoMode::Scale;
+                }
+
+                const bool ctrlPressed =
+                    blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::LControl) ||
+                    blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::RControl);
+                const bool shiftPressed =
+                    blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::LShift) ||
+                    blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::RShift);
+
+                // Ctrl+Z — отмена, Ctrl+Shift+Z — повтор
+                if (ctrlPressed && blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::Z))
+                {
+                    if (shiftPressed)
+                    {
+                        this->impl->commandHistory.redo();
+                    }
+                    else
+                    {
+                        this->impl->commandHistory.undo();
+                    }
+                }
+
+                // Delete — удалить выбранную сущность (через историю)
+                if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::Delete) &&
+                    this->impl->selectedEntity != invalidEntity)
+                {
+                    if (this->impl->commandHistory.recordEntityDestroy(
+                        this->impl->scene, this->impl->selectedEntity))
+                    {
+                        this->impl->selectedEntity = invalidEntity;
+                    }
+                }
+            }
+
             // Свои горячие клавиши хоста (до симуляции)
             this->onInput();
 
@@ -409,6 +576,9 @@ namespace beng
 
             // Отладочные слои хоста поверх сцены (в тот же FBO)
             this->onSceneDidUpdate(deltaTime);
+
+            // Gizmo выбранной сущности — поверх сцены и слоёв хоста
+            this->drawGizmo();
 
             // UI: переключаемся на back-буфер (иначе ImGui-бэкенд
             // рисует в FBO, а вьюпорт сэмплит его же — feedback loop)
@@ -452,22 +622,32 @@ namespace beng
                 ImGui::SetNextWindowSize(ImVec2(windowW, topBarHeight), ImGuiCond_FirstUseEver);
                 this->onUi();
 
-                // Gizmo-манипулятор: при зажатой G и выбранной сущности
-                // вращение камеры отключается — ЛКМ-драг двигает сущность
-                // (updateGizmoDrag ниже)
-                const bool gizmoDragActive =
-                    this->impl->selectedEntity != invalidEntity &&
-                    blib::graphics::Keyboard::isKeyPressed(gizmoModifierKey);
-                this->impl->viewportPanel.setCameraRotationEnabled(!gizmoDragActive);
-
                 // Центр: вьюпорт
                 ImGui::SetNextWindowPos(ImVec2(leftPanelWidth, topBarHeight), ImGuiCond_FirstUseEver);
                 ImGui::SetNextWindowSize(ImVec2(windowW - leftPanelWidth - rightPanelWidth, windowH - topBarHeight), ImGuiCond_FirstUseEver);
                 this->impl->viewportPanel.draw();
 
-                // Перетаскивание выбранной сущности (G + ЛКМ-драг над
-                // вьюпортом) — после панели, пока io.MouseDelta свежий
-                this->updateGizmoDrag();
+                // Gizmo-манипулятор: драг за стрелку/окружность (режим
+                // W/E/R) — после панели, пока io.MouseDelta свежий
+                this->updateGizmoManipulator();
+
+                // Клик ЛКМ по вьюпорту (не драг и не по стрелке gizmo) —
+                // ray-picking: каркас строит луч из камеры через точку
+                // клика, хост решает, кого задел клик (onViewportClick)
+                {
+                    float clickNdcX = 0.0f;
+                    float clickNdcY = 0.0f;
+                    if (this->impl->viewportPanel.takeViewportClick(clickNdcX, clickNdcY) &&
+                        !this->impl->gizmoDragBeganThisFrame)
+                    {
+                        blib::math::Vector<float, 3> rayOrigin;
+                        blib::math::Vector<float, 3> rayDirection;
+                        if (this->computeViewportRay(clickNdcX, clickNdcY, rayOrigin, rayDirection))
+                        {
+                            this->onViewportClick(rayOrigin, rayDirection);
+                        }
+                    }
+                }
 
                 // Консоль поверх всего
                 if (this->impl->showConsole)
@@ -579,21 +759,373 @@ namespace beng
             this->impl->selectedEntity = entity;
         }
 
-        void EditorApplication::updateGizmoDrag()
+        bool EditorApplication::computeViewportRay(
+            float ndcX, float ndcY,
+            _Out blib::math::Vector<float, 3>& outOrigin,
+            _Out blib::math::Vector<float, 3>& outDirection) const
+        {
+            // Луч строится из проекционной матрицы орбитальной камеры
+            // (column-major, стандартная перспектива GL):
+            // data[1][1] = f = 1/tan(fovY/2), data[0][0] = f/aspect.
+            // Направление = forward + right*(u*tanHalf*aspect) +
+            // up*(v*tanHalf) в базисе камеры (без обратных матриц —
+            // OrbitCamera хранит углы/позицию, forward/up считаются
+            // из них; right = cross(forward, worldUp))
+            const blib::graphics::TransformMatrix& projection = this->impl->camera.getProjectionMatrix();
+            const float f = projection.data[1][1];
+            if (__blib_unlikely(f == 0.0f))
+            {
+                return false;
+            }
+            const float tanHalfFov = 1.0f / f;
+            const float aspect = f / projection.data[0][0];
+
+            blib::math::Vector<float, 3> forward =
+                this->impl->camera.getTarget() - this->impl->camera.getPosition();
+            forward = blib::math::normalize(forward);
+
+            const blib::math::Vector<float, 3> worldUp(0.0f, 1.0f, 0.0f);
+            const blib::math::Vector<float, 3> right =
+                blib::math::normalize(blib::math::cross(forward, worldUp));
+            const blib::math::Vector<float, 3> up = blib::math::cross(right, forward);
+
+            outOrigin = this->impl->camera.getPosition();
+            outDirection = blib::math::normalize(
+                forward +
+                right * (ndcX * tanHalfFov * aspect) +
+                up * (ndcY * tanHalfFov));
+            return true;
+        }
+
+        GizmoMode EditorApplication::getGizmoMode() const
+        {
+            return (this->impl != nullptr) ? this->impl->gizmoMode : GizmoMode::Translate;
+        }
+
+        void EditorApplication::setGizmoMode(GizmoMode mode)
+        {
+            if (__blib_unlikely(this->impl == nullptr))
+            {
+                return;
+            }
+            this->impl->gizmoMode = mode;
+        }
+
+        CommandHistory& EditorApplication::getCommandHistory()
+        {
+            return this->impl->commandHistory;
+        }
+
+        float EditorApplication::gizmoRayCircleDistance(
+            _In const blib::math::Vector<float, 3>& rayOrigin,
+            _In const blib::math::Vector<float, 3>& rayDirection,
+            _In const blib::math::Vector<float, 3>& circleCenter,
+            _In const blib::math::Vector<float, 3>& circleNormal,
+            float circleRadius) const
+        {
+            // Пересечение луча с плоскостью окружности; расстояние до
+            // окружности — |расстояние от центра до точки - радиус|.
+            // Нормаль — нормированная ось вращения окружности
+            const float denominator = blib::math::dot(rayDirection, circleNormal);
+            constexpr float circleEpsilon = 0.000001f;
+            if (denominator > -circleEpsilon && denominator < circleEpsilon)
+            {
+                return gizmoNoHitDistance; // луч параллелен плоскости
+            }
+
+            const float t = blib::math::dot(circleCenter - rayOrigin, circleNormal) / denominator;
+            if (t < 0.0f)
+            {
+                return gizmoNoHitDistance; // позади камеры
+            }
+
+            const blib::math::Vector<float, 3> intersection = rayOrigin + rayDirection * t;
+            const blib::math::Vector<float, 3> toCenter = intersection - circleCenter;
+            const float radialDistance = blib::math::length(toCenter);
+            if (radialDistance < circleEpsilon)
+            {
+                return gizmoNoHitDistance; // точка в центре — не на окружности
+            }
+
+            const float distance = radialDistance - circleRadius;
+            return (distance < 0.0f) ? -distance : distance;
+        }
+
+        bool EditorApplication::hitTestGizmo(
+            _In const blib::math::Vector<float, 3>& rayOrigin,
+            _In const blib::math::Vector<float, 3>& rayDirection,
+            _In const blib::math::Vector<float, 3>& gizmoPosition,
+            _Out buint8& outAxis) const
+        {
+            // Порог близости в мировых единицах (масштабируется дистанцией)
+            const float threshold =
+                gizmoAxisHitPixelThreshold * this->impl->camera.getDistance() * gizmoPanScalePerPixel;
+
+            const blib::math::Vector<float, 3> axisX(1.0f, 0.0f, 0.0f);
+            const blib::math::Vector<float, 3> axisY(0.0f, 1.0f, 0.0f);
+            const blib::math::Vector<float, 3> axisZ(0.0f, 0.0f, 1.0f);
+
+            float distanceX = gizmoNoHitDistance;
+            float distanceY = gizmoNoHitDistance;
+            float distanceZ = gizmoNoHitDistance;
+
+            if (this->impl->gizmoMode == GizmoMode::Rotate)
+            {
+                // Окружности в плоскостях, перпендикулярных осям
+                distanceX = this->gizmoRayCircleDistance(rayOrigin, rayDirection, gizmoPosition, axisX, gizmoAxisLength);
+                distanceY = this->gizmoRayCircleDistance(rayOrigin, rayDirection, gizmoPosition, axisY, gizmoAxisLength);
+                distanceZ = this->gizmoRayCircleDistance(rayOrigin, rayDirection, gizmoPosition, axisZ, gizmoAxisLength);
+            }
+            else
+            {
+                // Стрелки (Translate/Scale)
+                distanceX = this->gizmoRayAxisDistance(rayOrigin, rayDirection, gizmoPosition, axisX);
+                distanceY = this->gizmoRayAxisDistance(rayOrigin, rayDirection, gizmoPosition, axisY);
+                distanceZ = this->gizmoRayAxisDistance(rayOrigin, rayDirection, gizmoPosition, axisZ);
+            }
+
+            // Ближайшая ось в пределах порога
+            const float bestDistance =
+                (distanceX < distanceY) ? ((distanceX < distanceZ) ? distanceX : distanceZ)
+                                        : ((distanceY < distanceZ) ? distanceY : distanceZ);
+            if (bestDistance > threshold)
+            {
+                return false;
+            }
+
+            if (distanceX <= bestDistance + 0.0001f && distanceX <= threshold)
+            {
+                outAxis = 0;
+            }
+            else if (distanceY <= threshold)
+            {
+                outAxis = 1;
+            }
+            else
+            {
+                outAxis = 2;
+            }
+            return true;
+        }
+
+        void EditorApplication::updateGizmoManipulator()
         {
             const EntityID selected = this->impl->selectedEntity;
+            this->impl->gizmoDragBeganThisFrame = false;
+
             if (__blib_unlikely(selected == invalidEntity))
+            {
+                this->impl->gizmoHotAxis = gizmoNoAxis;
+                this->impl->gizmoDrag.active = false;
+                return;
+            }
+
+            beng::TransformComponent* transform =
+                this->impl->scene.tryGetComponent<beng::TransformComponent>(selected);
+            if (__blib_unlikely(transform == nullptr))
+            {
+                this->impl->gizmoHotAxis = gizmoNoAxis;
+                this->impl->gizmoDrag.active = false;
+                return;
+            }
+
+            // Луч мыши: из камеры через текущий курсор
+            float ndcX = 0.0f;
+            float ndcY = 0.0f;
+            this->impl->viewportPanel.getCursorNdc(ndcX, ndcY);
+            blib::math::Vector<float, 3> rayOrigin;
+            blib::math::Vector<float, 3> rayDirection;
+            if (!this->computeViewportRay(ndcX, ndcY, rayOrigin, rayDirection))
             {
                 return;
             }
 
-            // Манипулятор активен только: G зажата + ЛКМ зажата +
-            // курсор над вьюпортом (иначе — обычная камера)
-            if (!blib::graphics::Keyboard::isKeyPressed(gizmoModifierKey))
+            const blib::math::Vector<float, 3> gizmoPosition = transform->getWorldPosition();
+
+            if (!this->impl->gizmoDrag.active)
             {
+                // Подсветка + захват драга за стрелку/окружность
+                buint8 hitAxis = gizmoNoAxis;
+                const bool hit = this->impl->viewportPanel.isCursorOverViewport() &&
+                    this->hitTestGizmo(rayOrigin, rayDirection, gizmoPosition, hitAxis);
+                this->impl->gizmoHotAxis = hit ? hitAxis : gizmoNoAxis;
+
+                if (hit && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                {
+                    this->impl->gizmoDrag.active = true;
+                    this->impl->gizmoDrag.axis = hitAxis;
+                    this->impl->gizmoDrag.entity = selected;
+                    this->impl->gizmoDrag.startTrs.position = transform->getLocalPosition();
+                    this->impl->gizmoDrag.startTrs.rotation = transform->getLocalRotation();
+                    this->impl->gizmoDrag.startTrs.scale = transform->getLocalScale();
+                    // Клик ушёл манипулятору — pick в этом кадре не выполнять
+                    this->impl->gizmoDragBeganThisFrame = true;
+                }
                 return;
             }
-            if (!this->impl->viewportPanel.isCursorOverViewport())
+
+            // Драг активен
+            this->impl->gizmoHotAxis = this->impl->gizmoDrag.axis;
+
+            ImGuiIO& io = ImGui::GetIO();
+            if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+            {
+                // Конец драга: снимок нового TRS + команда в историю
+                TransformSnapshot newTrs;
+                newTrs.position = transform->getLocalPosition();
+                newTrs.rotation = transform->getLocalRotation();
+                newTrs.scale = transform->getLocalScale();
+                this->impl->commandHistory.recordTransformChange(
+                    this->impl->scene, selected, this->impl->gizmoDrag.startTrs, newTrs);
+                this->impl->gizmoDrag.active = false;
+                return;
+            }
+
+            // Смещение в горизонтальной плоскости взгляда камеры
+            blib::math::Vector<float, 3> lookDirection =
+                this->impl->camera.getTarget() - this->impl->camera.getPosition();
+            lookDirection.y = 0.0f;
+            lookDirection = blib::math::normalize(lookDirection);
+            const blib::math::Vector<float, 3> worldUp(0.0f, 1.0f, 0.0f);
+            const blib::math::Vector<float, 3> right = blib::math::normalize(
+                blib::math::cross(lookDirection, worldUp));
+
+            const float panScale = this->impl->camera.getDistance() * gizmoPanScalePerPixel;
+            const blib::math::Vector<float, 3> planeDelta =
+                right * (io.MouseDelta.x * panScale) +
+                lookDirection * (-io.MouseDelta.y * panScale);
+
+            const buint8 axis = this->impl->gizmoDrag.axis;
+
+            switch (this->impl->gizmoMode)
+            {
+                case GizmoMode::Translate:
+                {
+                    // Движение вдоль активной оси: X/Z — проекция
+                    // плоскостного смещения, Y — экранное dy
+                    const blib::math::Vector<float, 3> position = transform->getLocalPosition();
+                    if (axis == 0)
+                    {
+                        transform->setLocalPosition(position + blib::math::Vector<float, 3>(planeDelta.x, 0.0f, 0.0f));
+                    }
+                    else if (axis == 1)
+                    {
+                        transform->setLocalPosition(position + blib::math::Vector<float, 3>(0.0f, -io.MouseDelta.y * panScale, 0.0f));
+                    }
+                    else
+                    {
+                        transform->setLocalPosition(position + blib::math::Vector<float, 3>(0.0f, 0.0f, planeDelta.z));
+                    }
+                    break;
+                }
+
+                case GizmoMode::Rotate:
+                {
+                    // Вращение вокруг активной оси от экранного драга.
+                    // Знаки: ось Y — вправо = +, X/Z — вверх = + (MVP-подбор)
+                    float angle = 0.0f;
+                    if (axis == 0)
+                    {
+                        angle = -io.MouseDelta.y * gizmoRotateSpeedDegPerPixel;
+                    }
+                    else if (axis == 1)
+                    {
+                        angle = io.MouseDelta.x * gizmoRotateSpeedDegPerPixel;
+                    }
+                    else
+                    {
+                        angle = io.MouseDelta.y * gizmoRotateSpeedDegPerPixel;
+                    }
+
+                    const blib::math::Vector<float, 3> axisDirection =
+                        (axis == 0) ? blib::math::Vector<float, 3>(1.0f, 0.0f, 0.0f)
+                        : (axis == 1) ? blib::math::Vector<float, 3>(0.0f, 1.0f, 0.0f)
+                                      : blib::math::Vector<float, 3>(0.0f, 0.0f, 1.0f);
+                    const blib::math::Quaternion<float> deltaRotation(
+                        blib::math::AngleDegreef(angle), axisDirection);
+
+                    // Локальный поворот: дельта пред-умножается (мировые оси)
+                    transform->setLocalRotation(deltaRotation * this->impl->gizmoDrag.startTrs.rotation);
+                    break;
+                }
+
+                case GizmoMode::Scale:
+                {
+                    // Масштабирование вдоль активной оси: множитель от
+                    // величины драга (относительно длины стрелки)
+                    float amount = 0.0f;
+                    if (axis == 0)
+                    {
+                        amount = planeDelta.x;
+                    }
+                    else if (axis == 1)
+                    {
+                        amount = -io.MouseDelta.y * panScale;
+                    }
+                    else
+                    {
+                        amount = planeDelta.z;
+                    }
+
+                    const float factor = 1.0f + amount / gizmoAxisLength;
+                    blib::math::Vector<float, 3> scale = this->impl->gizmoDrag.startTrs.scale;
+                    if (axis == 0)
+                    {
+                        scale.x *= factor;
+                        if (scale.x < gizmoMinScaleComponent) scale.x = gizmoMinScaleComponent;
+                    }
+                    else if (axis == 1)
+                    {
+                        scale.y *= factor;
+                        if (scale.y < gizmoMinScaleComponent) scale.y = gizmoMinScaleComponent;
+                    }
+                    else
+                    {
+                        scale.z *= factor;
+                        if (scale.z < gizmoMinScaleComponent) scale.z = gizmoMinScaleComponent;
+                    }
+                    transform->setLocalScale(scale);
+                    break;
+                }
+            }
+        }
+
+        float EditorApplication::gizmoRayAxisDistance(
+            _In const blib::math::Vector<float, 3>& rayOrigin,
+            _In const blib::math::Vector<float, 3>& rayDirection,
+            _In const blib::math::Vector<float, 3>& axisOrigin,
+            _In const blib::math::Vector<float, 3>& axisDirection) const
+        {
+            // Расстояние между двумя лучами (луч мыши и ось gizmo).
+            // Направления нормированы: знаменатель = 1 - (d1·d2)^2
+            const blib::math::Vector<float, 3> w0 = rayOrigin - axisOrigin;
+            const float a = blib::math::dot(rayDirection, rayDirection);
+            const float b = blib::math::dot(rayDirection, axisDirection);
+            const float c = blib::math::dot(axisDirection, axisDirection);
+            const float d = blib::math::dot(rayDirection, w0);
+            const float e = blib::math::dot(axisDirection, w0);
+
+            const float denominator = a * c - b * b;
+            constexpr float rayAxisEpsilon = 0.000001f;
+            if (denominator < rayAxisEpsilon)
+            {
+                // Лучи параллельны — расстояние от начала оси до луча
+                const blib::math::Vector<float, 3> closest = axisOrigin - (rayOrigin + rayDirection * d);
+                return blib::math::length(closest);
+            }
+
+            const float s = (b * e - c * d) / denominator;
+            const float t = (a * e - b * d) / denominator;
+
+            const blib::math::Vector<float, 3> rayPoint = rayOrigin + rayDirection * s;
+            const blib::math::Vector<float, 3> axisPoint = axisOrigin + axisDirection * t;
+            return blib::math::length(rayPoint - axisPoint);
+        }
+
+        void EditorApplication::drawGizmo()
+        {
+            const EntityID selected = this->impl->selectedEntity;
+            if (__blib_unlikely(selected == invalidEntity))
             {
                 return;
             }
@@ -605,29 +1137,52 @@ namespace beng
                 return;
             }
 
-            ImGuiIO& io = ImGui::GetIO();
-            if (!io.MouseDown[ImGuiMouseButton_Left])
+            const blib::math::Vector<float, 3> position = transform->getWorldPosition();
+            const buint8 hotAxis = this->impl->gizmoHotAxis;
+
+            const blib::graphics::Color axisXColor(
+                gizmoAxisXColorR, gizmoAxisXColorG, gizmoAxisXColorB, gizmoAxisAlpha);
+            const blib::graphics::Color axisYColor(
+                gizmoAxisYColorR, gizmoAxisYColorG, gizmoAxisYColorB, gizmoAxisAlpha);
+            const blib::graphics::Color axisZColor(
+                gizmoAxisZColorR, gizmoAxisZColorG, gizmoAxisZColorB, gizmoAxisAlpha);
+            const blib::graphics::Color hotColor(
+                gizmoHotColorR, gizmoHotColorG, gizmoHotColorB, gizmoAxisAlpha);
+
+            const blib::graphics::Color xColor = (hotAxis == 0) ? hotColor : axisXColor;
+            const blib::graphics::Color yColor = (hotAxis == 1) ? hotColor : axisYColor;
+            const blib::graphics::Color zColor = (hotAxis == 2) ? hotColor : axisZColor;
+
+            blib::graphics::LineRenderer& gizmo = this->impl->gizmoRenderer;
+            gizmo.clear();
+
+            const blib::math::Vector<float, 3> axisX(1.0f, 0.0f, 0.0f);
+            const blib::math::Vector<float, 3> axisY(0.0f, 1.0f, 0.0f);
+            const blib::math::Vector<float, 3> axisZ(0.0f, 0.0f, 1.0f);
+
+            if (this->impl->gizmoMode == GizmoMode::Rotate)
             {
-                return;
+                // Три окружности в плоскостях, перпендикулярных осям:
+                // ось X — окружность в плоскости YZ (базис Y, Z) и т.д.
+                addGizmoCircle(gizmo, position, axisY, axisZ, xColor);
+                addGizmoCircle(gizmo, position, axisX, axisZ, yColor);
+                addGizmoCircle(gizmo, position, axisX, axisY, zColor);
+            }
+            else
+            {
+                // Стрелки (Translate и Scale — пока одинаковые; маркеры
+                // наконечников — TODO)
+                gizmo.addLine(position, position + axisX * gizmoAxisLength, xColor);
+                gizmo.addLine(position, position + axisY * gizmoAxisLength, yColor);
+                gizmo.addLine(position, position + axisZ * gizmoAxisLength, zColor);
             }
 
-            // Перемещение в горизонтальной плоскости взгляда камеры:
-            // экранный X → правый вектор камеры, экранный Y (вниз) →
-            // от камеры вдоль направления взгляда. Масштаб — как у
-            // панорамы (пропорционален дистанции)
-            blib::math::Vector<float, 3> lookDirection =
-                this->impl->camera.getTarget() - this->impl->camera.getPosition();
-            lookDirection.y = 0.0f;
-            lookDirection = blib::math::normalize(lookDirection);
-            const blib::math::Vector<float, 3> right = blib::math::normalize(
-                blib::math::cross(lookDirection, blib::math::Vector<float, 3>(0.0f, 1.0f, 0.0f)));
-
-            const float panScale = this->impl->camera.getDistance() * gizmoPanScalePerPixel;
-            const blib::math::Vector<float, 3> delta =
-                right * (io.MouseDelta.x * panScale) +
-                lookDirection * (-io.MouseDelta.y * panScale);
-
-            transform->setLocalPosition(transform->getLocalPosition() + delta);
+            // Gizmo рисуем поверх мешей (X-ray): выключаем тест глубины
+            // на время отрисовки и возвращаем его обратно
+            blib::graphics::IRenderTarget& renderTarget = this->impl->renderTarget;
+            renderTarget.rc.api.ogl.__blib_glDisable(GL_DEPTH_TEST);
+            renderTarget.draw(gizmo);
+            renderTarget.rc.api.ogl.__blib_glEnable(GL_DEPTH_TEST);
         }
 
         void EditorApplication::resetCamera()

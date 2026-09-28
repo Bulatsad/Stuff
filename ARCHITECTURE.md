@@ -222,11 +222,15 @@ beng-editor.exe (единственный эдитор, аналог UnrealEdito
   способ доставки, не код плагина; статический режим остаётся удобным
   режимом отладки и после DLL-этапа.
 - **Inspector строит поля из дескрипторов рефлексии beng-core** — эдитор
-  не знает типов игры. **Сделано (2026-09-28, первая версия):**
-  `SceneHierarchyPanel` (сущности + компоненты + выбор) и `InspectorPanel`
-  (поля по рефлексии) — каркасные панели beng-editor-core; selection —
-  сервис каркаса; gizmo (маркер-оси + drag-перемещение по G). Отражаются
-  Transform (position/scale/parent) и свет.
+  не знает типов игры. **Сделано (2026-09-28):** `SceneHierarchyPanel`
+  (сущности + компоненты + выбор + Create/Delete) и `InspectorPanel`
+  (поля по рефлексии + Remove/Add Component) — каркасные панели
+  beng-editor-core; selection — сервис каркаса; **gizmo-манипулятор
+  Unity-стиля** (W/E/R: Translate/Rotate/Scale, драг за стрелку/
+  окружность, отрисовка в каркасе) и **выбор кликом** (ray-picking
+  через хук `onViewportClick`); **undo/redo** (`CommandHistory` в
+  beng-core: поля/TRS/сущности/компоненты; Ctrl+Z / Ctrl+Shift+Z /
+  Delete). Отражаются Transform (position/scale/parent) и свет.
 - **Сцены сериализуются** в текстовый версионированный формат (JSON,
   `sceneSaveFormat.h`), типы ссылаются по стабильным именам из реестра —
   не `typeid`, не адрес.
@@ -329,10 +333,10 @@ src/
 5. **beng-editor (единый эдитор)**: `EditorApplication` (каркас — **сделан**,
    см. BENG.md; первый хост — model_viewer) + тонкий `beng-editor.exe` —
    **сделан**; Inspector через рефлексию + Hierarchy + selection-сервис +
-   gizmo (маркер + drag-перемещение) — **сделано** (первая версия);
+   gizmo-манипулятор (W/E/R) + выбор кликом + undo/redo — **сделано**;
    плагин игры (этап 1 — статический линк через фабрику, **сделан**;
-   этап 2 — DLL); докинг, полный gizmo-манипулятор, undo/redo, PIE
-   (in-process хостинг, loopback TCP).
+   этап 2 — DLL); докинг, наконечники/плоскости gizmo, PIE (in-process
+   хостинг, loopback TCP).
 6. **Опционально**: UDP-канал, hot-reload плагина. *(3D-меши с изокамерой —
    сделано раньше плана: `MeshRenderComponent` + слои `RenderLayer`, единый
    ECS-рендер; контент-плейсхолдеры из obj_spider — опционально.)*
@@ -376,6 +380,12 @@ src/
   (сброс данных без сноса реестра) — scene_load хостов; мир привязывается
   к сцене хоста (`World::initialize(scene)`), базовый рендер-пайплайн вешает
   хост, мир добавляет только свои системы (тень/свет).
+- **Gizmo + undo/redo (2026-09-28):** gizmo-манипулятор Unity-стиля в каркасе
+  (W/E/R, стрелки/окружности, драг за стрелку, отрисовка LineRenderer'ом
+  каркаса), `CommandHistory` в beng-core (поля/TRS/сущности/компоненты;
+  Ctrl+Z / Ctrl+Shift+Z / Delete), type-erased add/removeComponent в Scene,
+  кнопки панелей + история; плагин очищает историю на scene_load
+  (`World::setSceneResetCallback`).
 
 **Осталось (по roadmap):**
 

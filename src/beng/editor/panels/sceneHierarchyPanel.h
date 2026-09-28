@@ -11,6 +11,7 @@ namespace beng
 
     namespace editor
     {
+        class CommandHistory;
         /**
          * SceneHierarchyPanel — иерархия сущностей сцены эдитора.
          *
@@ -39,6 +40,9 @@ namespace beng
             EntityID* selectionRef;
             // Локальный фолбэк выбора (без selectionRef)
             EntityID localSelection;
+            // История команд (каркас): кнопки Create/Delete пишут
+            // создание/удаление сущностей (nullptr — кнопки скрыты)
+            CommandHistory* commandHistory;
 
         public:
             SceneHierarchyPanel();
@@ -55,6 +59,13 @@ namespace beng
              * автономный режим (локальный выбор панели).
              */
             void setSelectionRef(_In_opt EntityID* ref);
+
+            /**
+             * Привязать историю команд (каркас): включает кнопки
+             * Create/Delete сущностей с записью в undo/redo.
+             * nullptr — кнопки скрыты.
+             */
+            void setCommandHistory(_In_opt CommandHistory* history);
 
             /**
              * Выбранная сущность (invalidEntity — ничего не выбрано).

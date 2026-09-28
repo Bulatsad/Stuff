@@ -1,5 +1,6 @@
 #include <beng/editor/panels/sceneHierarchyPanel.h>
 
+#include <beng/core/commandHistory.h>
 #include <beng/core/scene.h>
 
 #include <imgui/imgui.h>
@@ -12,6 +13,8 @@ namespace beng
         {
             constexpr const char* panelTitle = "Scene Hierarchy";
             constexpr const char* noSceneMessage = "No scene";
+            constexpr const char* createButtonLabel = "Create Entity";
+            constexpr const char* deleteButtonLabel = "Delete Entity";
 
             // Transform — typeId 0 (инвариант сцены): проверка живости
             // выбранной сущности (Transform есть у любой живой)
@@ -31,6 +34,7 @@ namespace beng
             : scene(nullptr)
             , selectionRef(nullptr)
             , localSelection(invalidEntity)
+            , commandHistory(nullptr)
         {
         }
 
@@ -48,6 +52,11 @@ namespace beng
         void SceneHierarchyPanel::setSelectionRef(_In_opt EntityID* ref)
         {
             this->selectionRef = ref;
+        }
+
+        void SceneHierarchyPanel::setCommandHistory(_In_opt CommandHistory* history)
+        {
+            this->commandHistory = history;
         }
 
         EntityID SceneHierarchyPanel::getSelectedEntity() const
@@ -77,6 +86,50 @@ namespace beng
                     *this->selectionRef = invalidEntity;
                 }
                 this->localSelection = invalidEntity;
+            }
+
+            // Операции над сущностями — через историю команд (undo/redo)
+            if (this->commandHistory != nullptr)
+            {
+                if (ImGui::Button(createButtonLabel))
+                {
+                    const EntityID created = this->commandHistory->recordEntityCreate(*this->scene);
+                    if (created != invalidEntity)
+                    {
+                        if (this->selectionRef != nullptr)
+                        {
+                            *this->selectionRef = created;
+                        }
+                        else
+                        {
+                            this->localSelection = created;
+                        }
+                    }
+                }
+
+                ImGui::SameLine();
+                const bool hasSelection = (this->getSelectedEntity() != invalidEntity);
+                if (!hasSelection)
+                {
+                    ImGui::BeginDisabled();
+                }
+                if (ImGui::Button(deleteButtonLabel))
+                {
+                    if (this->commandHistory->recordEntityDestroy(*this->scene, this->getSelectedEntity()))
+                    {
+                        if (this->selectionRef != nullptr)
+                        {
+                            *this->selectionRef = invalidEntity;
+                        }
+                        this->localSelection = invalidEntity;
+                    }
+                }
+                if (!hasSelection)
+                {
+                    ImGui::EndDisabled();
+                }
+
+                ImGui::Separator();
             }
 
             // Плоский список сущностей (иерархия Transform — позже):

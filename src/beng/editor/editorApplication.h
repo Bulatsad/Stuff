@@ -1,9 +1,11 @@
 #pragma once
 
 #include <beng/config.h>
+#include <beng/core/commandHistory.h>
 #include <beng/editor/panels/iPanel.h>
 
 #include <blib/blibint.h>
+#include <blib/core/math/vector.h>
 #include <blib/utilmacro.h>
 
 // Форвард-декларации blib-graphics: ссылки возвращаются геттерами,
@@ -40,6 +42,17 @@ namespace beng
         };
 
         /**
+         * Режим gizmo-манипулятора (переключается клавишами W/E/R,
+         * как в Unity/Unreal).
+         */
+        enum class GizmoMode : buint8
+        {
+            Translate = 0,  // стрелки: перемещение вдоль осей
+            Rotate,         // окружности: вращение вокруг осей
+            Scale           // стрелки: масштабирование вдоль осей
+        };
+
+        /**
          * EditorApplication — каркас эдитора beng: приложение-хост,
          * единое для всех игр и инструментов (плагин-модель, см.
          * ARCHITECTURE.md).
@@ -68,10 +81,47 @@ namespace beng
         struct EditorApplicationImpl;
         EditorApplicationImpl* impl;
 
-        // Gizmo-манипулятор: при зажатой G и выбранной сущности ЛКМ-драг
-        // двигает её по горизонтальной плоскости взгляда камеры
-        // (вызывается после отрисовки вьюпорт-панели, внутри ImGui-кадра)
-        void updateGizmoDrag();
+        // Gizmo-манипулятор: режимы W/E/R; начало/ход/конец драга за
+        // стрелку/окружность (вызывается после отрисовки вьюпорт-панели,
+        // внутри ImGui-кадра). Трансформации пишутся в историю команд
+        void updateGizmoManipulator();
+
+        // Hit-тест манипулятора: курсор над осью/окружностью gizmo
+        // выбранной сущности? outAxis: 0=X, 1=Y, 2=Z
+        bool hitTestGizmo(
+            _In const blib::math::Vector<float, 3>& rayOrigin,
+            _In const blib::math::Vector<float, 3>& rayDirection,
+            _In const blib::math::Vector<float, 3>& gizmoPosition,
+            _Out buint8& outAxis) const;
+
+        // Отрисовка gizmo выбранной сущности (в FBO вьюпорта, после
+        // сцены и слоёв хоста): стрелки/окружности + подсветка hot-оси
+        void drawGizmo();
+
+        // Луч из орбитальной камеры через NDC-точку клика вьюпорта
+        // ([-1,1], Y вверх). false — невалидная проекция (не должно
+        // случаться при штатной камере)
+        bool computeViewportRay(
+            float ndcX, float ndcY,
+            _Out blib::math::Vector<float, 3>& outOrigin,
+            _Out blib::math::Vector<float, 3>& outDirection) const;
+
+        // Расстояние между двумя лучами (луч мыши и ось gizmo) —
+        // выбор активной оси манипулятора по близости курсора
+        float gizmoRayAxisDistance(
+            _In const blib::math::Vector<float, 3>& rayOrigin,
+            _In const blib::math::Vector<float, 3>& rayDirection,
+            _In const blib::math::Vector<float, 3>& axisOrigin,
+            _In const blib::math::Vector<float, 3>& axisDirection) const;
+
+        // Расстояние от луча до окружности (центр + нормаль + радиус) —
+        // hit-тест окружностей режима Rotate
+        float gizmoRayCircleDistance(
+            _In const blib::math::Vector<float, 3>& rayOrigin,
+            _In const blib::math::Vector<float, 3>& rayDirection,
+            _In const blib::math::Vector<float, 3>& circleCenter,
+            _In const blib::math::Vector<float, 3>& circleNormal,
+            float circleRadius) const;
 
         // Сценные панели каркаса (Hierarchy/Inspector) включены по
         // умолчанию; выключается инструментами со своими панелями
@@ -122,6 +172,20 @@ namespace beng
              *         диалог); false — каркас закроет приложение.
              */
             virtual bool onEscapePressed();
+
+            /**
+             * Вызывается при КЛИКЕ ЛКМ по изображению вьюпорта (не
+             * драг). Каркас строит луч из камеры через точку клика;
+             * хост решает, кого клик задел (ray-picking по своим
+             * типам — каркас игровых рендер-типов не знает), и сам
+             * вызывает selectEntity(). Клик мимо — selectEntity(invalid).
+             *
+             * @param rayOrigin Мировые координаты начала луча (камера)
+             * @param rayDirection Нормированное направление луча
+             */
+            virtual void onViewportClick(
+                _In const blib::math::Vector<float, 3>& rayOrigin,
+                _In const blib::math::Vector<float, 3>& rayDirection);
 
         public:
             EditorApplication();
@@ -189,6 +253,23 @@ namespace beng
          * подсветит узел в следующем кадре). invalidEntity — снять выбор.
          */
         void selectEntity(EntityID entity);
+
+        /**
+         * Режим gizmo-манипулятора (W/E/R).
+         */
+        GizmoMode getGizmoMode() const;
+
+        /**
+         * Переключить режим gizmo-манипулятора.
+         */
+        void setGizmoMode(GizmoMode mode);
+
+        /**
+         * История команд эдитора (undo/redo): правки полей, gizmo,
+         * создание/удаление сущностей и компонентов. Панели и хосты
+         * пишут в неё (см. CommandHistory).
+         */
+        CommandHistory& getCommandHistory();
 
         /**
          * Сбросить орбитальную камеру на дефолтный ракурс

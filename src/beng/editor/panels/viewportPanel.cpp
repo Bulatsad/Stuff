@@ -26,6 +26,11 @@ namespace beng
             , lastViewportWidth(0.0f)
             , lastViewportHeight(0.0f)
             , cursorOverViewport(false)
+            , clickedThisFrame(false)
+            , clickNdcX(0.0f)
+            , clickNdcY(0.0f)
+            , cursorNdcX(0.0f)
+            , cursorNdcY(0.0f)
             , cameraRotationEnabled(true)
         {
         }
@@ -50,6 +55,25 @@ namespace beng
             return this->lastViewportHeight;
         }
 
+        bool ViewportPanel::takeViewportClick(_Out float& outNdcX, _Out float& outNdcY)
+        {
+            if (!this->clickedThisFrame)
+            {
+                return false;
+            }
+
+            this->clickedThisFrame = false;
+            outNdcX = this->clickNdcX;
+            outNdcY = this->clickNdcY;
+            return true;
+        }
+
+        void ViewportPanel::getCursorNdc(_Out float& outNdcX, _Out float& outNdcY) const
+        {
+            outNdcX = this->cursorNdcX;
+            outNdcY = this->cursorNdcY;
+        }
+
         void ViewportPanel::handleCameraInput()
         {
             if (__blib_unlikely(!this->camera))
@@ -61,8 +85,11 @@ namespace beng
 
             // Захват драга: только если нажатие произошло на самом
             // изображении (а не на заголовке/в другом окне).
-            // IsItemClicked валиден — изображение всё ещё текущий item
-            if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+            // IsItemClicked валиден — изображение всё ещё текущий item.
+            // Предикат каркаса (курсор над стрелкой gizmo) отменяет
+            // захват: клик уходит манипулятору, а не камере
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Left) &&
+                !(this->rotationBlockPredicate && this->rotationBlockPredicate()))
             {
                 this->rotating = true;
             }
@@ -167,6 +194,25 @@ namespace beng
                 imageSize,
                 ImVec2(0.0f, 1.0f),
                 ImVec2(1.0f, 0.0f));
+
+            // Клик по изображению (не драг): фиксируем NDC курсора
+            // внутри изображения для ray-picking каркаса (см.
+            // takeViewportClick). Драг по-прежнему вращает камеру
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+            {
+                this->clickedThisFrame = true;
+                const ImVec2 mousePos = ImGui::GetMousePos();
+                this->clickNdcX = (mousePos.x - imagePos.x) / imageSize.x * 2.0f - 1.0f;
+                this->clickNdcY = 1.0f - (mousePos.y - imagePos.y) / imageSize.y * 2.0f;
+            }
+
+            // Текущий NDC курсора (для gizmo-осей каркаса): обновляется
+            // каждый кадр, даже если курсор не над изображением
+            {
+                const ImVec2 mousePos = ImGui::GetMousePos();
+                this->cursorNdcX = (mousePos.x - imagePos.x) / imageSize.x * 2.0f - 1.0f;
+                this->cursorNdcY = 1.0f - (mousePos.y - imagePos.y) / imageSize.y * 2.0f;
+            }
 
             // Отпускание кнопки снимает захват драга в ЛЮБОМ месте —
             // даже если курсор уже не над вьюпортом (иначе флаг

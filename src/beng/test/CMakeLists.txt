@@ -12,7 +12,7 @@
 # ============================================================
 
 # Список групп: имя группы == суффикс файла test<group>.cpp
-set(beng_test_groups registry componentPool scene entity transform time dialogWindow sceneSave reflection)
+set(beng_test_groups registry componentPool scene entity transform time dialogWindow sceneSave reflection commandHistory)
 
 # Дополнительные библиотеки групп (помимо обязательного beng-core).
 # dialogWindow рисует панель на ядре ImGui в headless-режиме

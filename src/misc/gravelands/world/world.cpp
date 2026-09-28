@@ -361,6 +361,10 @@ namespace gravelands
         beng::BlobShadowSystem blobShadowSystem;
         beng::LightSystem lightSystem;
 
+        // Колбэк сброса сцены (хост): вызывается после Scene::reset()
+        // в scene_load — см. setSceneResetCallback
+        std::function<void()> sceneResetCallback;
+
         // Сущности мира (для отладочных клавиш и статуса в оверлее)
         beng::EntityID sphereEntity = beng::invalidEntity;
         beng::EntityID sphereShadowEntity = beng::invalidEntity;
@@ -462,6 +466,11 @@ namespace gravelands
         blib::console::Console::instance().registerCommand(
             sceneLoadCommandName, sceneLoadCommandHelp,
             [this](const std::vector<std::string>& args) { this->loadSceneCommand(args); });
+    }
+
+    void World::setSceneResetCallback(_In_opt std::function<void()> callback)
+    {
+        impl->sceneResetCallback = std::move(callback);
     }
 
     void World::update(float deltaTime)
@@ -883,6 +892,13 @@ namespace gravelands
         // совпасть с предыдущими (отладочные клавиши/оверлей
         // используют tryGetComponent и безопасны на невалидном ID)
         impl->scene->reset();
+
+        // Хост уведомлён: сцена сброшена — очистить привязанное к
+        // старым данным состояние (undo/redo-история эдитора и т.п.)
+        if (impl->sceneResetCallback)
+        {
+            impl->sceneResetCallback();
+        }
 
         impl->sphereEntity = beng::invalidEntity;
         impl->sphereShadowEntity = beng::invalidEntity;

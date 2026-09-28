@@ -13,6 +13,7 @@ namespace beng
 
     namespace editor
     {
+        class CommandHistory;
         /**
          * InspectorPanel — инспектор выбранной сущности эдитора.
          *
@@ -36,9 +37,16 @@ namespace beng
             // Источник выбора (поле selectedEntity каркаса; панель НЕ
             // владеет). nullptr — выбора нет (заглушка)
             const EntityID* selectionSource;
+            // История команд (каркас): правки полей, удаление/
+            // добавление компонентов пишутся в undo/redo (nullptr —
+            // правки без истории)
+            CommandHistory* commandHistory;
 
-            // Отрисовка одного поля выбранного компонента (по kind)
-            void drawField(_In const IComponentField* field, _In IComponent& component);
+            // Отрисовка одного поля выбранного компонента (по kind);
+            // изменение применяется полю и пишется в историю команд
+            void drawField(
+                _In const IComponentField* field, _In IComponent& component,
+                EntityID entityId, ComponentType typeId, buint32 fieldIndex);
 
         public:
             InspectorPanel();
@@ -54,6 +62,13 @@ namespace beng
              * каркаса (nullptr — выбора нет).
              */
             void setSelectionSource(_In_opt const EntityID* selectedEntity);
+
+            /**
+             * Привязать историю команд (каркас): правки полей и
+             * добавление/удаление компонентов пишутся в undo/redo.
+             * nullptr — правки без истории.
+             */
+            void setCommandHistory(_In_opt CommandHistory* history);
 
             void draw() __blib_override;
             const char* getName() const __blib_override { return "Inspector"; }

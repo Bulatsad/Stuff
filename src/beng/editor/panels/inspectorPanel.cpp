@@ -1,8 +1,8 @@
 #include <beng/editor/panels/inspectorPanel.h>
 
+#include <beng/core/commandHistory.h>
 #include <beng/core/componentReflection.h>
 #include <beng/core/scene.h>
-#include <beng/editor/panels/sceneHierarchyPanel.h>
 
 #include <imgui/imgui.h>
 
@@ -26,11 +26,19 @@ namespace beng
 
             // Заголовок-заглушка для типа без имени (не должно случаться)
             constexpr const char* unknownTypeName = "?";
+
+            // Кнопки секций компонентов
+            constexpr const char* removeComponentButtonLabel = "Remove";
+            constexpr const char* addComponentButtonLabel = "Add Component";
+
+            // Тип-заглушка для добавления (не должен случаться)
+            constexpr const char* addComponentNoneLabel = "(none)";
         }
 
         InspectorPanel::InspectorPanel()
             : scene(nullptr)
             , selectionSource(nullptr)
+            , commandHistory(nullptr)
         {
         }
 
@@ -44,7 +52,14 @@ namespace beng
             this->selectionSource = selectedEntity;
         }
 
-        void InspectorPanel::drawField(_In const IComponentField* field, _In IComponent& component)
+        void InspectorPanel::setCommandHistory(_In_opt CommandHistory* history)
+        {
+            this->commandHistory = history;
+        }
+
+        void InspectorPanel::drawField(
+            _In const IComponentField* field, _In IComponent& component,
+            EntityID entityId, ComponentType typeId, buint32 fieldIndex)
         {
             // Чтение текущего значения поля (тип значения — kind)
             FieldValue value;
@@ -100,10 +115,20 @@ namespace beng
                     break;
             }
 
-            // Применение правки полем (контракт: kind совпадает с getKind)
             if (changed)
             {
+                // Старое значение — до применения (для истории команд)
+                FieldValue oldValue;
+                field->getValue(component, oldValue);
+
+                // Применение правки полем (контракт: kind совпадает с getKind)
                 field->setValue(component, value);
+
+                if (this->commandHistory != nullptr && this->scene != nullptr)
+                {
+                    this->commandHistory->recordFieldChange(
+                        *this->scene, entityId, typeId, fieldIndex, oldValue, value);
+                }
             }
         }
 
@@ -163,6 +188,20 @@ namespace beng
                 const bool headerOpen = ImGui::CollapsingHeader(
                     typeName != nullptr ? typeName : unknownTypeName,
                     ImGuiTreeNodeFlags_DefaultOpen);
+
+                // Кнопка удаления компонента (Transform — инвариант:
+                // сцена отклонит; кнопку не прячем — undo/redo безопасно)
+                if (this->commandHistory != nullptr)
+                {
+                    ImGui::SameLine();
+                    ImGui::PushID(static_cast<ImGuiID>(typeId));
+                    if (ImGui::SmallButton(removeComponentButtonLabel))
+                    {
+                        this->commandHistory->recordComponentRemove(*this->scene, selectedEntity, typeId);
+                    }
+                    ImGui::PopID();
+                }
+
                 if (headerOpen)
                 {
                     for (buint32 f = 0; f < descriptor->getFieldCount(); ++f)
@@ -172,8 +211,34 @@ namespace beng
                         {
                             continue;
                         }
-                        this->drawField(field, *component);
+                        this->drawField(field, *component, selectedEntity, typeId, f);
                     }
+                }
+            }
+
+            // Добавление компонента: dropdown по зарегистрированным типам
+            // (сцена отклонит повторное добавление и Transform — инвариант)
+            if (this->commandHistory != nullptr)
+            {
+                ImGui::Separator();
+                if (ImGui::BeginCombo(addComponentButtonLabel, addComponentNoneLabel))
+                {
+                    for (buint32 t = 0; t < typeCount; ++t)
+                    {
+                        const ComponentType typeId = static_cast<ComponentType>(t);
+                        const char* typeName = this->scene->getComponentTypeName(typeId);
+                        if (typeName == nullptr)
+                        {
+                            continue;
+                        }
+
+                        const bool isSelected = false;
+                        if (ImGui::Selectable(typeName, isSelected))
+                        {
+                            this->commandHistory->recordComponentAdd(*this->scene, selectedEntity, typeId);
+                        }
+                    }
+                    ImGui::EndCombo();
                 }
             }
 

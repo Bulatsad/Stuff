@@ -944,4 +944,80 @@ namespace beng
         return const_cast<Scene*>(this)->tryGetComponent(entityId, typeId);
     }
 
+    bool Scene::addComponent(EntityID entityId, ComponentType typeId)
+    {
+        // ИНВАРИАНТ: TransformComponent уже есть у каждой сущности —
+        // явное добавление отклоняется (как шаблонный addComponent)
+        if (__blib_unlikely(typeId == transformTypeId))
+        {
+            __blib_log_warning("Scene::addComponent: TransformComponent cannot be added "
+                "(scene invariant: it already exists on every entity)");
+            return false;
+        }
+
+        if (__blib_unlikely(typeId >= maxComponentTypes ||
+            componentPoolCreators[typeId] == nullptr || componentPools[typeId] == nullptr))
+        {
+            __blib_log_warning("Scene::addComponent: type %u is not registered or not default-constructible",
+                static_cast<unsigned int>(typeId));
+            return false;
+        }
+
+        if (__blib_unlikely(entityLookup.find(entityId) == entityLookup.end()))
+        {
+            __blib_log_warning("Scene::addComponent: entity %llu does not exist",
+                static_cast<unsigned long long>(entityId));
+            return false;
+        }
+
+        // Компонент уже есть — повторное добавление запрещено
+        if (getComponentBit(entityId, typeId))
+        {
+            __blib_log_warning("Scene::addComponent: component type %u already exists on entity %llu",
+                static_cast<unsigned int>(typeId), static_cast<unsigned long long>(entityId));
+            return false;
+        }
+
+        IComponent* component = componentPoolCreators[typeId](componentPools[typeId], entityId);
+        if (__blib_unlikely(component == nullptr))
+        {
+            return false;
+        }
+
+        setComponentBit(entityId, typeId, true);
+        return true;
+    }
+
+    bool Scene::removeComponent(EntityID entityId, ComponentType typeId)
+    {
+        // ИНВАРИАНТ: TransformComponent снять нельзя — сущность без
+        // Transform существовать не может
+        if (__blib_unlikely(typeId == transformTypeId))
+        {
+            __blib_log_warning("Scene::removeComponent: TransformComponent cannot be removed "
+                "(scene invariant: every entity must have a Transform)");
+            return false;
+        }
+
+        if (__blib_unlikely(typeId >= maxComponentTypes ||
+            componentPools[typeId] == nullptr || componentPoolDestroyers[typeId] == nullptr))
+        {
+            return false;
+        }
+
+        if (__blib_unlikely(entityLookup.find(entityId) == entityLookup.end()))
+        {
+            return false;
+        }
+
+        if (!getComponentBit(entityId, typeId))
+        {
+            return false;
+        }
+
+        componentPoolDestroyers[typeId](componentPools[typeId], entityId);
+        setComponentBit(entityId, typeId, false);
+        return true;
+    }
+
 } // namespace beng

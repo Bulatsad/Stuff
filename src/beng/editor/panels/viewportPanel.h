@@ -6,6 +6,8 @@
 #include <blib/graphics/orbitCamera.h>
 #include <blib/graphics/rendertarget.h>
 
+#include <functional>
+
 namespace beng
 {
     namespace editor
@@ -55,10 +57,27 @@ namespace beng
             // (обратная связь для gizmo-манипулятора каркаса)
             bool cursorOverViewport;
 
+            // Клик ЛКМ по изображению в последнем кадре + NDC курсора
+            // внутри изображения ([-1,1], Y вверх) — для ray-picking
+            // каркаса (см. takeViewportClick)
+            bool clickedThisFrame;
+            float clickNdcX;
+            float clickNdcY;
+
+            // NDC текущего курсора внутри изображения ([-1,1], Y вверх),
+            // обновляется каждый кадр — для gizmo-осей каркаса
+            float cursorNdcX;
+            float cursorNdcY;
+
             // Разрешено ли вращение камеры ЛКМ-драгом. Выключается
             // каркасом в gizmo-режиме (зажата G, есть выбор): ЛКМ-драг
             // двигает выбранную сущность, а не камеру
             bool cameraRotationEnabled;
+
+            // Предикат блокировки вращения камеры (каркас): true —
+            // клик по изображению НЕ захватывает вращение (курсор над
+            // стрелкой gizmo / идёт драг манипулятора)
+            std::function<bool()> rotationBlockPredicate;
 
             // Обработка мышиного ввода камеры
             void handleCameraInput();
@@ -92,6 +111,33 @@ namespace beng
              * вращение: драг двигает выбранную сущность.
              */
             void setCameraRotationEnabled(bool enabled) { this->cameraRotationEnabled = enabled; }
+
+            /**
+             * Предикат блокировки вращения камеры: если возвращает true,
+             * клик по изображению НЕ захватывает вращение (каркас отдаёт
+             * «курсор над стрелкой gizmo или идёт драг манипулятора»).
+             * Вызывается в момент клика — обязан быть дёшев.
+             */
+            void setRotationBlockPredicate(_In_opt std::function<bool()> predicate)
+            {
+                this->rotationBlockPredicate = std::move(predicate);
+            }
+
+            /**
+             * Забрать клик по изображению (если был в последнем кадре)
+             * и NDC-координаты курсора внутри изображения ([-1,1], Y
+             * вверх — левый нижний угол = (-1,-1)). Клик — не драг:
+             * каркас использует его для ray-picking сущностей.
+             *
+             * @return true если клик был; флаг сбрасывается
+             */
+            bool takeViewportClick(_Out float& outNdcX, _Out float& outNdcY);
+
+            /**
+             * NDC текущего курсора внутри изображения ([-1,1], Y вверх),
+             * вычисленный в последнем кадре — для gizmo-осей каркаса.
+             */
+            void getCursorNdc(_Out float& outNdcX, _Out float& outNdcY) const;
 
             void draw() override;
             const char* getName() const override { return "Viewport"; }

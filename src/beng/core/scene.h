@@ -355,6 +355,13 @@ namespace beng
         buint32 getComponentTypeCount() const { return static_cast<buint32>(typeNames.size()); }
 
         /**
+         * Локальный ComponentType обязательного TransformComponent
+         * (всегда 0 — инвариант сцены). Команды undo/redo используют
+         * его, чтобы не зашивать константу.
+         */
+        ComponentType getTransformTypeId() const { return this->transformTypeId; }
+
+        /**
          * Стабильное имя типа по локальному индексу (литерал
          * T::componentTypeName; nullptr при выходе за границы).
          */
@@ -383,6 +390,29 @@ namespace beng
         IComponent* tryGetComponent(EntityID entityId, ComponentType typeId);
 
         const IComponent* tryGetComponent(EntityID entityId, ComponentType typeId) const;
+
+        /**
+         * Добавить компонент заданного ТИПА (по локальному индексу,
+         * не шаблонно) к сущности — type-erased, для эдитора (UI
+         * добавления компонентов без compile-time T).
+         *
+         * Ограничения: тип обязан иметь default-конструктор (иначе
+         * false); TransformComponent добавить нельзя (инвариант: он
+         * уже есть у каждой сущности — false); повторное добавление
+         * существующего компонента — false.
+         *
+         * @return true если компонент создан
+         */
+        bool addComponent(EntityID entityId, ComponentType typeId);
+
+        /**
+         * Удалить компонент заданного ТИПА у сущности (type-erased).
+         * TransformComponent удалить нельзя (инвариант сцены) — false;
+         * отсутствующий компонент — false.
+         *
+         * @return true если компонент удалён
+         */
+        bool removeComponent(EntityID entityId, ComponentType typeId);
 
         /**
          * Сбросить сцену в «пустое» состояние, СОХРАНИВ реестр типов

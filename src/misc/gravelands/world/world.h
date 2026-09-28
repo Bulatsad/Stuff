@@ -4,6 +4,7 @@
 
 #include <blib/utilmacro.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -110,6 +111,14 @@ namespace gravelands
          * процесса (команды вызываются из главного цикла).
          */
         void registerConsoleCommands();
+
+        /**
+         * Колбэк сброса сцены: вызывается после Scene::reset() внутри
+         * scene_load (сцена сброшена, контент ещё не загружен). Хост
+         * использует его, чтобы очистить состояние, привязанное к
+         * старым данным (например, undo/redo-историю эдитора).
+         */
+        void setSceneResetCallback(_In_opt std::function<void()> callback);
 
         /**
          * Один шаг симуляции: scene.update(deltaTime) — системы
