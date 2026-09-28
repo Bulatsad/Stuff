@@ -16,8 +16,9 @@ namespace gravelands
 
     bool ServerCore::initialize()
     {
-        // Регистрация движковых типов компонентов (пулы создаются лениво)
-        scene.registerComponentType<beng::TransformComponent>();
+        // TransformComponent регистрируется сценой автоматически
+        // (инвариант: каждая сущность рождается с Transform); остальные
+        // движковые типы — по мере появления компонентов сервера
 
         // Системы выполняются в порядке приоритета (ISystem::getPriority)
         scene.addSystem(&transformSystem);

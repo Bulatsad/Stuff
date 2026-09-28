@@ -1,12 +1,15 @@
 #include <gravelands/client/core/clientCore.h>
 #include <gravelands/client/core/isometricTileset.h>
 
+#include <beng/client/components/ambientLightComponent.h>
 #include <beng/client/components/animatorComponent.h>
 #include <beng/client/components/blobShadowComponent.h>
+#include <beng/client/components/directionalLightComponent.h>
 #include <beng/client/components/meshRenderComponent.h>
 #include <beng/client/components/skinnedMeshComponent.h>
 #include <beng/client/systems/animationSystem.h>
 #include <beng/client/systems/blobShadowSystem.h>
+#include <beng/client/systems/lightSystem.h>
 #include <beng/client/systems/renderSystem.h>
 #include <beng/components/transform.h>
 #include <beng/core/componentPool.h>
@@ -15,11 +18,13 @@
 #include <beng/systems/transformSystem.h>
 
 #include <blib/core/console/console.h>
+#include <blib/core/fileStream.h>
 #include <blib/core/math/quaternion.h>
 #include <blib/core/math/trigonometry.h>
 #include <blib/core/resource/resourceManager.h>
 #include <blib/graphics/blobShadow.h>
 #include <blib/graphics/color.h>
+#include <blib/graphics/console/consoleWindow.h>
 #include <blib/graphics/impl/win/winRenderWindowUtil.h>
 #include <blib/graphics/isometricCamera.h>
 #include <blib/graphics/keyboard.h>
@@ -38,6 +43,7 @@
 
 #include <cmath>
 #include <fstream>
+#include <new>
 
 #include <Windows.h>
 #include <gl/GL.h>
@@ -103,6 +109,7 @@ namespace gravelands
         constexpr float defaultLightAzimuthDeg = 30.0f;
         constexpr float defaultLightElevationDeg = 55.0f;
         constexpr float defaultLightIntensity = 0.9f;
+        constexpr float defaultAmbientIntensity = 0.5f;
 
         // Скорости правки света клавишами
         constexpr float lightRotateSpeedDeg = 60.0f;
@@ -112,8 +119,27 @@ namespace gravelands
         constexpr float lightMaxElevationDeg = 89.0f;
         constexpr float lightMinElevationDeg = 5.0f;
 
+        // Эмбиент (PageUp/PageDown): скорость и лимиты интенсивности
+        constexpr float ambientIntensitySpeed = 0.5f;
+        constexpr float ambientMinIntensity = 0.0f;
+        constexpr float ambientMaxIntensity = 2.0f;
+
         // Имя консольной команды перезагрузки шейдеров (см. F5)
         constexpr const char* hotreloadCommand = "hotreload";
+
+        // Консоль (тильда `~`): команды сохранения/загрузки сцены.
+        // Путь — первый аргумент; без аргумента — дефолтное имя файла
+        constexpr const char* sceneSaveCommandName = "scene_save";
+        constexpr const char* sceneSaveCommandHelp =
+            "saves the world scene to a JSON file (arg: path, default: gravelands_scene.json)";
+        constexpr const char* sceneLoadCommandName = "scene_load";
+        constexpr const char* sceneLoadCommandHelp =
+            "loads the world scene from a JSON file (arg: path, default: gravelands_scene.json)";
+        constexpr const char* sceneDefaultFilePath = "gravelands_scene.json";
+
+        // Консольное окно (тильда): размер и позиция внизу окна игры
+        constexpr float consoleWidth = 900.0f;
+        constexpr float consoleHeight = 340.0f;
 
         // Отступ и прозрачность оверлея-подсказки (полупрозрачный текст
         // в углу — вместо отладочной панели, см. фазу 4)
@@ -388,6 +414,7 @@ namespace gravelands
         beng::TransformSystem transformSystem;
         beng::AnimationSystem animationSystem;
         beng::BlobShadowSystem blobShadowSystem;
+        beng::LightSystem lightSystem;
         beng::RenderSystem renderSystem;
 
         // Сущности мира (для отладочных клавиш и статуса в оверлее)
@@ -400,12 +427,10 @@ namespace gravelands
 
         beng::Time time;
 
-        // Состояние отладочного управления светом (фаза 4): азимут
-        // и элевация источника (градусы) + интенсивность. Применяются
-        // к renderTarget.rc.directionalLight каждый кадр
-        float lightAzimuthDeg;
-        float lightElevationDeg;
-        float lightIntensity;
+        // Консоль (тильда): ImGui-окно поверх blib::console::Console —
+        // команды вводятся строкой (Enter), история/дополнение — ядро
+        blib::graphics::console::ConsoleWindow consoleWindow;
+        bool showConsole;
 
         ClientCoreImpl()
             : window(static_cast<uint16_t>(windowWidth), static_cast<uint16_t>(windowHeight), gameTitle)
@@ -417,11 +442,11 @@ namespace gravelands
             , transformSystem()
             , animationSystem()
             , blobShadowSystem()
+            , lightSystem()
             , renderSystem()
             , time()
-            , lightAzimuthDeg(defaultLightAzimuthDeg)
-            , lightElevationDeg(defaultLightElevationDeg)
-            , lightIntensity(defaultLightIntensity)
+            , consoleWindow()
+            , showConsole(false)
         {
         }
     };
@@ -471,23 +496,39 @@ namespace gravelands
         // перекомпиляция шейдеров с диска без перезапуска (см. F5)
         blib::graphics::registerGraphicsConsoleCommands();
 
+        // Консольные команды сцены: сохранение/загрузка мира в JSON
+        // (проверка Scene::save/load из игры; консоль — по тильде).
+        // Коллбэки захватывают this — вызовы идут из главного цикла
+        // (ConsoleWindow рисуется в ImGui-кадре), пока impl жив
+        blib::console::Console::instance().registerCommand(
+            sceneSaveCommandName, sceneSaveCommandHelp,
+            [this](const std::vector<std::string>& args) { this->saveSceneCommand(args); });
+        blib::console::Console::instance().registerCommand(
+            sceneLoadCommandName, sceneLoadCommandHelp,
+            [this](const std::vector<std::string>& args) { this->loadSceneCommand(args); });
+
         // Рендер-ECS (beng-client, фаза 9): сцена + системы анимации
         // и отрисовки. ВЕСЬ мир строится сущностями и рисуется только
         // через scene.update() (инвариант — см. BENG.md «beng-client»).
         // Регистрация типов — строго до запуска цикла (реестр не
-        // thread-safe, см. BENG.md)
-        impl->scene.registerComponentType<beng::TransformComponent>();
+        // thread-safe, см. BENG.md). TransformComponent регистрируется
+        // сценой автоматически (инвариант: каждая сущность рождается
+        // с Transform) — явная регистрация запрещена
         impl->scene.registerComponentType<beng::SkinnedMeshComponent>();
         impl->scene.registerComponentType<beng::AnimatorComponent>();
         impl->scene.registerComponentType<beng::MeshRenderComponent>();
         impl->scene.registerComponentType<beng::BlobShadowComponent>();
+        impl->scene.registerComponentType<beng::DirectionalLightComponent>();
+        impl->scene.registerComponentType<beng::AmbientLightComponent>();
 
         impl->scene.addSystem(&impl->transformSystem);
         impl->scene.addSystem(&impl->animationSystem);
         impl->scene.addSystem(&impl->blobShadowSystem);
+        impl->scene.addSystem(&impl->lightSystem);
         impl->scene.addSystem(&impl->renderSystem);
 
         impl->renderSystem.setRenderTarget(&impl->renderTarget);
+        impl->lightSystem.setRenderTarget(&impl->renderTarget);
 
         // Мир: тайлы, сфера, деревья, тени (сущности + слои рендера)
         setupWorld();
@@ -528,6 +569,13 @@ namespace gravelands
         impl->time.tick();
         const float deltaTime = impl->time.getDeltaTime();
 
+        // Пауза на открытой консоли: симуляция получает нулевой dt —
+        // мир замерзает (анимация/тени/камера/свет не продвигаются),
+        // рендер продолжает рисовать замершее состояние. time.tick()
+        // при этом работает каждый кадр, dt остаётся покадровым —
+        // скачка симуляции после закрытия консоли нет
+        const float simDeltaTime = impl->showConsole ? 0.0f : deltaTime;
+
         // Прокачка оконных сообщений (закрытие по X, перерисовка) —
         // как в model_viewer, иначе окно не живёт
         impl->window.update();
@@ -535,66 +583,95 @@ namespace gravelands
         // Обновление состояния клавиатуры перед опросом (для камеры и выхода)
         blib::graphics::Keyboard::update();
 
-        // Escape закрывает окно
+        // Тильда `~` открывает/закрывает консоль (Quake-стиль)
+        if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::Grave))
+        {
+            impl->showConsole = !impl->showConsole;
+            if (impl->showConsole)
+            {
+                impl->consoleWindow.requestFocus();
+            }
+        }
+
+        // Escape: сперва закрывает консоль, иначе — окно
         if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::Escape))
         {
-            impl->window.close();
-            return;
-        }
-
-        // F5 — консольная команда перезагрузки шейдеров (hotreload):
-        // правишь .glsl, жмёшь F5 — игра перекомпилирует без перезапуска
-        if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::F5))
-        {
-            blib::console::Console::instance().execute(hotreloadCommand);
-        }
-
-        // N — отладочная раскраска нормалями (проверка проброса
-        // нормали из VBO во фрагментный шейдер, фаза 2)
-        if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::N))
-        {
-            impl->renderTarget.rc.showNormals = !impl->renderTarget.rc.showNormals;
-        }
-
-        // P — включение/выключение пост-пасса (фаза 6, сравнение до/после)
-        if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::P))
-        {
-            impl->postEnabled = !impl->postEnabled;
-        }
-
-        // M — переключение сферы unlit/toon (сравнение до/после света)
-        if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::M))
-        {
-            if (impl->sphereEntity != beng::invalidEntity)
+            if (impl->showConsole)
             {
-                blib::graphics::Material& sphereMaterial =
-                    impl->scene.getComponent<beng::MeshRenderComponent>(impl->sphereEntity).getMesh().material;
-                sphereMaterial.shadingMode =
-                    sphereMaterial.shadingMode == blib::graphics::ShadingMode::Toon
-                    ? blib::graphics::ShadingMode::Unlit
-                    : blib::graphics::ShadingMode::Toon;
+                impl->showConsole = false;
+            }
+            else
+            {
+                impl->window.close();
+                return;
             }
         }
 
-        // O — включение/выключение контура сферы (inverted hull, фаза 8)
-        if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::O))
+        // Отладочные клавиши работают ТОЛЬКО при закрытой консоли:
+        // глобальный Keyboard не знает про фокус ImGui, и при печати
+        // в консоли нажатия «протекали» бы в игру (M/O/N/P/F5).
+        // Escape и тильда — управление самой консолью — живут выше,
+        // вне этого гейта
+        if (!impl->showConsole)
         {
-            if (impl->sphereEntity != beng::invalidEntity)
+            // F5 — консольная команда перезагрузки шейдеров (hotreload):
+            // правишь .glsl, жмёшь F5 — игра перекомпилирует без перезапуска
+            if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::F5))
             {
-                blib::graphics::Material& sphereMaterial =
-                    impl->scene.getComponent<beng::MeshRenderComponent>(impl->sphereEntity).getMesh().material;
-                sphereMaterial.outlineEnabled = !sphereMaterial.outlineEnabled;
+                blib::console::Console::instance().execute(hotreloadCommand);
+            }
+
+            // N — отладочная раскраска нормалями (проверка проброса
+            // нормали из VBO во фрагментный шейдер, фаза 2)
+            if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::N))
+            {
+                impl->renderTarget.rc.showNormals = !impl->renderTarget.rc.showNormals;
+            }
+
+            // P — включение/выключение пост-пасса (фаза 6, сравнение до/после)
+            if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::P))
+            {
+                impl->postEnabled = !impl->postEnabled;
+            }
+
+            // M — переключение сферы unlit/toon (сравнение до/после света)
+            if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::M))
+            {
+                // tryGetComponent: после scene_load ссылка на сущность
+                // может устареть (ID из другого файла) — не fatal
+                beng::MeshRenderComponent* sphereMesh =
+                    impl->scene.tryGetComponent<beng::MeshRenderComponent>(impl->sphereEntity);
+                if (sphereMesh != nullptr)
+                {
+                    blib::graphics::Material& sphereMaterial = sphereMesh->getMesh().material;
+                    sphereMaterial.shadingMode =
+                        sphereMaterial.shadingMode == blib::graphics::ShadingMode::Toon
+                        ? blib::graphics::ShadingMode::Unlit
+                        : blib::graphics::ShadingMode::Toon;
+                }
+            }
+
+            // O — включение/выключение контура сферы (inverted hull, фаза 8)
+            if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::O))
+            {
+                beng::MeshRenderComponent* sphereMesh =
+                    impl->scene.tryGetComponent<beng::MeshRenderComponent>(impl->sphereEntity);
+                if (sphereMesh != nullptr)
+                {
+                    blib::graphics::Material& sphereMaterial = sphereMesh->getMesh().material;
+                    sphereMaterial.outlineEnabled = !sphereMaterial.outlineEnabled;
+                }
             }
         }
 
-        updateCamera(deltaTime);
-        updateLight(deltaTime);
+        updateCamera(simDeltaTime);
+        updateLight(simDeltaTime);
 
         // Единственная точка отрисовки мира: вся сцена (тайлы, тени,
         // плоскости, сфера, скелетная модель) рисуется RenderSystem'ом
         // внутри scene.update() по слоям (см. RenderLayer)
         impl->renderTarget.clear(blib::graphics::Color::Black);
-        impl->scene.update(deltaTime);
+        impl->scene.update(simDeltaTime);
 
         // Презентация сцены: либо пост-пасс (дымка/grading/виньетка
         // из FBO-текстур сцены), либо прямой блит. Пост-пасс рисует
@@ -617,6 +694,17 @@ namespace gravelands
         ImGui::NewFrame();
 
         drawOverlay();
+
+        // Консоль (тильда): ImGui-окно внизу экрана, Enter исполняет
+        // строку (Console::execute внутри ConsoleWindow::draw)
+        if (impl->showConsole)
+        {
+            ImGui::SetNextWindowPos(
+                ImVec2(0.0f, static_cast<float>(impl->window.getHeight()) - consoleHeight),
+                ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(consoleWidth, consoleHeight), ImGuiCond_FirstUseEver);
+            impl->consoleWindow.draw();
+        }
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -675,62 +763,121 @@ namespace gravelands
 
     void ClientCore::updateLight(float deltaTime)
     {
-        // Стрелки вращают источник: Left/Right — азимут, Up/Down — элевация
-        if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Left))
+        // Свет — компоненты сцены (см. directionalLightComponent.h /
+        // ambientLightComponent.h): отладочные клавиши крутят компонент
+        // напрямую (единственный источник истины), применение в
+        // RenderContext делает LightSystem внутри scene.update().
+        // Доступ через пул, без хранения EntityID — устойчиво к
+        // scene_load (ID из файла могут не совпасть)
+
+        // Направленный свет: стрелки — азимут/элевация, [ ] —
+        // интенсивность. Углы — отладочный интерфейс: обратный расчёт
+        // из direction (atan2/asin), после правки direction
+        // пересчитывается заново (без накопления дрейфа)
+        beng::ComponentPool<beng::DirectionalLightComponent>* directionalPool =
+            impl->scene.tryGetComponentPool<beng::DirectionalLightComponent>();
+        if (directionalPool != nullptr)
         {
-            impl->lightAzimuthDeg -= lightRotateSpeedDeg * deltaTime;
-        }
-        if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Right))
-        {
-            impl->lightAzimuthDeg += lightRotateSpeedDeg * deltaTime;
-        }
-        if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Up))
-        {
-            impl->lightElevationDeg += lightRotateSpeedDeg * deltaTime;
-            if (impl->lightElevationDeg > lightMaxElevationDeg)
+            for (auto it = directionalPool->begin(); it != directionalPool->end(); ++it)
             {
-                impl->lightElevationDeg = lightMaxElevationDeg;
-            }
-        }
-        if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Down))
-        {
-            impl->lightElevationDeg -= lightRotateSpeedDeg * deltaTime;
-            if (impl->lightElevationDeg < lightMinElevationDeg)
-            {
-                impl->lightElevationDeg = lightMinElevationDeg;
+                beng::DirectionalLightComponent& lightComp = *it;
+
+                const blib::math::Vector<float, 3>& dir = lightComp.getDirection();
+                // direction.y = -sin(elevation) → elevation = asin(-y).
+                // Аргумент asin клампится в [-1, 1] (направление
+                // нормировано по конвенции, но файл может быть чужим)
+                const float dirY = (dir.y < -1.0f) ? -1.0f : ((dir.y > 1.0f) ? 1.0f : dir.y);
+                float azimuthDeg = blib::math::atan2(dir.z, dir.x) * treeRadToDeg;
+                float elevationDeg = -std::asin(dirY) * treeRadToDeg;
+                float intensity = lightComp.getIntensity();
+
+                if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Left))
+                {
+                    azimuthDeg -= lightRotateSpeedDeg * deltaTime;
+                }
+                if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Right))
+                {
+                    azimuthDeg += lightRotateSpeedDeg * deltaTime;
+                }
+                if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Up))
+                {
+                    elevationDeg += lightRotateSpeedDeg * deltaTime;
+                    if (elevationDeg > lightMaxElevationDeg)
+                    {
+                        elevationDeg = lightMaxElevationDeg;
+                    }
+                }
+                if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Down))
+                {
+                    elevationDeg -= lightRotateSpeedDeg * deltaTime;
+                    if (elevationDeg < lightMinElevationDeg)
+                    {
+                        elevationDeg = lightMinElevationDeg;
+                    }
+                }
+
+                if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::LBracket))
+                {
+                    intensity -= lightIntensitySpeed * deltaTime;
+                    if (intensity < lightMinIntensity)
+                    {
+                        intensity = lightMinIntensity;
+                    }
+                }
+                if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::RBracket))
+                {
+                    intensity += lightIntensitySpeed * deltaTime;
+                    if (intensity > lightMaxIntensity)
+                    {
+                        intensity = lightMaxIntensity;
+                    }
+                }
+
+                // Пересчёт direction: направление ИЗ источника К
+                // поверхности (вниз к земле), как было до компонентов
+                const float azimuthRad = blib::math::AngleDegreef(azimuthDeg).toRadian().data;
+                const float elevationRad = blib::math::AngleDegreef(elevationDeg).toRadian().data;
+                lightComp.setDirection(blib::math::Vector<float, 3>(
+                    blib::math::cos(elevationRad) * blib::math::cos(azimuthRad),
+                    -blib::math::sin(elevationRad),
+                    blib::math::cos(elevationRad) * blib::math::sin(azimuthRad)));
+                lightComp.setIntensity(intensity);
+
+                break; // один направленный источник (ограничение RenderContext)
             }
         }
 
-        // [ / ] — интенсивность света
-        if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::LBracket))
+        // Эмбиент: PageUp/PageDown — интенсивность
+        beng::ComponentPool<beng::AmbientLightComponent>* ambientPool =
+            impl->scene.tryGetComponentPool<beng::AmbientLightComponent>();
+        if (ambientPool != nullptr)
         {
-            impl->lightIntensity -= lightIntensitySpeed * deltaTime;
-            if (impl->lightIntensity < lightMinIntensity)
+            for (auto it = ambientPool->begin(); it != ambientPool->end(); ++it)
             {
-                impl->lightIntensity = lightMinIntensity;
+                beng::AmbientLightComponent& ambientComp = *it;
+                float intensity = ambientComp.getIntensity();
+
+                if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::PageUp))
+                {
+                    intensity += ambientIntensitySpeed * deltaTime;
+                    if (intensity > ambientMaxIntensity)
+                    {
+                        intensity = ambientMaxIntensity;
+                    }
+                }
+                if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::PageDown))
+                {
+                    intensity -= ambientIntensitySpeed * deltaTime;
+                    if (intensity < ambientMinIntensity)
+                    {
+                        intensity = ambientMinIntensity;
+                    }
+                }
+
+                ambientComp.setIntensity(intensity);
+                break; // один эмбиент (ограничение RenderContext)
             }
         }
-        if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::RBracket))
-        {
-            impl->lightIntensity += lightIntensitySpeed * deltaTime;
-            if (impl->lightIntensity > lightMaxIntensity)
-            {
-                impl->lightIntensity = lightMaxIntensity;
-            }
-        }
-
-        // Применение: direction — направление ИЗ источника К поверхности
-        // (вниз к земле), цвет источника — тёплый белый (как дефолт
-        // RenderContext)
-        const float azimuthRad = blib::math::AngleDegreef(impl->lightAzimuthDeg).toRadian().data;
-        const float elevationRad = blib::math::AngleDegreef(impl->lightElevationDeg).toRadian().data;
-
-        blib::graphics::DirectionalLight& light = impl->renderTarget.rc.directionalLight;
-        light.direction = blib::graphics::Vector3f(
-            blib::math::cos(elevationRad) * blib::math::cos(azimuthRad),
-            -blib::math::sin(elevationRad),
-            blib::math::cos(elevationRad) * blib::math::sin(azimuthRad));
-        light.intensity = impl->lightIntensity;
     }
 
     void ClientCore::drawOverlay()
@@ -751,22 +898,66 @@ namespace gravelands
 
         ImGui::Begin("overlay", nullptr, overlayFlags);
 
-        ImGui::TextUnformatted("WASD move | +/- zoom | Esc quit");
+        ImGui::TextUnformatted("WASD move | +/- zoom | Esc quit | ` console");
         ImGui::TextUnformatted("F5 hotreload | N normals | M toon/unlit");
         ImGui::TextUnformatted("Arrows: light dir | [ ]: light intensity");
-        ImGui::TextUnformatted("P: post on/off | O: outline on/off");
+        ImGui::TextUnformatted("PgUp/PgDn: ambient | P: post | O: outline");
+        ImGui::TextUnformatted("console: scene_save [name] | scene_load [name]");
         ImGui::Separator();
-        ImGui::Text("light azimuth: %.0f deg", static_cast<double>(impl->lightAzimuthDeg));
-        ImGui::Text("light elevation: %.0f deg", static_cast<double>(impl->lightElevationDeg));
-        ImGui::Text("light intensity: %.2f", static_cast<double>(impl->lightIntensity));
 
-        if (impl->sphereEntity != beng::invalidEntity)
+        // Свет — компоненты сцены (см. directionalLightComponent.h):
+        // показать текущие значения (фолбэк — дефолтные константы,
+        // если пула/компонента нет)
         {
-            const blib::graphics::Material& sphereMaterial =
-                impl->scene.getComponent<beng::MeshRenderComponent>(impl->sphereEntity).getMesh().material;
-            ImGui::Text("sphere shading: %s",
-                sphereMaterial.shadingMode == blib::graphics::ShadingMode::Toon ? "toon" : "unlit");
-            ImGui::Text("sphere outline: %s", sphereMaterial.outlineEnabled ? "on" : "off");
+            float azimuthDeg = defaultLightAzimuthDeg;
+            float elevationDeg = defaultLightElevationDeg;
+            float intensity = defaultLightIntensity;
+
+            beng::ComponentPool<beng::DirectionalLightComponent>* directionalPool =
+                impl->scene.tryGetComponentPool<beng::DirectionalLightComponent>();
+            if (directionalPool != nullptr)
+            {
+                for (auto it = directionalPool->begin(); it != directionalPool->end(); ++it)
+                {
+                    const beng::DirectionalLightComponent& lightComp = *it;
+                    const blib::math::Vector<float, 3>& dir = lightComp.getDirection();
+                    const float dirY = (dir.y < -1.0f) ? -1.0f : ((dir.y > 1.0f) ? 1.0f : dir.y);
+                    azimuthDeg = blib::math::atan2(dir.z, dir.x) * treeRadToDeg;
+                    elevationDeg = -std::asin(dirY) * treeRadToDeg;
+                    intensity = lightComp.getIntensity();
+                    break;
+                }
+            }
+
+            float ambientIntensity = defaultAmbientIntensity;
+            beng::ComponentPool<beng::AmbientLightComponent>* ambientPool =
+                impl->scene.tryGetComponentPool<beng::AmbientLightComponent>();
+            if (ambientPool != nullptr)
+            {
+                for (auto it = ambientPool->begin(); it != ambientPool->end(); ++it)
+                {
+                    ambientIntensity = it->getIntensity();
+                    break;
+                }
+            }
+
+            ImGui::Text("light azimuth: %.0f deg", static_cast<double>(azimuthDeg));
+            ImGui::Text("light elevation: %.0f deg", static_cast<double>(elevationDeg));
+            ImGui::Text("light intensity: %.2f", static_cast<double>(intensity));
+            ImGui::Text("ambient intensity: %.2f", static_cast<double>(ambientIntensity));
+        }
+
+        {
+            // tryGetComponent: после scene_load ссылка может устареть
+            beng::MeshRenderComponent* sphereMesh =
+                impl->scene.tryGetComponent<beng::MeshRenderComponent>(impl->sphereEntity);
+            if (sphereMesh != nullptr)
+            {
+                const blib::graphics::Material& sphereMaterial = sphereMesh->getMesh().material;
+                ImGui::Text("sphere shading: %s",
+                    sphereMaterial.shadingMode == blib::graphics::ShadingMode::Toon ? "toon" : "unlit");
+                ImGui::Text("sphere outline: %s", sphereMaterial.outlineEnabled ? "on" : "off");
+            }
         }
 
         ImGui::Text("normals view: %s", impl->renderTarget.rc.showNormals ? "on" : "off");
@@ -804,7 +995,7 @@ namespace gravelands
             }
 
             const beng::EntityID entity = impl->scene.createEntity();
-            impl->scene.addComponent<beng::TransformComponent>(entity, &impl->scene);
+            impl->scene.resolveComponent<beng::TransformComponent>(entity, &impl->scene);
             impl->scene.addComponent<beng::MeshRenderComponent>(
                 entity, tilesRef, beng::RenderLayer::Ground);
         }
@@ -835,7 +1026,7 @@ namespace gravelands
             sphere.getMesh().material.diffuseImage = sphereTexture;
 
             impl->sphereEntity = impl->scene.createEntity();
-            impl->scene.addComponent<beng::TransformComponent>(impl->sphereEntity, &impl->scene);
+            impl->scene.resolveComponent<beng::TransformComponent>(impl->sphereEntity, &impl->scene);
             beng::MeshRenderComponent& meshComp = impl->scene.addComponent<beng::MeshRenderComponent>(
                 impl->sphereEntity, sphere.takeMesh(), beng::RenderLayer::Opaque);
 
@@ -882,7 +1073,7 @@ namespace gravelands
                 plane.create(testTreeWidth, testTreeHeight, treeImage);
 
                 impl->treeEntities[i] = impl->scene.createEntity();
-                impl->scene.addComponent<beng::TransformComponent>(impl->treeEntities[i], &impl->scene);
+                impl->scene.resolveComponent<beng::TransformComponent>(impl->treeEntities[i], &impl->scene);
                 impl->scene.addComponent<beng::MeshRenderComponent>(
                     impl->treeEntities[i], plane.takeMesh(), beng::RenderLayer::AlphaTested);
 
@@ -908,7 +1099,7 @@ namespace gravelands
                 shadow.create(sphereShadowRadius, shadowImage);
 
                 impl->sphereShadowEntity = impl->scene.createEntity();
-                impl->scene.addComponent<beng::TransformComponent>(impl->sphereShadowEntity, &impl->scene);
+                impl->scene.resolveComponent<beng::TransformComponent>(impl->sphereShadowEntity, &impl->scene);
                 impl->scene.addComponent<beng::MeshRenderComponent>(
                     impl->sphereShadowEntity, shadow.takeMesh(), beng::RenderLayer::Shadow);
 
@@ -922,7 +1113,7 @@ namespace gravelands
                 shadow.create(treeShadowRadius, shadowImage);
 
                 impl->treeShadowEntities[i] = impl->scene.createEntity();
-                impl->scene.addComponent<beng::TransformComponent>(impl->treeShadowEntities[i], &impl->scene);
+                impl->scene.resolveComponent<beng::TransformComponent>(impl->treeShadowEntities[i], &impl->scene);
                 impl->scene.addComponent<beng::MeshRenderComponent>(
                     impl->treeShadowEntities[i], shadow.takeMesh(), beng::RenderLayer::Shadow);
 
@@ -930,6 +1121,31 @@ namespace gravelands
                     .setLocalPosition(blib::math::Vector<float, 3>(
                         testTreePositions[i][0], shadowHeightOffset, testTreePositions[i][1]));
             }
+        }
+
+        // --- Свет: компоненты движка (beng-client). LightSystem
+        // применяет их к RenderContext каждый кадр до отрисовки;
+        // отладочные клавиши крутят компонент напрямую (см. updateLight)
+        {
+            // Направленный: азимут/элевация из констант → direction
+            // (направление ИЗ источника К поверхности, см. updateLight)
+            const float azimuthRad = blib::math::AngleDegreef(defaultLightAzimuthDeg).toRadian().data;
+            const float elevationRad = blib::math::AngleDegreef(defaultLightElevationDeg).toRadian().data;
+            const blib::math::Vector<float, 3> direction(
+                blib::math::cos(elevationRad) * blib::math::cos(azimuthRad),
+                -blib::math::sin(elevationRad),
+                blib::math::cos(elevationRad) * blib::math::sin(azimuthRad));
+
+            const beng::EntityID lightEntity = impl->scene.createEntity();
+            beng::DirectionalLightComponent& lightComp =
+                impl->scene.addComponent<beng::DirectionalLightComponent>(lightEntity);
+            lightComp.setDirection(direction);
+            lightComp.setIntensity(defaultLightIntensity);
+
+            // Эмбиент: цвет и интенсивность — дефолты компонента
+            // (совпадают с дефолтами RenderContext)
+            const beng::EntityID ambientEntity = impl->scene.createEntity();
+            impl->scene.addComponent<beng::AmbientLightComponent>(ambientEntity);
         }
 
         __blib_log_info("world scene built: %u entities",
@@ -943,7 +1159,7 @@ namespace gravelands
         const std::string modelPath = resolveContentPath(dancerModelPath);
 
         const beng::EntityID entity = impl->scene.createEntity();
-        impl->scene.addComponent<beng::TransformComponent>(entity, &impl->scene);
+        impl->scene.resolveComponent<beng::TransformComponent>(entity, &impl->scene);
         beng::SkinnedMeshComponent& meshComp = impl->scene.addComponent<beng::SkinnedMeshComponent>(entity);
         beng::AnimatorComponent& animComp = impl->scene.addComponent<beng::AnimatorComponent>(entity);
 
@@ -997,7 +1213,7 @@ namespace gravelands
             shadow.create(dancerShadowRadius, shadowImage);
 
             impl->dancerShadowEntity = impl->scene.createEntity();
-            impl->scene.addComponent<beng::TransformComponent>(impl->dancerShadowEntity, &impl->scene);
+            impl->scene.resolveComponent<beng::TransformComponent>(impl->dancerShadowEntity, &impl->scene);
             impl->scene.addComponent<beng::MeshRenderComponent>(
                 impl->dancerShadowEntity, shadow.takeMesh(), beng::RenderLayer::Shadow);
             impl->scene.addComponent<beng::BlobShadowComponent>(
@@ -1010,6 +1226,119 @@ namespace gravelands
     bool ClientCore::isRunning() const
     {
         return impl != nullptr && impl->window.isOpen();
+    }
+
+    void ClientCore::resetScene()
+    {
+        // Scene::load работает только в пустую сцену, а Scene
+        // некопируема/неперемещаема — старую сцену разрушаем явно
+        // (компоненты отпускают ref'ы кеша и модели), затем placement
+        // new конструирует свежую на том же месте (разрушается она,
+        // как и раньше, ДО окна/таргета — порядок членов impl не менялся)
+        impl->scene.~Scene();
+        new (&impl->scene) beng::Scene();
+
+        // TransformComponent регистрируется сценой автоматически
+        // (инвариант) — явная регистрация запрещена
+        impl->scene.registerComponentType<beng::SkinnedMeshComponent>();
+        impl->scene.registerComponentType<beng::AnimatorComponent>();
+        impl->scene.registerComponentType<beng::MeshRenderComponent>();
+        impl->scene.registerComponentType<beng::BlobShadowComponent>();
+        impl->scene.registerComponentType<beng::DirectionalLightComponent>();
+        impl->scene.registerComponentType<beng::AmbientLightComponent>();
+
+        impl->scene.addSystem(&impl->transformSystem);
+        impl->scene.addSystem(&impl->animationSystem);
+        impl->scene.addSystem(&impl->blobShadowSystem);
+        impl->scene.addSystem(&impl->lightSystem);
+        impl->scene.addSystem(&impl->renderSystem);
+        // Таргеты систем уже выставлены — рендер-таргет не менялся
+
+        // Ссылки на сущности мира устаревают: ID в файле могут не
+        // совпасть с предыдущими (отладочные клавиши/оверлей
+        // используют tryGetComponent и безопасны на невалидном ID)
+        impl->sphereEntity = beng::invalidEntity;
+        impl->sphereShadowEntity = beng::invalidEntity;
+        impl->dancerShadowEntity = beng::invalidEntity;
+        impl->dancerEntity = beng::invalidEntity;
+        for (buint32 i = 0; i < testTreeCount; ++i)
+        {
+            impl->treeEntities[i] = beng::invalidEntity;
+            impl->treeShadowEntities[i] = beng::invalidEntity;
+        }
+    }
+
+    void ClientCore::saveSceneCommand(_In const std::vector<std::string>& args)
+    {
+        // Путь — первый аргумент; без аргумента — дефолтное имя файла
+        const std::string path = (args.size() > 0) ? args[0] : sceneDefaultFilePath;
+
+        blib::core::FileStream fs;
+        blib::core::FileStream::OpenModeFlags mode;
+        mode.storage |= static_cast<buint8>(blib::core::OpenMode::Write);
+        mode.storage |= static_cast<buint8>(blib::core::OpenMode::Binary);
+        mode.storage |= static_cast<buint8>(blib::core::OpenMode::Truncate);
+        if (fs.open(path.c_str(), mode) != blib::core::FileStatus::OK)
+        {
+            __blib_log_error("scene_save: cannot open '%s' for writing", path.c_str());
+            return;
+        }
+
+        const blib::core::SaveStatus status = impl->scene.save(fs);
+        if (status != blib::core::SaveStatus::None)
+        {
+            __blib_log_error("scene_save: failed (status %u)",
+                static_cast<unsigned int>(status));
+            return;
+        }
+
+        __blib_log_info("scene_save: %u entities written to '%s'",
+            static_cast<unsigned int>(impl->scene.getEntityCount()), path.c_str());
+    }
+
+    void ClientCore::loadSceneCommand(_In const std::vector<std::string>& args)
+    {
+        const std::string path = (args.size() > 0) ? args[0] : sceneDefaultFilePath;
+
+        blib::core::FileStream fs;
+        blib::core::FileStream::OpenModeFlags mode;
+        mode.storage |= static_cast<buint8>(blib::core::OpenMode::Read);
+        mode.storage |= static_cast<buint8>(blib::core::OpenMode::Binary);
+        if (fs.open(path.c_str(), mode) != blib::core::FileStatus::OK)
+        {
+            __blib_log_error("scene_load: cannot open '%s' for reading", path.c_str());
+            return;
+        }
+
+        // Load — только в пустую сцену: пересоздаём мир целиком.
+        // При неудаче (битый файл, неизвестный тип) откатываемся на
+        // дефолтный процедурный мир — игра остаётся играбельной
+        resetScene();
+
+        const blib::core::LoadStatus status = impl->scene.load(fs);
+        if (status != blib::core::LoadStatus::None)
+        {
+            __blib_log_error("scene_load: failed (status %u), rebuilding default world",
+                static_cast<unsigned int>(status));
+            setupWorld();
+            loadDancerModel();
+            return;
+        }
+
+        // Честная проверка round-trip: save -> свежая сцена -> load ->
+        // strongCompare (см. Scene::verify). Плейбек аниматора тоже
+        // сравнивается — состояние один в один
+        if (!impl->scene.verify())
+        {
+            __blib_log_warning("scene_load: verify() failed — loaded scene differs from the saved state");
+        }
+        else
+        {
+            __blib_log_info("scene_load: verify() passed — scene matches the saved state");
+        }
+
+        __blib_log_info("scene_load: %u entities loaded from '%s'",
+            static_cast<unsigned int>(impl->scene.getEntityCount()), path.c_str());
     }
 
     void ClientCore::shutdown()

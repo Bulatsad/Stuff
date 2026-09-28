@@ -13,20 +13,18 @@ int main()
 
     __blib_log_info("=== ECS Test Application ===");
 
-    // Создать сцену
+    // Создать сцену (TransformComponent регистрируется сценой
+    // автоматически — инвариант: каждая сущность рождается с Transform)
     beng::Scene scene;
-
-    // Зарегистрировать тип компонента Transform
-    scene.registerComponentType<beng::TransformComponent>();
 
     // Добавить TransformSystem
     beng::TransformSystem transformSystem;
     scene.addSystem(&transformSystem);
 
-    // Создать родительскую Entity
+    // Создать родительскую Entity (Transform уже на ней)
     beng::EntityID parent = scene.createEntity();
     beng::TransformComponent& parentTransform =
-        scene.addComponent<beng::TransformComponent>(parent, &scene);
+        scene.getComponent<beng::TransformComponent>(parent);
     parentTransform.setLocalPosition(blib::math::Vector<float, 3>(10.0f, 0.0f, 0.0f));
 
     __blib_log_info("Created parent Entity %llu with position (10, 0, 0)",
@@ -35,7 +33,7 @@ int main()
     // Создать дочернюю Entity
     beng::EntityID child = scene.createEntity();
     beng::TransformComponent& childTransform =
-        scene.addComponent<beng::TransformComponent>(child, &scene);
+        scene.getComponent<beng::TransformComponent>(child);
     childTransform.setLocalPosition(blib::math::Vector<float, 3>(5.0f, 0.0f, 0.0f));
     childTransform.setParent(parent);
 
@@ -46,7 +44,7 @@ int main()
     // Создать ещё одну независимую Entity
     beng::EntityID independent = scene.createEntity();
     beng::TransformComponent& independentTransform =
-        scene.addComponent<beng::TransformComponent>(independent, &scene);
+        scene.getComponent<beng::TransformComponent>(independent);
     independentTransform.setLocalPosition(blib::math::Vector<float, 3>(-5.0f, 10.0f, 0.0f));
 
     __blib_log_info("Created independent Entity %llu with position (-5, 10, 0)",

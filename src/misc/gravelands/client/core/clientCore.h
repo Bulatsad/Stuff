@@ -2,6 +2,11 @@
 
 #include <gravelands/common/config.h>
 
+#include <blib/utilmacro.h>
+
+#include <string>
+#include <vector>
+
 namespace gravelands
 {
     /**
@@ -86,6 +91,30 @@ namespace gravelands
          * Открыто ли окно (условие продолжения цикла в тонком exe).
          */
         bool isRunning() const;
+
+    private:
+        /**
+         * Пересоздать ECS-сцену на пустом месте (для scene_load):
+         * Scene::load работает только в пустую сцену, а Scene
+         * некопируема — старую разрушаем явно и конструируем свежую
+         * (placement new), заново регистрируем типы и системы.
+         * Ссылки impl на сущности мира сбрасываются (ID в файле
+         * могут не совпасть).
+         */
+        void resetScene();
+
+        /**
+         * Консольная команда scene_save: записать сцену в JSON-файл.
+         * args[0] — путь (необязателен; дефолт — sceneDefaultFilePath).
+         */
+        void saveSceneCommand(_In const std::vector<std::string>& args);
+
+        /**
+         * Консольная команда scene_load: загрузить сцену из JSON-файла
+         * (сцена пересоздаётся; при неудаче откат на дефолтный мир).
+         * args[0] — путь (необязателен; дефолт — sceneDefaultFilePath).
+         */
+        void loadSceneCommand(_In const std::vector<std::string>& args);
 
     private:
         // Pimpl: скрывает графические объекты blib (окно/таргет/камера)

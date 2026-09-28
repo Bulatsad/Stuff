@@ -2,14 +2,17 @@
 
 #include <beng/config.h>
 #include <beng/core/icomponent.h>
+#include <beng/components/transform.h>
 #include <beng/core/componentPool.h>
 #include <beng/core/system.h>
+#include <beng/core/sceneSaveFormat.h>
 
 #include <blib/blibint.h>
 #include <blib/utilmacro.h>
 #include <blib/system/memory/stdAllocatorAdapter.h>
 #include <blib/core/console/console.h>
 #include <blib/core/resource/resourceManager.h>
+#include <blib/core/isaveloadable.h>
 
 #include <vector>
 #include <unordered_map>
@@ -41,14 +44,18 @@ namespace beng
      * Использование:
      *   Scene scene;
      *   
-     *   // Регистрация типов компонентов (только для этой сцены).
-     *   // Имя типа берётся из T::componentTypeName; коллизия имени
-     *   // в одной сцене — fatal (guard: isRegisteredComponentType<T>).
-     *   scene.registerComponentType<TransformComponent>();
+     *   // TransformComponent сцена регистрирует САМА в конструкторе
+     *   // (инвариант: каждая сущность рождается с Transform, typeId 0
+     *   // зарезервирован за ним — см. createEntity). Остальные типы
+     *   // регистрируются явно (имя типа берётся из T::componentTypeName;
+     *   // коллизия имени в одной сцене — fatal; guard:
+     *   // isRegisteredComponentType<T>).
+     *   scene.registerComponentType<PhysicsComponent>();
      *   
-     *   // Создание Entity
+     *   // Создание Entity — Transform уже на ней
      *   EntityID id = scene.createEntity();
-     *   auto& transform = scene.addComponent<TransformComponent>(id, &scene);
+     *   auto& transform = scene.getComponent<TransformComponent>(id);
+     *   transform.setLocalPosition({10, 0, 0});
      *   
      *   // Добавление систем
      *   TransformSystem transformSystem;
@@ -65,12 +72,34 @@ namespace beng
      * - Некопируем и неперемещаем: контейнеры держат указатель на собственный
      *   containerAllocator, переезд объекта оставил бы висячие ссылки
      * - Максимум maxComponentTypes (componentMaskBits) типов компонентов на сцену
+     *   (из них слот typeId 0 всегда занят TransformComponent)
      * - Типы компонентов регистрируются ТОЛЬКО через эту сцену (глобального
      *   реестра нет): имя типа — его идентичность (T::componentTypeName)
+     * - ИНВАРИАНТ: сущность не может существовать без TransformComponent.
+     *   Сцена регистрирует его в конструкторе и добавляет каждой сущности
+     *   в createEntity(); removeComponent<TransformComponent> — fatal;
+     *   в файле сохранения Transform обязателен у каждой сущности
+     *   (отсутствие — LoadStatus::InvalidData)
+     *
+     * Сохранение/загрузка (ISaveLoadable, см. sceneSaveFormat.h):
+     * - save()/load() работают с IOutputStream/IInputStream: magic "JSON\0"
+     *   + JSON-документ (формат/версия/nextEntityId/сущности)
+     * - Типы в файле — по стабильным именам; load требует регистрации
+     *   всех типов из файла (иначе LoadStatus::ComponentTypeNotRegistered)
+     * - load() атомарен: при ошибке сцена возвращается в исходное
+     *   состояние (зарегистрированные типы и существующие данные не
+     *   теряются); load в непустую сцену — SceneNotEmpty
+     * - Системы не сериализуются (код игры добавляет их после load);
+     *   кеш ресурсов не сериализуется (модели перезагружаются в
+     *   onLoaded компонентов через RM по сохранённым путям)
      */
-    class __beng_api Scene
+    class __beng_api Scene : public blib::core::ISaveLoadable
     {
     public:
+        // Не прятать 1-аргументную точку входа строгого сравнения
+        // (IStrongComparable::strongCompare(other)) за перегрузкой ниже
+        using blib::core::IStrongComparable::strongCompare;
+
         /**
          * Конструктор — создаёт пустую сцену.
          */
@@ -106,8 +135,10 @@ namespace beng
          * @return Уникальный EntityID (никогда не переиспользуется)
          * 
          * Entity получает уникальный ID и добавляется в dense array.
-         * Работа с компонентами — через Scene API (addComponent и т.д.),
-         * работа с самой Entity — по ID.
+         * ИНВАРИАНТ: каждая сущность рождается с TransformComponent
+         * (сцена создаёт его сразу, с дефолтным TRS) — сущность без
+         * Transform существовать не может. Работа с компонентами — через
+         * Scene API (addComponent и т.д.), работа с самой Entity — по ID.
          */
         EntityID createEntity();
 
@@ -215,6 +246,7 @@ namespace beng
          * Поведение:
          * - Если компонент существует → удаляет его
          * - Если Entity или компонента нет → no-op (не ошибка)
+         * - TransformComponent удалить НЕЛЬЗЯ (инвариант сцены) — fatal error
          */
         template<typename T>
         void removeComponent(EntityID entityId);
@@ -237,8 +269,13 @@ namespace beng
          * Имя типа регистрируется в словаре сцены (typeIdByName) и получает
          * локальный ComponentType — индекс, задающий бит в ComponentMask.
          * 
+         * ВАЖНО (инвариант сцены): TransformComponent регистрируется сценой
+         * АВТОМАТИЧЕСКИ в конструкторе (всегда typeId 0) — повторная
+         * регистрация TransformComponent в коде игры/движка запрещена
+         * (fatal: имя уже зарегистрировано).
+         * 
          * Использование:
-         *   scene.registerComponentType<TransformComponent>();
+         *   scene.registerComponentType<PhysicsComponent>();
          *   scene.registerComponentType<PhysicsComponent>(256); // custom chunk size
          * 
          *   // Идемпотентная регистрация из инициализации:
@@ -323,6 +360,68 @@ namespace beng
          */
         buint32 getSystemCount() const { return static_cast<buint32>(systems.size()); }
 
+        // ========== Сохранение / Загрузка (ISaveLoadable) ==========
+
+        /**
+         * Сохранить сцену в поток (magic + JSON-документ, формат —
+         * sceneSaveFormat.h).
+         *
+         * @param os Выходной поток
+         * @return SaveStatus::None при успехе;
+         *         SaveStatus::ComponentNotSerializable — у одного из
+         *         компонентов save() == Unsupported (в поток ничего
+         *         не пишется);
+         *         SaveStatus::WriteFailed — сбой записи
+         *
+         * Сериализуются: nextEntityId, сущности с их ID и компоненты
+         * (тип по имени + JSON компонента). Системы и кеш ресурсов
+         * не пишутся.
+         */
+        blib::core::SaveStatus save(_In blib::core::IOutputStream& os) const __blib_override;
+
+        /**
+         * Загрузить сцену из потока. Атомарно: при любой ошибке сцена
+         * остаётся в исходном состоянии.
+         *
+         * @param is Входной поток (magic + JSON-документ)
+         * @return LoadStatus::None при успехе;
+         *         LoadStatus::UnknownFormat — не совпал magic;
+         *         LoadStatus::InvalidData — документ повреждён/не
+         *         соответствует схеме;
+         *         LoadStatus::VersionMismatch — несовместимая версия;
+         *         LoadStatus::SceneNotEmpty — сцена не пуста;
+         *         LoadStatus::ComponentTypeNotRegistered — тип из файла
+         *         не зарегистрирован в сцене
+         *
+         * Требования:
+         * - Сцена должна быть пустой (нет сущностей, nextEntityId == 1);
+         *   регистрировать типы можно заранее
+         * - Все типы из файла обязаны быть зарегистрированы
+         *   (registerComponentType<T>) до вызова load
+         * - ИНВАРИАНТ: у каждой сущности в файле обязана быть запись
+         *   TransformComponent — иначе LoadStatus::InvalidData (файлы,
+         *   сохранённые до введения инварианта, загрузкой отвергаются);
+         *   второй компонент при этом не создаётся: данные файла
+         *   загружаются в Transform, авто-созданный createEntity
+         * - После load вызывается onLoaded(Scene&) у каждого компонента
+         *   (восстановление контекстных связей — см. IComponent)
+         */
+        blib::core::LoadStatus load(_In blib::core::IInputStream& is) __blib_override;
+
+        /**
+         * Строгое (бит-в-бит) сравнение двух сцен: nextEntityId,
+         * сущности (ID + маски), компоненты по строгому сравнению.
+         * Зарегистрированные типы и системы не сравниваются.
+         */
+        bool strongCompare(_In const blib::core::IStrongComparable& other,
+            _In blib::core::CompareSession& session) const __blib_override;
+
+        /**
+         * Round-trip валидация: save -> MemoryStream -> свежая Scene
+         * (с копией реестра типов этой сцены) -> load -> strongCompare.
+         */
+        bool verify() const __blib_override;
+
         // ========== Update Loop ==========
 
         /**
@@ -366,6 +465,13 @@ namespace beng
         // Внутренний метод сортировки систем по приоритету
         void sortSystems();
 
+        // Скопировать РЕЕСТР ТИПОВ (имена, словарь, type-erased
+        // fn-таблицы) из другой сцены БЕЗ пулов и данных — пулы
+        // создаются по требованию во время load (фабрики). Нужен
+        // verify(): свежая сцена должна резолвить те же типы без
+        // compile-time T (RTTI в проекте не используется)
+        void copyComponentTypeRegistryFrom(_In const Scene& other);
+
         // ========== Entity Storage (Sparse Set) ==========
 
         // Адаптер STL-контейнеров к blib-аллокатору (StdAllocatorAdapter).
@@ -400,6 +506,11 @@ namespace beng
         // Генератор ID для Entity (0 зарезервирован под invalidEntity)
         EntityID nextEntityId;
 
+        // Локальный ComponentType обязательного TransformComponent.
+        // Регистрируется в конструкторе ПЕРВЫМ (всегда 0) и никогда не
+        // снимается — инвариант: каждая сущность рождается с Transform.
+        ComponentType transformTypeId;
+
         // ========== Component Pools ==========
 
         // Тип строкового ключа словаря типов. Аллокатор blib — правило STL:
@@ -409,8 +520,8 @@ namespace beng
 
         // Словарь имён типов: стабильное имя → локальный ComponentType.
         // Используется при регистрации (проверка коллизии имени) и в
-        // будущем save/load (резолв имени из файла). Горячий путь
-        // шаблонных методов его не трогает — там линейный скан typeNames
+        // Scene::load (резолв имени из файла). Горячий путь шаблонных
+        // методов его не трогает — там линейный скан typeNames
         // (поиск по имени из словаря строил бы std::string-ключ и
         // аллоцировал бы память для имён длиннее SSO).
         std::unordered_map<ComponentTypeNameString, ComponentType,
@@ -435,6 +546,21 @@ namespace beng
         // Функции удаления компонента из пула по EntityID
         // (type-erased, используются в destroyEntity)
         void (*componentPoolDestroyers[maxComponentTypes])(void*, EntityID) = { nullptr };
+
+        // Функции-фабрики пулов (type-erased): создают ComponentPool<T>
+        // через GlobalAllocator. Используются Scene::load для создания
+        // пула типа из файла по требованию и Scene::verify (копия
+        // реестра — см. copyComponentTypeRegistryFrom)
+        void* (*componentPoolFactories[maxComponentTypes])(buint32) = { nullptr };
+
+        // ChunkSize пула на тип (параметр фабрики; хранится при регистрации)
+        buint32 componentPoolChunkSizes[maxComponentTypes] = { 0 };
+
+        // Создание компонента в пуле (default-ctor + ownerId) — Scene::load
+        IComponent* (*componentPoolCreators[maxComponentTypes])(void*, EntityID) = { nullptr };
+
+        // Получение компонента из пула по EntityID — save/strongCompare/onLoaded
+        IComponent* (*componentPoolGetters[maxComponentTypes])(void*, EntityID) = { nullptr };
 
         // ========== Systems ==========
 

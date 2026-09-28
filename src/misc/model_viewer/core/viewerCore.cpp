@@ -289,8 +289,9 @@ namespace modelviewer
         this->impl->renderTarget.rc.setCamera(&this->impl->camera);
 
         // ECS: типы компонентов и системы.
-        // Системы живут в impl (Scene ими не владеет)
-        this->impl->scene.registerComponentType<beng::TransformComponent>();
+        // Системы живут в impl (Scene ими не владеет).
+        // TransformComponent регистрируется сценой автоматически
+        // (инвариант) — явная регистрация запрещена
         this->impl->scene.registerComponentType<beng::SkinnedMeshComponent>();
         this->impl->scene.registerComponentType<beng::AnimatorComponent>();
 
@@ -515,10 +516,10 @@ namespace modelviewer
         // Сначала выгружаем предыдущую модель (и отвязываем панели)
         this->unloadModel();
 
-        // Entity модели: Transform (размещение) + SkinnedMesh (данные)
-        // + Animator (плейбек)
+        // Entity модели: Transform создаётся сценой автоматически
+        // (инвариант: каждая сущность рождается с Transform) +
+        // SkinnedMesh (данные) + Animator (плейбек)
         const beng::EntityID entity = this->impl->scene.createEntity();
-        this->impl->scene.addComponent<beng::TransformComponent>(entity, &this->impl->scene);
         beng::SkinnedMeshComponent& meshComp = this->impl->scene.addComponent<beng::SkinnedMeshComponent>(entity);
         beng::AnimatorComponent& animComp = this->impl->scene.addComponent<beng::AnimatorComponent>(entity);
 

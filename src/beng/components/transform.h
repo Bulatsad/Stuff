@@ -23,6 +23,13 @@ namespace beng
      * - Поддерживает parent/children связи (как в Unity)
      * - Кеширует мировую матрицу для производительности
      * 
+     * ИНВАРИАНТ СЦЕНЫ: TransformComponent — обязательный компонент.
+     * Каждая сущность рождается с ним (Scene::createEntity создаёт его
+     * автоматически, тип регистрируется сценой в конструкторе), снять
+     * его нельзя (removeComponent — fatal). Явные addComponent/
+     * registerComponentType для Transform запрещены: доступ через
+     * getComponent/resolveComponent.
+     * 
      * Архитектура иерархии:
      * 
      *   Parent Transform
@@ -36,12 +43,12 @@ namespace beng
      * children-списков родителя.
      * 
      * Использование:
-     *   EntityID parent = scene.createEntity();
-     *   auto& parentTransform = scene.addComponent<TransformComponent>(parent, &scene);
+     *   EntityID parent = scene.createEntity(); // Transform уже создан
+     *   auto& parentTransform = scene.getComponent<TransformComponent>(parent);
      *   parentTransform.setLocalPosition({10, 0, 0});
      *   
      *   EntityID child = scene.createEntity();
-     *   auto& childTransform = scene.addComponent<TransformComponent>(child, &scene);
+     *   auto& childTransform = scene.getComponent<TransformComponent>(child);
      *   childTransform.setLocalPosition({5, 0, 0});
      *   childTransform.setParent(parent);
      *   
@@ -71,6 +78,10 @@ namespace beng
          * 
          * @param scene Ссылка на Scene (нужна для доступа к родителю при вычислении мировых координат)
          * 
+         * Вызывается сценой АВТОМАТИЧЕСКИ в Scene::createEntity (инвариант:
+         * каждая сущность рождается с Transform) — в коде игры компонент
+         * не создаётся вручную.
+         * 
          * По умолчанию:
          * - localPosition = (0, 0, 0)
          * - localRotation = identity quaternion
@@ -91,8 +102,9 @@ namespace beng
         // Формат save: JSON-объект (JsonValue::writeTo) с локальным TRS,
         // иерархией (parent/children), кешем мировой матрицы и isActive.
         // Контекст НЕ сериализуется: ownerScene и ownerId — забота
-        // Scene::save/load (будущее); поэтому verify() без сцены — true,
-        // компонента в сцене — false (строгая модель, см. ISaveLoadable).
+        // Scene::save/load (ownerId ставит пул, ownerScene возвращает
+        // onLoaded); поэтому verify() без сцены — true, компонента
+        // в сцене — false (строгая модель, см. ISaveLoadable).
 
         /**
          * Сохранить состояние компонента в поток (JSON-объект).
@@ -108,8 +120,8 @@ namespace beng
          * @param is Входной поток
          * @return LoadStatus::None при успехе
          *
-         * ownerScene не восстанавливается (контекст) — его вернёт
-         * будущий Scene::load через onLoaded/привязку к сцене.
+         * ownerScene не восстанавливается (контекст) — его возвращает
+         * Scene::load через onLoaded (см. onLoaded ниже).
          */
         blib::core::LoadStatus load(_In blib::core::IInputStream& is) __blib_override;
 
@@ -125,6 +137,13 @@ namespace beng
          * standalone-объект -> load -> strongCompare.
          */
         bool verify() const __blib_override;
+
+        /**
+         * Вторая фаза загрузки сцены: восстановить контекстную связь
+         * со сценой (ownerScene). Вызывается Scene::load после того,
+         * как все компоненты загружены.
+         */
+        void onLoaded(_In Scene& scene) __blib_override;
 
         // ========== Local Transform (относительно родителя) ==========
 

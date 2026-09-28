@@ -194,6 +194,16 @@ std::vector<buint32, blib::memory::StdAllocatorAdapter<buint32>> ids{
 - Только C++-касты: `static_cast`, `reinterpret_cast`, `const_cast`
 - C-style касты `(T)x` в новом коде запрещены
 
+### ECS-инвариант сцены (СТРОГО)
+- **Сущность НЕ МОЖЕТ существовать без `TransformComponent`.** Сцена регистрирует тип автоматически в конструкторе (всегда typeId 0 — слот зарезервирован) и создаёт Transform каждой сущности в `Scene::createEntity()` — компонент есть с первого мгновения жизни сущности.
+- **Запрещено в коде игры/движка:**
+  - `registerComponentType<TransformComponent>()` — fatal: имя уже зарегистрировано сценой;
+  - `addComponent<TransformComponent>()` — fatal: компонент уже создан `createEntity`;
+  - `removeComponent<TransformComponent>()` — fatal: нарушает инвариант.
+  - Доступ — только `getComponent<TransformComponent>()` / `resolveComponent<TransformComponent>()`.
+- **Сериализация сцены сохраняет инвариант:** в файле у каждой сущности обязана быть ровно одна запись Transform; файлы без неё (сохранённые до введения инварианта) отвергаются — `LoadStatus::InvalidData`. Второй Transform при загрузке не создаётся: данные файла грузятся в Transform, авто-созданный `createEntity`.
+- Лимит типов на сцену: слот typeId 0 всегда занят Transform — кастомных типов остаётся `maxComponentTypes - 1`.
+
 ### Вшитые константы (СТРОГО)
 - Вшитые литералы в код **запрещены**: ни чисел, ни строк — всё через именованные константы
 - Числа: `int array[123]` → `constexpr buint32 maxItems = 123; int array[maxItems];`

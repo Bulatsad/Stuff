@@ -14,6 +14,9 @@ namespace
     // отказа Scene::save на неподдерживаемом типе
     struct NonSerializableComponent : public beng::IComponent
     {
+        // Стабильное имя типа — контракт регистрации в Scene
+        static constexpr const char* componentTypeName = "test.NonSerializable";
+
         NonSerializableComponent()
             : value(0)
         {
@@ -45,21 +48,20 @@ namespace
     };
 
     // Сборка тестовой сцены с иерархией Transform:
-    // parent <- child (позиция 1,2,3) + независимая сущность (scale 2)
+    // parent <- child (позиция 1,2,3) + независимая сущность (scale 2).
+    // Transform регистрируется сценой автоматически и создаётся вместе
+    // с каждой сущностью (инвариант) — регистрация/addComponent не нужны
     void buildTestScene(_Out beng::Scene& scene)
     {
-        scene.registerComponentType<beng::TransformComponent>();
-
         beng::EntityID parent = scene.createEntity();
-        scene.addComponent<beng::TransformComponent>(parent, &scene);
 
         beng::EntityID child = scene.createEntity();
-        beng::TransformComponent& childTransform = scene.addComponent<beng::TransformComponent>(child, &scene);
+        beng::TransformComponent& childTransform = scene.getComponent<beng::TransformComponent>(child);
         childTransform.setLocalPosition(blib::math::Vector<float, 3>(1.0f, 2.0f, 3.0f));
         childTransform.setParent(parent);
 
         beng::EntityID independent = scene.createEntity();
-        beng::TransformComponent& indTransform = scene.addComponent<beng::TransformComponent>(independent, &scene);
+        beng::TransformComponent& indTransform = scene.getComponent<beng::TransformComponent>(independent);
         indTransform.setLocalScale(blib::math::Vector<float, 3>(2.0f, 2.0f, 2.0f));
     }
 }
@@ -97,7 +99,6 @@ BLIB_TEST_CASE("scene save/load roundtrip: verify passes and hierarchy restored"
     BLIB_TEST_REQUIRE(scene.save(mem) == blib::core::SaveStatus::None);
 
     beng::Scene loaded;
-    loaded.registerComponentType<beng::TransformComponent>();
     mem.seek(0, blib::core::SeekOrigin::Begin);
     BLIB_TEST_REQUIRE(loaded.load(mem) == blib::core::LoadStatus::None);
 
@@ -121,7 +122,6 @@ BLIB_TEST_CASE("scene save/load roundtrip: verify passes and hierarchy restored"
 BLIB_TEST_CASE("scene load: unknown magic rejected")
 {
     beng::Scene loaded;
-    loaded.registerComponentType<beng::TransformComponent>();
 
     blib::core::MemoryStream mem;
     const char badMagic[] = { 'X', 'M', 'L', '\0', '\0' };
@@ -134,16 +134,67 @@ BLIB_TEST_CASE("scene load: unknown magic rejected")
 
 BLIB_TEST_CASE("scene load: unregistered component type rejected")
 {
-    beng::Scene scene;
-    buildTestScene(scene);
+    using blib::core::json::JsonValue;
+
+    // Файл с неизвестным типом: Transform авто-зарегистрирован в любой
+    // сцене (инвариант), поэтому «неизвестным» берём "test.Unknown"
+    JsonValue doc = JsonValue::makeObject();
+    doc.set(beng::sceneSaveFormatFieldName, JsonValue(beng::sceneSaveFormatName));
+    doc.set(beng::sceneSaveVersionField, JsonValue(beng::sceneSaveVersion));
+    doc.set(beng::sceneSaveNextEntityIdField, JsonValue(beng::EntityID(2)));
+    JsonValue& entitiesArr = doc.set(beng::sceneSaveEntitiesField, JsonValue::makeArray());
+
+    JsonValue entityObj = JsonValue::makeObject();
+    entityObj.set(beng::sceneSaveEntityIdField, JsonValue(beng::EntityID(1)));
+    JsonValue& compsArr = entityObj.set(beng::sceneSaveEntityComponentsField, JsonValue::makeArray());
+
+    JsonValue transformEntry = JsonValue::makeObject();
+    transformEntry.set(beng::sceneSaveComponentTypeField, JsonValue("beng.Transform"));
+    transformEntry.set(beng::sceneSaveComponentDataField, JsonValue::makeObject());
+    compsArr.pushBack(std::move(transformEntry));
+
+    JsonValue unknownEntry = JsonValue::makeObject();
+    unknownEntry.set(beng::sceneSaveComponentTypeField, JsonValue("test.Unknown"));
+    unknownEntry.set(beng::sceneSaveComponentDataField, JsonValue::makeObject());
+    compsArr.pushBack(std::move(unknownEntry));
+
+    entitiesArr.pushBack(std::move(entityObj));
 
     blib::core::MemoryStream mem;
-    BLIB_TEST_REQUIRE(scene.save(mem) == blib::core::SaveStatus::None);
+    BLIB_TEST_REQUIRE(mem.write(beng::sceneSaveMagic, beng::sceneSaveMagicSize) == beng::sceneSaveMagicSize);
+    BLIB_TEST_REQUIRE(doc.writeTo(mem) == blib::core::json::JsonError::None);
 
-    // Свежая сцена БЕЗ регистрации типов: тип из файла неизвестен
+    // Свежая сцена без регистрации "test.Unknown" — тип из файла неизвестен
     beng::Scene loaded;
     mem.seek(0, blib::core::SeekOrigin::Begin);
     BLIB_TEST_CHECK(loaded.load(mem) == blib::core::LoadStatus::ComponentTypeNotRegistered);
+}
+
+BLIB_TEST_CASE("scene load: entity without TransformComponent entry is rejected (invariant)")
+{
+    using blib::core::json::JsonValue;
+
+    // Файл «старого формата»: сущность без записи Transform.
+    // До введения инварианта был валиден, теперь — InvalidData
+    JsonValue doc = JsonValue::makeObject();
+    doc.set(beng::sceneSaveFormatFieldName, JsonValue(beng::sceneSaveFormatName));
+    doc.set(beng::sceneSaveVersionField, JsonValue(beng::sceneSaveVersion));
+    doc.set(beng::sceneSaveNextEntityIdField, JsonValue(beng::EntityID(2)));
+    JsonValue& entitiesArr = doc.set(beng::sceneSaveEntitiesField, JsonValue::makeArray());
+
+    JsonValue entityObj = JsonValue::makeObject();
+    entityObj.set(beng::sceneSaveEntityIdField, JsonValue(beng::EntityID(1)));
+    entityObj.set(beng::sceneSaveEntityComponentsField, JsonValue::makeArray());
+    entitiesArr.pushBack(std::move(entityObj));
+
+    blib::core::MemoryStream mem;
+    BLIB_TEST_REQUIRE(mem.write(beng::sceneSaveMagic, beng::sceneSaveMagicSize) == beng::sceneSaveMagicSize);
+    BLIB_TEST_REQUIRE(doc.writeTo(mem) == blib::core::json::JsonError::None);
+
+    beng::Scene loaded;
+    mem.seek(0, blib::core::SeekOrigin::Begin);
+    BLIB_TEST_CHECK(loaded.load(mem) == blib::core::LoadStatus::InvalidData);
+    BLIB_TEST_CHECK(loaded.getEntityCount() == 0); // атомарность: сцена осталась пустой
 }
 
 BLIB_TEST_CASE("scene load: non-empty scene rejected")
@@ -155,7 +206,6 @@ BLIB_TEST_CASE("scene load: non-empty scene rejected")
     BLIB_TEST_REQUIRE(scene.save(mem) == blib::core::SaveStatus::None);
 
     beng::Scene loaded;
-    loaded.registerComponentType<beng::TransformComponent>();
     loaded.createEntity(); // непустая сцена
 
     mem.seek(0, blib::core::SeekOrigin::Begin);
@@ -189,11 +239,11 @@ BLIB_TEST_CASE("transform verify in scene: expected false (strict model)")
     // Компонент, живущий в сцене: standalone-копия теряет контекст
     // (ownerScene и ownerId) — строгое сравнение честно отвечает false.
     // Валидация таких компонентов — через Scene::verify().
+    // Transform создан автоматически (инвариант) — берём готовый.
     beng::Scene scene;
-    scene.registerComponentType<beng::TransformComponent>();
 
     beng::EntityID id = scene.createEntity();
-    beng::TransformComponent& transform = scene.addComponent<beng::TransformComponent>(id, &scene);
+    beng::TransformComponent& transform = scene.getComponent<beng::TransformComponent>(id);
 
     BLIB_TEST_CHECK(!transform.verify());
 }

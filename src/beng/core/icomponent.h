@@ -8,6 +8,10 @@
 
 namespace beng
 {
+    // Forward declaration (полный тип в scene.h; здесь нужен только
+    // для ссылки в сигнатуре onLoaded)
+    class Scene;
+
     /**
      * IComponent - базовый интерфейс для всех компонентов.
      * 
@@ -24,22 +28,39 @@ namespace beng
      * - Сериализуемые компоненты дополнительно переопределяют
      *   save()/load() (JSON-объект: JsonValue::writeTo / JsonParser).
      *   Default-реализации ISaveable/ILoadable возвращают Unsupported —
-     *   такой компонент Scene::save (будущее) обязан отклонять
+     *   такой компонент Scene::save обязан отклонять
+     *   (SaveStatus::ComponentNotSerializable)
      * - ownerId НЕ сериализуется компонентом: владение выставляет
-     *   ComponentPool::create (забота будущего Scene::save/load).
-     *   isActive — состояние компонента, сериализуется
+     *   ComponentPool::create, Scene::load восстанавливает его при
+     *   создании компонента в пуле. isActive — состояние компонента,
+     *   сериализуется
      * - Контекстные указатели (Scene*, ассеты) не сериализуются:
      *   strongCompare сравнивает их по null-состоянию, verify() без
-     *   восстановленного контекста честно возвращает false
+     *   восстановленного контекста честно возвращает false;
+     *   восстановление контекста — onLoaded(Scene&) ниже
      * - Ключи JSON — именованные константы в .cpp компонента
      *   (правило про вшитые строки)
+     * 
+     * Контракт onLoaded (восстановление контекстных связей):
+     * - Scene::load вызывает onLoaded(*this) у КАЖДОГО созданного
+     *   компонента ПОСЛЕ того, как все компоненты всех сущностей
+     *   загружены (двухфазная загрузка: load() -> onLoaded())
+     * - Реализация по умолчанию — no-op: переопределяют только
+     *   компоненты с контекстом (TransformComponent восстанавливает
+     *   Scene*, AnimatorComponent перепривязывает аниматор модели,
+     *   SkinnedMeshComponent перезагружает модель через RM по пути)
+     * - ПОРЯДОК: onLoaded вызывается по возрастанию ComponentType
+     *   (порядок registerComponentType). Компонент, чей onLoaded
+     *   зависит от onLoaded другого компонента (AnimatorComponent
+     *   зависит от SkinnedMeshComponent), обязан регистрироваться
+     *   ПОСЛЕ источника зависимости
      * 
      * Контракт имени типа:
      * - Каждый конкретный компонент ОБЯЗАН объявить статическое имя
      *   типа: `static constexpr const char* componentTypeName = "...";`
      * - Имя — стабильная идентичность типа внутри Scene: по нему тип
-     *   регистрируется (scene.registerComponentType<T>) и ищется всеми
-     *   шаблонными методами сцены; в будущем — пишется в save/load
+     *   регистрируется (scene.registerComponentType<T>), ищется всеми
+     *   шаблонными методами сцены и пишется в save/load
      * - Имена уникальны в рамках процесса по конвенции (префикс модуля:
      *   "beng.Transform", "gravelands.Mob"); коллизия имени при
      *   регистрации в одной Scene — fatal error
@@ -56,6 +77,8 @@ namespace beng
      *       bool verify() const __blib_override { ... }
      *       // сериализуемый компонент дополнительно:
      *       //   save(IOutputStream&) const / load(IInputStream&)
+     *       // компонент с контекстом дополнительно:
+     *       //   void onLoaded(Scene& scene) __blib_override { ... }
      *
      *       // ... данные компонента
      *   };
@@ -74,6 +97,23 @@ namespace beng
         virtual ~IComponent() = default;
 
         /**
+         * INTERNAL: Вторая фаза загрузки сцены — восстановление
+         * контекстных связей после того, как все компоненты созданы
+         * и загружены (вызывается Scene::load).
+         *
+         * @param scene Сцена, в которую загружен компонент
+         *
+         * Реализация по умолчанию — no-op. См. контракт onLoaded в
+         * комментарии к классу (порядок вызовов, зависимости).
+         */
+        virtual void onLoaded(_In Scene& scene)
+        {
+            // По умолчанию контекст не восстанавливается (no-op).
+            // Параметр намеренно не используется.
+            (void)scene;
+        }
+
+        /**
          * Получить EntityID владельца компонента.
          * 
          * @return EntityID владельца или invalidEntity, если не установлен
@@ -90,6 +130,18 @@ namespace beng
         void setOwnerId(EntityID id) { ownerId = id; }
 
         bool isActive;
+    protected:
+        /**
+         * Сравнение базовых полей компонента (ownerId + isActive).
+         * Помощник для реализаций strongCompare: вызывается после
+         * session.enter() конкретным компонентом
+         * (например, `return strongCompareBase(o) && ...`).
+         */
+        bool strongCompareBase(_In const IComponent& other) const
+        {
+            return ownerId == other.ownerId && isActive == other.isActive;
+        }
+
     private:
         // EntityID владельца компонента (invalidEntity пока не привязан)
         EntityID ownerId;

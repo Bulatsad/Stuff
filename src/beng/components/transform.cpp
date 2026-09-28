@@ -387,7 +387,7 @@ namespace beng
         scale.pushBack(blib::core::json::JsonValue(localScale.z));
 
         // Иерархия: parent + children (EntityID, ownerId не пишется —
-        // владение восстанавливает Scene::load в будущем)
+        // владение восстанавливает Scene::load при создании компонента)
         doc.set(keyParent, blib::core::json::JsonValue(parent));
         blib::core::json::JsonValue& childrenArr =
             doc.set(keyChildren, blib::core::json::JsonValue::makeArray());
@@ -570,6 +570,15 @@ namespace beng
         // Round-trip без RTTI: save -> свежий standalone-объект ->
         // load -> strongCompare (см. blib::core::verifyRoundTrip)
         return blib::core::verifyRoundTrip(*this);
+    }
+
+    void TransformComponent::onLoaded(_In Scene& scene)
+    {
+        // Вторая фаза Scene::load: компонент создавался default-ctor'ом
+        // (ownerScene == nullptr) — привязать к сцене, в которую он
+        // загружен (нужно для иерархии: мировая матрица тянет родителя
+        // через scene.tryGetComponent)
+        ownerScene = &scene;
     }
 
 } // namespace beng

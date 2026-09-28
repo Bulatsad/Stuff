@@ -5,6 +5,8 @@
 #include <blib/system/memory/globalAllocator.h>
 #include <blib/core/console/console.h>
 
+#include <type_traits>
+
 namespace beng
 {
     template<typename T>
@@ -155,6 +157,16 @@ namespace beng
     template<typename T>
     void Scene::removeComponent(EntityID entityId)
     {
+        // ИНВАРИАНТ: TransformComponent с сущности снять нельзя —
+        // сущность без Transform существовать не может (создаётся
+        // автоматически в createEntity, см. scene.cpp)
+        if constexpr (std::is_same<T, TransformComponent>::value)
+        {
+            __blib_fatal("TransformComponent cannot be removed from Entity %llu "
+                "(scene invariant: every entity must have a Transform)",
+                static_cast<unsigned long long>(entityId));
+        }
+
         // Проверить существует ли Entity
         if (entityLookup.find(entityId) == entityLookup.end())
         {
@@ -237,8 +249,42 @@ namespace beng
             static_cast<ComponentPool<T>*>(ptr)->destroy(entityId);
         };
 
+        // Фабрика пула: Scene::load создаёт пул типа по требованию
+        // (тип пришёл из файла), Scene::verify — копирует реестр.
+        // Лямбды не захватывают состояние — их можно копировать между
+        // сценами (copyComponentTypeRegistryFrom)
+        componentPoolFactories[typeId] = [](buint32 poolChunkSize) -> void* {
+            void* poolMem = blib::memory::GlobalAllocator::instance().allocate(sizeof(ComponentPool<T>));
+            if (poolMem == nullptr)
+            {
+                return nullptr;
+            }
+            return new (poolMem) ComponentPool<T>(poolChunkSize);
+        };
+        componentPoolChunkSizes[typeId] = chunkSize;
+
+        // Создание компонента (default-ctor + ownerId) — Scene::load.
+        // Только для default-конструируемых типов: без default-ctor
+        // компонент невозможно восстановить из файла (creator = nullptr,
+        // Scene::load вернёт InvalidData для такого типа)
+        if constexpr (std::is_default_constructible<T>::value)
+        {
+            componentPoolCreators[typeId] = [](void* ptr, EntityID entityId) -> IComponent* {
+                return static_cast<ComponentPool<T>*>(ptr)->create(entityId);
+            };
+        }
+        else
+        {
+            componentPoolCreators[typeId] = nullptr;
+        }
+
+        // Получение компонента — Scene::save/strongCompare/onLoaded
+        componentPoolGetters[typeId] = [](void* ptr, EntityID entityId) -> IComponent* {
+            return static_cast<ComponentPool<T>*>(ptr)->get(entityId);
+        };
+
         // Записать имя в таблицу типов (горячий путь резолва) и в
-        // словарь (проверка регистрации + будущий load по имени)
+        // словарь (проверка регистрации + резолв имён в Scene::load)
         typeNames.push_back(name);
         typeIdByName.emplace(std::move(key), typeId);
 
