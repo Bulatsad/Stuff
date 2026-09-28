@@ -30,7 +30,7 @@ namespace beng
 
         InspectorPanel::InspectorPanel()
             : scene(nullptr)
-            , hierarchyPanel(nullptr)
+            , selectionSource(nullptr)
         {
         }
 
@@ -39,9 +39,9 @@ namespace beng
             this->scene = scene;
         }
 
-        void InspectorPanel::setHierarchyPanel(_In_opt const SceneHierarchyPanel* panel)
+        void InspectorPanel::setSelectionSource(_In_opt const EntityID* selectedEntity)
         {
-            this->hierarchyPanel = panel;
+            this->selectionSource = selectedEntity;
         }
 
         void InspectorPanel::drawField(_In const IComponentField* field, _In IComponent& component)
@@ -78,6 +78,21 @@ namespace beng
                     }
                     break;
                 }
+                case FieldValue::Kind::Entity:
+                {
+                    // EntityID — безразмерный u64; шаг спиннера отключён
+                    // (nullptr) — ввод только с клавиатуры. Валидацию
+                    // значения выполняет поле (например, setParent
+                    // отклоняет циклы — warning + no-op)
+                    ImU64 entityId = static_cast<ImU64>(value.entityValue);
+                    changed = ImGui::InputScalar(
+                        field->getName(), ImGuiDataType_U64, &entityId, nullptr, nullptr);
+                    if (changed)
+                    {
+                        value.entityValue = static_cast<EntityID>(entityId);
+                    }
+                    break;
+                }
                 default:
                     // Неизвестный тип значения — показываем только имя
                     // (редактирование не предусмотрено)
@@ -103,11 +118,10 @@ namespace beng
                 return;
             }
 
-            // Источник выбора — панель иерархии (связка панелей: выбор
-            // живёт в SceneHierarchyPanel, пока нет selection-сервиса
-            // каркаса)
+            // Источник выбора — хранилище каркаса (selection эдитора:
+            // пишет SceneHierarchyPanel, см. EditorApplication)
             const EntityID selectedEntity =
-                (this->hierarchyPanel != nullptr) ? this->hierarchyPanel->getSelectedEntity() : invalidEntity;
+                (this->selectionSource != nullptr) ? *this->selectionSource : invalidEntity;
 
             if (__blib_unlikely(selectedEntity == invalidEntity))
             {

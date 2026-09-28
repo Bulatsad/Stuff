@@ -224,8 +224,9 @@ beng-editor.exe (единственный эдитор, аналог UnrealEdito
 - **Inspector строит поля из дескрипторов рефлексии beng-core** — эдитор
   не знает типов игры. **Сделано (2026-09-28, первая версия):**
   `SceneHierarchyPanel` (сущности + компоненты + выбор) и `InspectorPanel`
-  (поля по рефлексии) в beng-editor-core, регистрирует плагин Gravelands
-  (LeftTop/Right); отражаются Transform (position/scale) и свет.
+  (поля по рефлексии) — каркасные панели beng-editor-core; selection —
+  сервис каркаса; gizmo (маркер-оси + drag-перемещение по G). Отражаются
+  Transform (position/scale/parent) и свет.
 - **Сцены сериализуются** в текстовый версионированный формат (JSON,
   `sceneSaveFormat.h`), типы ссылаются по стабильным именам из реестра —
   не `typeid`, не адрес.
@@ -326,10 +327,12 @@ src/
 4. **Геймплей-петля диаблоида**: бой, лут, скиллы (gravelands-common/server),
    UI (ImGui), звук.
 5. **beng-editor (единый эдитор)**: `EditorApplication` (каркас — **сделан**,
-   см. BENG.md; первый хост — model_viewer) + тонкий `beng-editor.exe`;
-   Inspector через рефлексию, докинг, selection/undo-redo; плагин игры
-   (этап 1 — статический линк через хук-интерфейс, этап 2 — DLL);
-   PIE (in-process хостинг, loopback TCP).
+   см. BENG.md; первый хост — model_viewer) + тонкий `beng-editor.exe` —
+   **сделан**; Inspector через рефлексию + Hierarchy + selection-сервис +
+   gizmo (маркер + drag-перемещение) — **сделано** (первая версия);
+   плагин игры (этап 1 — статический линк через фабрику, **сделан**;
+   этап 2 — DLL); докинг, полный gizmo-манипулятор, undo/redo, PIE
+   (in-process хостинг, loopback TCP).
 6. **Опционально**: UDP-канал, hot-reload плагина. *(3D-меши с изокамерой —
    сделано раньше плана: `MeshRenderComponent` + слои `RenderLayer`, единый
    ECS-рендер; контент-плейсхолдеры из obj_spider — опционально.)*

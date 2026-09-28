@@ -93,19 +93,23 @@ BLIB_TEST_CASE("reflection: TransformComponent descriptor fields")
         beng::TransformComponent::componentReflection();
 
     BLIB_TEST_CHECK(descriptor.getTypeName() == beng::TransformComponent::componentTypeName);
-    BLIB_TEST_CHECK(descriptor.getFieldCount() == 2);
+    BLIB_TEST_CHECK(descriptor.getFieldCount() == 3);
 
     const beng::IComponentField* positionField = descriptor.getField(0);
     const beng::IComponentField* scaleField = descriptor.getField(1);
+    const beng::IComponentField* parentField = descriptor.getField(2);
     BLIB_TEST_CHECK(positionField != nullptr);
     BLIB_TEST_CHECK(scaleField != nullptr);
+    BLIB_TEST_CHECK(parentField != nullptr);
     BLIB_TEST_CHECK(positionField->getName() == std::string("position"));
     BLIB_TEST_CHECK(scaleField->getName() == std::string("scale"));
+    BLIB_TEST_CHECK(parentField->getName() == std::string("parent"));
     BLIB_TEST_CHECK(positionField->getKind() == beng::FieldValue::Kind::Vector3);
     BLIB_TEST_CHECK(scaleField->getKind() == beng::FieldValue::Kind::Vector3);
+    BLIB_TEST_CHECK(parentField->getKind() == beng::FieldValue::Kind::Entity);
 
     // За границей — nullptr
-    BLIB_TEST_CHECK(descriptor.getField(2) == nullptr);
+    BLIB_TEST_CHECK(descriptor.getField(3) == nullptr);
 }
 
 BLIB_TEST_CASE("reflection: field get/set roundtrip via IComponentField")
@@ -160,6 +164,31 @@ BLIB_TEST_CASE("reflection: float field roundtrip via IComponentField")
     value.floatValue = 7.25f;
     speedField->setValue(component, value);
     BLIB_TEST_CHECK_CLOSE(component.getSpeed(), 7.25f, 0.001f);
+}
+
+BLIB_TEST_CASE("reflection: entity (parent) field roundtrip via IComponentField")
+{
+    beng::Scene scene;
+    beng::EntityID parent = scene.createEntity();
+    beng::EntityID child = scene.createEntity();
+
+    const beng::ComponentTypeDescriptor& descriptor =
+        beng::TransformComponent::componentReflection();
+    const beng::IComponentField* parentField = descriptor.getField(2);
+
+    // Чтение: родителя нет (invalidEntity)
+    beng::FieldValue value;
+    parentField->getValue(scene.getComponent<beng::TransformComponent>(child), value);
+    BLIB_TEST_CHECK(value.kind == beng::FieldValue::Kind::Entity);
+    BLIB_TEST_CHECK(value.entityValue == beng::invalidEntity);
+
+    // Запись: setParent (компонент в сцене — ownerScene валиден,
+    // иерархия обновляется)
+    value.entityValue = parent;
+    parentField->setValue(scene.getComponent<beng::TransformComponent>(child), value);
+
+    BLIB_TEST_CHECK(scene.getComponent<beng::TransformComponent>(child).getParent() == parent);
+    BLIB_TEST_CHECK(scene.getComponent<beng::TransformComponent>(parent).getChildren().size() == 1);
 }
 
 BLIB_TEST_CASE("reflection: scene stores descriptors per component type")

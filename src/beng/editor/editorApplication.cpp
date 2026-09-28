@@ -8,14 +8,18 @@
 #include <beng/client/components/skinnedMeshComponent.h>
 #include <beng/client/systems/animationSystem.h>
 #include <beng/client/systems/renderSystem.h>
+#include <beng/components/transform.h>
 #include <beng/core/scene.h>
 #include <beng/core/time.h>
 #include <beng/editor/panels/consolePanel.h>
+#include <beng/editor/panels/inspectorPanel.h>
+#include <beng/editor/panels/sceneHierarchyPanel.h>
 #include <beng/editor/panels/viewportPanel.h>
 #include <beng/systems/transformSystem.h>
 
 #include <blib/core/console/console.h>
 #include <blib/core/math/angle.h>
+#include <blib/core/math/utilfuncs.h>
 #include <blib/graphics/impl/win/winRenderWindowUtil.h>
 #include <blib/graphics/keyboard.h>
 #include <blib/graphics/orbitCamera.h>
@@ -95,6 +99,14 @@ namespace beng
             // Обёртка консоли: команда clear чистит вывод
             constexpr const char* clearCommandName = "clear";
             constexpr const char* clearCommandHelp = "clears the console output";
+
+            // Gizmo-манипулятор: масштаб экранных пикселей в мировые
+            // единицы на дистанции камеры (как панорама в ViewportPanel)
+            constexpr float gizmoPanScalePerPixel = 0.0015f;
+
+            // Клавиша-модификатор манипулятора: G + ЛКМ-драг двигает
+            // выбранную сущность (см. updateGizmoDrag)
+            constexpr blib::graphics::Keyboard::Key gizmoModifierKey = blib::graphics::Keyboard::Key::G;
         }
 
         // ---------------------------------------------------------------
@@ -124,6 +136,18 @@ namespace beng
             // Панели каркаса
             beng::editor::ViewportPanel viewportPanel;
             beng::editor::ConsolePanel consolePanel;
+
+            // Сценные панели эдитора (Hierarchy + Inspector через
+            // рефлексию — см. componentReflection.h). Регистрируются
+            // каркасом в зоны (если scenePanelsEnabled): единый эдитор
+            // правит сцену любой игры без панелей от хоста
+            beng::editor::SceneHierarchyPanel sceneHierarchyPanel;
+            beng::editor::InspectorPanel inspectorPanel;
+
+            // Выбранная сущность сцены (selection эдитора): пишет
+            // SceneHierarchyPanel, читают Inspector/gizmo хостов.
+            // Устаревший выбор сбрасывает панель иерархии
+            EntityID selectedEntity;
 
             // Панели хоста: регистрируются через registerPanel
             // (указатели — каркас панелями не владеет, см. IPanel)
@@ -160,6 +184,9 @@ namespace beng
                 , renderSystem()
                 , viewportPanel()
                 , consolePanel()
+                , sceneHierarchyPanel()
+                , inspectorPanel()
+                , selectedEntity(beng::invalidEntity)
                 , panelListAllocator()
                 , panels(blib::memory::StdAllocatorAdapter<RegisteredPanel>(&this->panelListAllocator))
                 , windowTitle(title)
@@ -204,6 +231,7 @@ namespace beng
 
         EditorApplication::EditorApplication()
             : impl(nullptr)
+            , scenePanelsEnabled(true)
         {
         }
 
@@ -262,6 +290,25 @@ namespace beng
             // Панели каркаса
             this->impl->viewportPanel.setRenderTarget(&this->impl->renderTarget);
             this->impl->viewportPanel.setCamera(&this->impl->camera);
+
+            // Сценные панели единого эдитора (Hierarchy + Inspector):
+            // каркас регистрирует их сам — они игра-агностичны (работают
+            // через рефлексию). Выбор живёт в каркасе (selectedEntity):
+            // Hierarchy пишет, Inspector читает, хост рисует gizmo по
+            // getSelectedEntity(). Инструменты со своими панелями в тех
+            // же зонах (вьювер) выключают их setScenePanelsEnabled(false)
+            if (this->scenePanelsEnabled)
+            {
+                this->impl->sceneHierarchyPanel.setScene(&this->impl->scene);
+                this->impl->sceneHierarchyPanel.setSelectionRef(&this->impl->selectedEntity);
+                this->impl->inspectorPanel.setScene(&this->impl->scene);
+                this->impl->inspectorPanel.setSelectionSource(&this->impl->selectedEntity);
+
+                this->impl->panels.push_back(EditorApplicationImpl::RegisteredPanel{
+                    &this->impl->sceneHierarchyPanel, PanelZone::LeftTop });
+                this->impl->panels.push_back(EditorApplicationImpl::RegisteredPanel{
+                    &this->impl->inspectorPanel, PanelZone::Right });
+            }
 
             // ImGui + WndProc-хук
             IMGUI_CHECKVERSION();
@@ -405,10 +452,22 @@ namespace beng
                 ImGui::SetNextWindowSize(ImVec2(windowW, topBarHeight), ImGuiCond_FirstUseEver);
                 this->onUi();
 
+                // Gizmo-манипулятор: при зажатой G и выбранной сущности
+                // вращение камеры отключается — ЛКМ-драг двигает сущность
+                // (updateGizmoDrag ниже)
+                const bool gizmoDragActive =
+                    this->impl->selectedEntity != invalidEntity &&
+                    blib::graphics::Keyboard::isKeyPressed(gizmoModifierKey);
+                this->impl->viewportPanel.setCameraRotationEnabled(!gizmoDragActive);
+
                 // Центр: вьюпорт
                 ImGui::SetNextWindowPos(ImVec2(leftPanelWidth, topBarHeight), ImGuiCond_FirstUseEver);
                 ImGui::SetNextWindowSize(ImVec2(windowW - leftPanelWidth - rightPanelWidth, windowH - topBarHeight), ImGuiCond_FirstUseEver);
                 this->impl->viewportPanel.draw();
+
+                // Перетаскивание выбранной сущности (G + ЛКМ-драг над
+                // вьюпортом) — после панели, пока io.MouseDelta свежий
+                this->updateGizmoDrag();
 
                 // Консоль поверх всего
                 if (this->impl->showConsole)
@@ -490,6 +549,85 @@ namespace beng
             }
 
             this->impl->panels.push_back(EditorApplicationImpl::RegisteredPanel{ panel, zone });
+        }
+
+        bool EditorApplication::setScenePanelsEnabled(bool enabled)
+        {
+            // Флаг применяется при инициализации: после initialize()
+            // сценные панели уже зарегистрированы в раскладку
+            if (__blib_unlikely(this->impl != nullptr))
+            {
+                __blib_log_warning("EditorApplication: setScenePanelsEnabled() must be called before initialize()");
+                return false;
+            }
+
+            this->scenePanelsEnabled = enabled;
+            return true;
+        }
+
+        EntityID EditorApplication::getSelectedEntity() const
+        {
+            return (this->impl != nullptr) ? this->impl->selectedEntity : invalidEntity;
+        }
+
+        void EditorApplication::selectEntity(EntityID entity)
+        {
+            if (__blib_unlikely(this->impl == nullptr))
+            {
+                return;
+            }
+            this->impl->selectedEntity = entity;
+        }
+
+        void EditorApplication::updateGizmoDrag()
+        {
+            const EntityID selected = this->impl->selectedEntity;
+            if (__blib_unlikely(selected == invalidEntity))
+            {
+                return;
+            }
+
+            // Манипулятор активен только: G зажата + ЛКМ зажата +
+            // курсор над вьюпортом (иначе — обычная камера)
+            if (!blib::graphics::Keyboard::isKeyPressed(gizmoModifierKey))
+            {
+                return;
+            }
+            if (!this->impl->viewportPanel.isCursorOverViewport())
+            {
+                return;
+            }
+
+            beng::TransformComponent* transform =
+                this->impl->scene.tryGetComponent<beng::TransformComponent>(selected);
+            if (__blib_unlikely(transform == nullptr))
+            {
+                return;
+            }
+
+            ImGuiIO& io = ImGui::GetIO();
+            if (!io.MouseDown[ImGuiMouseButton_Left])
+            {
+                return;
+            }
+
+            // Перемещение в горизонтальной плоскости взгляда камеры:
+            // экранный X → правый вектор камеры, экранный Y (вниз) →
+            // от камеры вдоль направления взгляда. Масштаб — как у
+            // панорамы (пропорционален дистанции)
+            blib::math::Vector<float, 3> lookDirection =
+                this->impl->camera.getTarget() - this->impl->camera.getPosition();
+            lookDirection.y = 0.0f;
+            lookDirection = blib::math::normalize(lookDirection);
+            const blib::math::Vector<float, 3> right = blib::math::normalize(
+                blib::math::cross(lookDirection, blib::math::Vector<float, 3>(0.0f, 1.0f, 0.0f)));
+
+            const float panScale = this->impl->camera.getDistance() * gizmoPanScalePerPixel;
+            const blib::math::Vector<float, 3> delta =
+                right * (io.MouseDelta.x * panScale) +
+                lookDirection * (-io.MouseDelta.y * panScale);
+
+            transform->setLocalPosition(transform->getLocalPosition() + delta);
         }
 
         void EditorApplication::resetCamera()

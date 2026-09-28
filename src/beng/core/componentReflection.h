@@ -30,7 +30,8 @@ namespace beng
             Float,      // floatValue
             Int,        // intValue
             Bool,       // boolValue
-            Vector3     // vector3Value
+            Vector3,    // vector3Value
+            Entity      // entityValue (EntityID)
         };
 
         Kind kind = Kind::Unset;
@@ -38,6 +39,7 @@ namespace beng
         bint32 intValue = 0;
         bool boolValue = false;
         blib::math::Vector<float, 3> vector3Value{};
+        EntityID entityValue = invalidEntity;
 
         // Фабрики (для заполнения из геттеров полей)
         static FieldValue fromFloat(bfloat value)
@@ -69,6 +71,14 @@ namespace beng
             FieldValue v;
             v.kind = Kind::Vector3;
             v.vector3Value = value;
+            return v;
+        }
+
+        static FieldValue fromEntity(EntityID value)
+        {
+            FieldValue v;
+            v.kind = Kind::Entity;
+            v.entityValue = value;
             return v;
         }
     };

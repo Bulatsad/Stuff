@@ -2,18 +2,22 @@
 #include <gravelands/common/config.h>
 #include <gravelands/world/world.h>
 
+#include <beng/components/transform.h>
 #include <beng/core/scene.h>
-#include <beng/editor/panels/inspectorPanel.h>
-#include <beng/editor/panels/sceneHierarchyPanel.h>
 
 #include <blib/core/console/console.h>
+#include <blib/graphics/color.h>
 #include <blib/graphics/keyboard.h>
+#include <blib/graphics/lineRenderer.h>
+#include <blib/graphics/rendertarget.h>
 #include <blib/graphics/shader.h>
 #include <blib/system/memory/globalAllocator.h>
 
 #include <imgui/imgui.h>
 
 #include <new>
+
+#include <gl/GL.h>
 
 namespace gravelands
 {
@@ -34,29 +38,43 @@ namespace gravelands
 
         // Флаги верхней полосы: без изменения размера
         constexpr ImGuiWindowFlags topBarFlags = ImGuiWindowFlags_NoResize;
+
+        // Gizmo выбранной сущности: длина осей (мир. ед.) и цвета
+        // осей X/Y/Z (красный/зелёный/синий)
+        constexpr float gizmoAxisLength = 25.0f;
+        constexpr buint8 gizmoAxisXColorR = 255;
+        constexpr buint8 gizmoAxisXColorG = 90;
+        constexpr buint8 gizmoAxisXColorB = 90;
+        constexpr buint8 gizmoAxisYColorR = 90;
+        constexpr buint8 gizmoAxisYColorG = 255;
+        constexpr buint8 gizmoAxisYColorB = 90;
+        constexpr buint8 gizmoAxisZColorR = 90;
+        constexpr buint8 gizmoAxisZColorG = 90;
+        constexpr buint8 gizmoAxisZColorB = 255;
+        constexpr buint8 gizmoAxisAlpha = 255;
     }
 
-    // Внутренности хоста: мир Gravelands + панели эдитора. Каркас
-    // (окно, FBO, камера, ImGui, сцена эдитора) живёт в базовом
-    // EditorApplication. Полное определение скрыто в .cpp (pimpl) —
-    // заголовок не тянет графические типы в потребителей.
+    // Внутренности хоста: мир Gravelands + gizmo выбора. Каркас
+    // (окно, FBO, камера, ImGui, сцена эдитора, сценные панели
+    // Hierarchy/Inspector) живёт в базовом EditorApplication. Полное
+    // определение скрыто в .cpp (pimpl) — заголовок не тянет
+    // графические типы в потребителей.
     struct GravelandsEditorHost::GravelandsEditorHostImpl
     {
+        // Gizmo выбранной сущности (оси в мировых координатах).
+        // LineRenderer не освобождает GL-ресурсы; живёт до гашения
+        // каркаса (impl разрушается в shutdown() раньше GL-контекста)
+        blib::graphics::LineRenderer selectionGizmo;
+
         // Мир: привязывается к сцене каркаса (та же сцена, что правит
         // клиент — см. GRAVELANDS.md). Разрушается в shutdown() хоста
         // ДО каркасного shutdown — меши освобождают GL-ресурсы при
         // живом контексте
         gravelands::World world;
 
-        // Панели эдитора: иерархия сущностей сцены + инспектор полей
-        // (рефлексия). Регистрируются в зоны каркаса в onInitialize
-        beng::editor::SceneHierarchyPanel sceneHierarchyPanel;
-        beng::editor::InspectorPanel inspectorPanel;
-
         GravelandsEditorHostImpl()
-            : world()
-            , sceneHierarchyPanel()
-            , inspectorPanel()
+            : selectionGizmo()
+            , world()
         {
         }
     };
@@ -81,15 +99,10 @@ namespace gravelands
         this->impl->world.setupWorld();
         this->impl->world.loadDancerModel();
 
-        // Панели эдитора: Hierarchy (сущности сцены) слева сверху,
-        // Inspector (поля через рефлексию) справа. Inspector берёт
-        // выбор из Hierarchy (связка панелей)
-        this->impl->sceneHierarchyPanel.setScene(&scene);
-        this->impl->inspectorPanel.setScene(&scene);
-        this->impl->inspectorPanel.setHierarchyPanel(&this->impl->sceneHierarchyPanel);
-
-        this->registerPanel(&this->impl->sceneHierarchyPanel, beng::editor::PanelZone::LeftTop);
-        this->registerPanel(&this->impl->inspectorPanel, beng::editor::PanelZone::Right);
+        // Сценные панели (Scene Hierarchy + Inspector через рефлексию)
+        // регистрирует САМ каркас — хост их не создаёт (см.
+        // EditorApplication::initialize). Selection — в каркасе:
+        // gizmo читает getSelectedEntity()
     }
 
     void GravelandsEditorHost::onInput()
@@ -106,6 +119,66 @@ namespace gravelands
         // Отладочное управление светом (стрелки/[ ]/PageUp/PageDown):
         // мир крутит компоненты света своей сцены до отрисовки
         this->impl->world.updateLight(deltaTime);
+    }
+
+    void GravelandsEditorHost::onSceneDidUpdate(float deltaTime)
+    {
+        (void)deltaTime;
+
+        // Gizmo выбранной сущности — в тот же FBO вьюпорта, поверх
+        // отрисованной сцены
+        this->drawSelectionGizmo();
+    }
+
+    void GravelandsEditorHost::drawSelectionGizmo()
+    {
+        // Выбор живёт в каркасе (пишет Scene Hierarchy, см.
+        // EditorApplication::getSelectedEntity)
+        const beng::EntityID selected = this->getSelectedEntity();
+        if (__blib_unlikely(selected == beng::invalidEntity))
+        {
+            return;
+        }
+
+        // Выбор жив (Hierarchy сбрасывает протухший); мировая позиция —
+        // начало осей (без поворота: маркер в мировых осях)
+        beng::TransformComponent* transform =
+            this->getScene().tryGetComponent<beng::TransformComponent>(selected);
+        if (__blib_unlikely(transform == nullptr))
+        {
+            return;
+        }
+
+        const blib::math::Vector<float, 3> origin = transform->getWorldPosition();
+
+        const blib::graphics::Color axisXColor(
+            gizmoAxisXColorR, gizmoAxisXColorG, gizmoAxisXColorB, gizmoAxisAlpha);
+        const blib::graphics::Color axisYColor(
+            gizmoAxisYColorR, gizmoAxisYColorG, gizmoAxisYColorB, gizmoAxisAlpha);
+        const blib::graphics::Color axisZColor(
+            gizmoAxisZColorR, gizmoAxisZColorG, gizmoAxisZColorB, gizmoAxisAlpha);
+
+        blib::graphics::LineRenderer& gizmo = this->impl->selectionGizmo;
+        gizmo.clear();
+        gizmo.addLine(
+            origin,
+            origin + blib::math::Vector<float, 3>(gizmoAxisLength, 0.0f, 0.0f),
+            axisXColor);
+        gizmo.addLine(
+            origin,
+            origin + blib::math::Vector<float, 3>(0.0f, gizmoAxisLength, 0.0f),
+            axisYColor);
+        gizmo.addLine(
+            origin,
+            origin + blib::math::Vector<float, 3>(0.0f, 0.0f, gizmoAxisLength),
+            axisZColor);
+
+        // Оси рисуем поверх мешей (X-ray): выключаем тест глубины на
+        // время отрисовки и возвращаем его обратно (паттерн вьювера)
+        blib::graphics::IRenderTarget& renderTarget = this->getRenderTarget();
+        renderTarget.rc.api.ogl.__blib_glDisable(GL_DEPTH_TEST);
+        renderTarget.draw(gizmo);
+        renderTarget.rc.api.ogl.__blib_glEnable(GL_DEPTH_TEST);
     }
 
     void GravelandsEditorHost::onUi()

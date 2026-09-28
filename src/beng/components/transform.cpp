@@ -593,6 +593,7 @@ namespace beng
     {
         constexpr const char* reflectionFieldPosition = "position";
         constexpr const char* reflectionFieldScale = "scale";
+        constexpr const char* reflectionFieldParent = "parent";
 
         const FunctionField s_positionField(
             reflectionFieldPosition, FieldValue::Kind::Vector3,
@@ -618,9 +619,24 @@ namespace beng
                 static_cast<TransformComponent&>(component).setLocalScale(value.vector3Value);
             });
 
+        const FunctionField s_parentField(
+            reflectionFieldParent, FieldValue::Kind::Entity,
+            [](_In const IComponent& component, _Out FieldValue& outValue)
+            {
+                outValue = FieldValue::fromEntity(
+                    static_cast<const TransformComponent&>(component).getParent());
+            },
+            [](_In IComponent& component, _In const FieldValue& value)
+            {
+                // setParent сам валидирует (циклы/несуществующий родитель —
+                // warning + no-op, см. transform.h)
+                static_cast<TransformComponent&>(component).setParent(value.entityValue);
+            });
+
         const IComponentField* const s_transformFields[] = {
             &s_positionField,
-            &s_scaleField
+            &s_scaleField,
+            &s_parentField
         };
 
         constexpr buint32 s_transformFieldCount =

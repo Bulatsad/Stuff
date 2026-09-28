@@ -17,23 +17,28 @@ namespace beng
          * Назначение:
          * - Показывает список сущностей сцены (EntityID) с вложенным
          *   списком их компонентов (по стабильным именам типов);
-         * - Клик по сущности выбирает её (getSelectedEntity() — источник
-         *   выбора для InspectorPanel и будущего gizmo);
+         * - Клик по сущности выбирает её — источник выбора эдитора
+         *   (selection живёт в каркасе EditorApplication: панель пишет
+         *   в его поле через setSelectionRef);
          * - Работает type-erased (Scene::getEntityId/hasComponent) —
          *   не знает конкретных типов компонентов (см. ARCHITECTURE.md,
          *   «Эдитор»).
          *
-         * Данные: не владеет сценой — указатель выставляется вызывающим
-         * (setScene); при сбросе сцены выбор сбрасывается. Устаревший
-         * выбор (сущность удалена/сцена перезагружена) сбрасывается в
-         * draw() по живому Transform (инвариант сцены: у любой сущности
-         * есть Transform — typeId 0).
+         * Данные: не владеет сценой и выбором — указатели выставляются
+         * вызывающим (setScene/setSelectionRef); nullptr = заглушка/
+         * локальный фолбэк. Устаревший выбор (сущность удалена/сцена
+         * перезагружена) сбрасывается в draw() по живому Transform
+         * (инвариант сцены: у любой сущности есть Transform — typeId 0).
          */
         class __beng_api SceneHierarchyPanel : public beng::editor::IPanel
         {
         private:
             Scene* scene;
-            EntityID selectedEntity;
+            // Хранилище выбора (поле каркаса; панель НЕ владеет).
+            // nullptr — панель хранит выбор локально (автономный режим)
+            EntityID* selectionRef;
+            // Локальный фолбэк выбора (без selectionRef)
+            EntityID localSelection;
 
         public:
             SceneHierarchyPanel();
@@ -45,9 +50,17 @@ namespace beng
             void setScene(_In_opt Scene* scene);
 
             /**
-             * Выбранная сущность (invalidEntity — ничего не выбрано).
+             * Привязать хранилище выбора (поле selectedEntity каркаса):
+             * клик пишет туда, подсветка читает оттуда. nullptr —
+             * автономный режим (локальный выбор панели).
              */
-            EntityID getSelectedEntity() const { return this->selectedEntity; }
+            void setSelectionRef(_In_opt EntityID* ref);
+
+            /**
+             * Выбранная сущность (invalidEntity — ничего не выбрано).
+             * Эффективный выбор: selectionRef ?? локальный.
+             */
+            EntityID getSelectedEntity() const;
 
             void draw() __blib_override;
             const char* getName() const __blib_override { return "Scene Hierarchy"; }

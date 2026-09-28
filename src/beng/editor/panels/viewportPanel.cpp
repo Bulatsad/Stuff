@@ -25,6 +25,8 @@ namespace beng
             , panning(false)
             , lastViewportWidth(0.0f)
             , lastViewportHeight(0.0f)
+            , cursorOverViewport(false)
+            , cameraRotationEnabled(true)
         {
         }
 
@@ -71,8 +73,11 @@ namespace beng
 
             // ЛКМ-драг (начатый на изображении) — вращение вокруг цели.
             // Экранная ось Y растёт вниз, поэтому вертикальный угол
-            // инвертирован: движение мыши вверх (dy < 0) поднимает камеру
-            if (this->rotating && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+            // инвертирован: движение мыши вверх (dy < 0) поднимает камеру.
+            // В gizmo-режиме (зажата G, есть выбор) вращение отключено —
+            // драг двигает выбранную сущность (см. EditorApplication)
+            if (this->cameraRotationEnabled &&
+                this->rotating && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
             {
                 this->camera->rotate(
                     io.MouseDelta.x * rotateSensitivityDegreesPerPixel,
@@ -177,7 +182,8 @@ namespace beng
             }
 
             // Ввод камеры — только пока курсор над изображением
-            if (ImGui::IsItemHovered())
+            this->cursorOverViewport = ImGui::IsItemHovered();
+            if (this->cursorOverViewport)
             {
                 this->handleCameraInput();
             }

@@ -13,28 +13,29 @@ namespace beng
 
     namespace editor
     {
-        class SceneHierarchyPanel;
-
         /**
          * InspectorPanel — инспектор выбранной сущности эдитора.
          *
          * Назначение:
-         * - Показывает компоненты выбранной сущности (источник выбора —
-         *   SceneHierarchyPanel) и их поля через РЕФЛЕКСИЮ
-         *   (ComponentTypeDescriptor из сцены) — эдитор не знает
-         *   конкретных типов компонентов (см. ARCHITECTURE.md, «Эдитор»);
+         * - Показывает компоненты выбранной сущности и их поля через
+         *   РЕФЛЕКСИЮ (ComponentTypeDescriptor из сцены) — эдитор не
+         *   знает конкретных типов компонентов (см. ARCHITECTURE.md,
+         *   «Эдитор»);
          * - Поля рисуются по FieldValue::Kind (числа, флаги, вектора);
          *   изменение применяется полем (IComponentField::setValue);
          * - Компоненты без рефлексии показываются только по имени типа.
          *
-         * Данные: не владеет ни сценой, ни панелью иерархии — указатели
-         * выставляются вызывающим; оба nullptr = заглушка.
+         * Данные: не владеет ни сценой, ни выбором — указатели
+         * выставляются вызывающим; nullptr = заглушка. Выбор читается
+         * из хранилища каркаса (selection эдитора): панель — читатель.
          */
         class __beng_api InspectorPanel : public beng::editor::IPanel
         {
         private:
             Scene* scene;
-            const SceneHierarchyPanel* hierarchyPanel;
+            // Источник выбора (поле selectedEntity каркаса; панель НЕ
+            // владеет). nullptr — выбора нет (заглушка)
+            const EntityID* selectionSource;
 
             // Отрисовка одного поля выбранного компонента (по kind)
             void drawField(_In const IComponentField* field, _In IComponent& component);
@@ -49,10 +50,10 @@ namespace beng
             void setScene(_In_opt Scene* scene);
 
             /**
-             * Привязать панель иерархии — источник выбора сущности
-             * (nullptr — выбора нет).
+             * Привязать источник выбора сущности — поле selection
+             * каркаса (nullptr — выбора нет).
              */
-            void setHierarchyPanel(_In_opt const SceneHierarchyPanel* panel);
+            void setSelectionSource(_In_opt const EntityID* selectedEntity);
 
             void draw() __blib_override;
             const char* getName() const __blib_override { return "Inspector"; }

@@ -79,9 +79,9 @@ namespace beng
          * статический дескриптор полей для Inspector/эдитора —
          * см. componentReflection.h. Определение — в transform.cpp.
          *
-         * Поля: position, scale (локальный TRS; вращение — кватернион,
-         * правка рефлексией не предусмотрена — специализированный
-         * контрол позже).
+         * Поля: position, scale, parent (локальный TRS + иерархия;
+         * вращение — кватернион, правка рефлексией не предусмотрена —
+         * специализированный контрол позже).
          */
         static const ComponentTypeDescriptor& componentReflection();
 

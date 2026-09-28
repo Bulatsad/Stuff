@@ -253,6 +253,12 @@ namespace modelviewer
     {
         auto& globalAllocator = blib::memory::GlobalAllocator::instance();
 
+        // Сценные панели каркаса (Scene Hierarchy/Inspector) вьюверу
+        // не нужны: его собственные панели занимают те же зоны
+        // (LeftTop — кости, LeftBottom — опции, Right — анимации).
+        // Отключаем ДО инициализации каркаса
+        this->setScenePanelsEnabled(false);
+
         // Аллокация через GlobalAllocator + placement new (проектное
         // правило: выделяющие new/delete запрещены). impl вьювера
         // создаётся ДО каркаса: onInitialize() внутри каркасного

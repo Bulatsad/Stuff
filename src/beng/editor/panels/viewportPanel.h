@@ -51,6 +51,15 @@ namespace beng
             float lastViewportWidth;
             float lastViewportHeight;
 
+            // Курсор над изображением вьюпорта в последнем кадре
+            // (обратная связь для gizmo-манипулятора каркаса)
+            bool cursorOverViewport;
+
+            // Разрешено ли вращение камеры ЛКМ-драгом. Выключается
+            // каркасом в gizmo-режиме (зажата G, есть выбор): ЛКМ-драг
+            // двигает выбранную сущность, а не камеру
+            bool cameraRotationEnabled;
+
             // Обработка мышиного ввода камеры
             void handleCameraInput();
 
@@ -70,6 +79,19 @@ namespace beng
              */
             float getLastViewportWidth() const;
             float getLastViewportHeight() const;
+
+            /**
+             * Курсор находился над изображением вьюпорта в последнем
+             * кадре? (для gizmo-манипулятора каркаса)
+             */
+            bool isCursorOverViewport() const { return this->cursorOverViewport; }
+
+            /**
+             * Разрешить/запретить вращение камеры ЛКМ-драгом.
+             * В gizmo-режиме (зажата G, есть выбор) каркас отключает
+             * вращение: драг двигает выбранную сущность.
+             */
+            void setCameraRotationEnabled(bool enabled) { this->cameraRotationEnabled = enabled; }
 
             void draw() override;
             const char* getName() const override { return "Viewport"; }

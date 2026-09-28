@@ -28,6 +28,10 @@ namespace gravelands
         struct GravelandsEditorHostImpl;
         GravelandsEditorHostImpl* impl;
 
+        // Отрисовка gizmo-осей выбранной сущности во вьюпорте (в FBO,
+        // после сцены — см. onSceneDidUpdate)
+        void drawSelectionGizmo();
+
     protected:
         // Хуки EditorApplication (см. editorApplication.h):
         // регистрация мира/команд/панелей, дебаг-клавиши, правка
@@ -35,6 +39,7 @@ namespace gravelands
         void onInitialize(_In beng::Scene& scene) __blib_override;
         void onInput() __blib_override;
         void onSceneWillUpdate(float deltaTime) __blib_override;
+        void onSceneDidUpdate(float deltaTime) __blib_override;
         void onUi() __blib_override;
 
     public:

@@ -29,7 +29,8 @@ namespace beng
 
         SceneHierarchyPanel::SceneHierarchyPanel()
             : scene(nullptr)
-            , selectedEntity(invalidEntity)
+            , selectionRef(nullptr)
+            , localSelection(invalidEntity)
         {
         }
 
@@ -37,7 +38,21 @@ namespace beng
         {
             this->scene = scene;
             // Сцена сменилась — выбор из старой сцены невалиден
-            this->selectedEntity = invalidEntity;
+            this->localSelection = invalidEntity;
+            if (this->selectionRef != nullptr)
+            {
+                *this->selectionRef = invalidEntity;
+            }
+        }
+
+        void SceneHierarchyPanel::setSelectionRef(_In_opt EntityID* ref)
+        {
+            this->selectionRef = ref;
+        }
+
+        EntityID SceneHierarchyPanel::getSelectedEntity() const
+        {
+            return (this->selectionRef != nullptr) ? *this->selectionRef : this->localSelection;
         }
 
         void SceneHierarchyPanel::draw()
@@ -53,10 +68,15 @@ namespace beng
 
             // Выбор протух (сущность удалена/сцена перезагружена) —
             // сбросить: у живой сущности всегда есть Transform (typeId 0)
-            if (this->selectedEntity != invalidEntity &&
-                this->scene->tryGetComponent(this->selectedEntity, transformTypeId) == nullptr)
+            const EntityID currentSelection = this->getSelectedEntity();
+            if (currentSelection != invalidEntity &&
+                this->scene->tryGetComponent(currentSelection, transformTypeId) == nullptr)
             {
-                this->selectedEntity = invalidEntity;
+                if (this->selectionRef != nullptr)
+                {
+                    *this->selectionRef = invalidEntity;
+                }
+                this->localSelection = invalidEntity;
             }
 
             // Плоский список сущностей (иерархия Transform — позже):
@@ -70,7 +90,7 @@ namespace beng
                     continue;
                 }
 
-                const bool isSelected = (id == this->selectedEntity);
+                const bool isSelected = (id == this->getSelectedEntity());
 
                 // ID ImGui: EntityID (buint64) сужается до ImGuiID —
                 // ID сцен последовательны и в жизни процесса не
@@ -88,7 +108,16 @@ namespace beng
                     static_cast<unsigned long long>(id));
                 if (ImGui::IsItemClicked())
                 {
-                    this->selectedEntity = id;
+                    // Источник выбора эдитора: пишем в хранилище
+                    // каркаса (или локально в автономном режиме)
+                    if (this->selectionRef != nullptr)
+                    {
+                        *this->selectionRef = id;
+                    }
+                    else
+                    {
+                        this->localSelection = id;
+                    }
                 }
 
                 if (nodeOpen)
