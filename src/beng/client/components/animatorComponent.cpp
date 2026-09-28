@@ -1,4 +1,6 @@
 #include <beng/client/components/animatorComponent.h>
+#include <beng/client/components/skinnedMeshComponent.h>
+#include <beng/core/scene.h>
 
 #include <blib/core/json/json.h>
 #include <blib/core/verifyHelper.h>
@@ -11,11 +13,17 @@ namespace beng
         constexpr const char* keyLoop = "loop";
         constexpr const char* keyPoseDirty = "poseDirty";
         constexpr const char* keyIsActive = "isActive";
+        constexpr const char* keyClipName = "clipName";
+        constexpr const char* keyTimeMs = "timeMs";
+        constexpr const char* keyPlaying = "playing";
     }
     AnimatorComponent::AnimatorComponent()
         : animator(nullptr)
         , loop(true)
         , poseDirty(false)
+        , currentClipName()
+        , currentTimeMs(0.0)
+        , playing(false)
     {
     }
 
@@ -146,8 +154,29 @@ namespace beng
     {
         blib::core::json::JsonValue doc = blib::core::json::JsonValue::makeObject();
 
+        // Snapshot плейбека с ЖИВОГО аниматора (контекст): имя текущего
+        // клипа ("" если клип не выбран/не привязан), время и флаг
+        // воспроизведения. Пишется прямо в поток — члены компонента
+        // не меняются (const-контракт save)
+        const char* clipName = "";
+        double timeMs = 0.0;
+        bool playingNow = false;
+        if (this->animator != nullptr)
+        {
+            const blib::graphics::AnimationClip* clip = this->animator->getCurrentAnimation();
+            if (clip != nullptr)
+            {
+                clipName = clip->name.c_str();
+            }
+            timeMs = this->animator->getCurrentTimeMs();
+            playingNow = this->animator->playing();
+        }
+
         doc.set(keyLoop, blib::core::json::JsonValue(loop));
         doc.set(keyPoseDirty, blib::core::json::JsonValue(poseDirty));
+        doc.set(keyClipName, blib::core::json::JsonValue(clipName));
+        doc.set(keyTimeMs, blib::core::json::JsonValue(static_cast<bdouble>(timeMs)));
+        doc.set(keyPlaying, blib::core::json::JsonValue(playingNow));
         doc.set(keyIsActive, blib::core::json::JsonValue(isActive));
 
         if (__blib_unlikely(doc.writeTo(os) != blib::core::json::JsonError::None))
@@ -172,7 +201,10 @@ namespace beng
         if (__blib_unlikely(!doc.isObject()) ||
             __blib_unlikely(!doc.has(keyLoop) || !doc.get(keyLoop).isBool()) ||
             __blib_unlikely(!doc.has(keyPoseDirty) || !doc.get(keyPoseDirty).isBool()) ||
-            __blib_unlikely(!doc.has(keyIsActive) || !doc.get(keyIsActive).isBool()))
+            __blib_unlikely(!doc.has(keyIsActive) || !doc.get(keyIsActive).isBool()) ||
+            __blib_unlikely(!doc.has(keyClipName) || !doc.get(keyClipName).isString()) ||
+            __blib_unlikely(!doc.has(keyTimeMs) || !doc.get(keyTimeMs).isNumber()) ||
+            __blib_unlikely(!doc.has(keyPlaying) || !doc.get(keyPlaying).isBool()))
         {
             __blib_return_error(blib::core::LoadStatus::InvalidData,
                 "AnimatorComponent: missing or malformed field");
@@ -181,7 +213,12 @@ namespace beng
         loop = doc.get(keyLoop).asBool();
         poseDirty = doc.get(keyPoseDirty).asBool();
         isActive = doc.get(keyIsActive).asBool();
-        // animator — контекст, не восстанавливается
+        // animator — контекст, не восстанавливается; плейбек кладём в
+        // члены-«отложенное состояние» — его применит onLoaded после
+        // перепривязки аниматора модели
+        currentClipName.assign(doc.get(keyClipName).asString().c_str());
+        currentTimeMs = doc.get(keyTimeMs).asBdouble();
+        playing = doc.get(keyPlaying).asBool();
 
         return blib::core::LoadStatus::None;
     }
@@ -199,11 +236,41 @@ namespace beng
 
         // Базовые поля + собственные данные. animator — контекст:
         // сравнение по null-состоянию (привязан / не привязан)
-        return getOwnerId() == o.getOwnerId() &&
-            isActive == o.isActive &&
-            loop == o.loop &&
-            poseDirty == o.poseDirty &&
-            ((animator == nullptr) == (o.animator == nullptr));
+        if (getOwnerId() != o.getOwnerId() ||
+            isActive != o.isActive ||
+            loop != o.loop ||
+            poseDirty != o.poseDirty ||
+            ((animator == nullptr) != (o.animator == nullptr)))
+        {
+            return false;
+        }
+
+        // Оба аниматора привязаны — строго сравниваем ЖИВОЙ плейбек
+        // (клип/время/play): round-trip сцены обязан восстановить
+        // состояние один в один (см. onLoaded)
+        if (animator != nullptr)
+        {
+            const blib::graphics::AnimationClip* clipA = animator->getCurrentAnimation();
+            const blib::graphics::AnimationClip* clipB = o.animator->getCurrentAnimation();
+            if ((clipA == nullptr) != (clipB == nullptr))
+            {
+                return false;
+            }
+            if (clipA != nullptr && clipA->name != clipB->name)
+            {
+                return false;
+            }
+            if (animator->getCurrentTimeMs() != o.animator->getCurrentTimeMs())
+            {
+                return false;
+            }
+            if (animator->playing() != o.animator->playing())
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     bool AnimatorComponent::verify() const
@@ -212,6 +279,40 @@ namespace beng
         // У компонента с привязанным аниматором честно вернёт false:
         // standalone-копия аниматора не восстанавливает
         return blib::core::verifyRoundTrip(*this);
+    }
+
+    void AnimatorComponent::onLoaded(_In Scene& scene)
+    {
+        // Вторая фаза Scene::load: перепривязать аниматор к модели
+        // SkinnedMeshComponent той же сущности (у SkinnedMeshComponent
+        // onLoaded уже отработал — кеш ресурсов сцены восстановил
+        // разделяемую модель; тип регистрируется после beng.SkinnedMesh)
+        SkinnedMeshComponent* meshComp =
+            scene.tryGetComponent<SkinnedMeshComponent>(getOwnerId());
+        blib::graphics::SkinModel* model = (meshComp != nullptr) ? meshComp->getModel() : nullptr;
+        this->animator = (model != nullptr) ? &model->getAnimator() : nullptr;
+
+        // Восстановление плейбека (отложенное состояние из load()):
+        // выбор клипа сбрасывает время и применяет loop → cycled
+        // (selectAnimation), затем время и play/pause — состояние
+        // воспроизводится один в один с сохранённым
+        if (this->animator == nullptr)
+        {
+            return;
+        }
+        if (!this->currentClipName.empty())
+        {
+            this->selectAnimation(this->currentClipName);
+        }
+        this->setTime(this->currentTimeMs);
+        if (this->playing)
+        {
+            this->play();
+        }
+        else
+        {
+            this->pause();
+        }
     }
 
 } // namespace beng

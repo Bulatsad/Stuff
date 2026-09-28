@@ -332,3 +332,89 @@ BLIB_TEST_CASE("ResourceManager: unloadAll очищает кеш, RM приго�
 
 	BLIB_TEST_CHECK(TestAsset::g_liveCount == 0);
 }
+
+BLIB_TEST_CASE("ResourceManager: reCommit обновляет dedup-индекс после мутации слота")
+{
+	{
+		blib::resource::ResourceManager rm;
+
+		blib::resource::ResourceRef first = rm.construct<TestAsset>("a");
+		first.get<TestAsset>()->value = 1;
+		first = rm.commit(first);
+
+		// Мутация слота ПОСЛЕ commit: дайджест устарел
+		first.get<TestAsset>()->value = 2;
+		first = rm.reCommit(first);
+
+		// Новое содержимое (2) зарегистрировано в индексе — второй
+		// ключ с тем же содержимым обязан разделить слот
+		blib::resource::ResourceRef second = rm.construct<TestAsset>("b");
+		second.get<TestAsset>()->value = 2;
+		second = rm.commit(second);
+
+		BLIB_TEST_CHECK(!first.isEmpty());
+		BLIB_TEST_CHECK(first.get<TestAsset>() == second.get<TestAsset>());
+		BLIB_TEST_CHECK(TestAsset::g_liveCount == 1);
+	}
+
+	BLIB_TEST_CHECK(TestAsset::g_liveCount == 0);
+}
+
+BLIB_TEST_CASE("ResourceManager: reCommit снимает устаревшую запись dedup-индекса")
+{
+	{
+		blib::resource::ResourceManager rm;
+
+		blib::resource::ResourceRef first = rm.construct<TestAsset>("a");
+		first.get<TestAsset>()->value = 1;
+		first = rm.commit(first);
+
+		first.get<TestAsset>()->value = 2;
+		first = rm.reCommit(first);
+
+		// Старое содержимое (1) больше ни за кем не зарегистрировано:
+		// новый слот с value == 1 не должен разделиться с first
+		blib::resource::ResourceRef second = rm.construct<TestAsset>("b");
+		second.get<TestAsset>()->value = 1;
+		second = rm.commit(second);
+
+		BLIB_TEST_CHECK(first.get<TestAsset>() != second.get<TestAsset>());
+		BLIB_TEST_CHECK(first.get<TestAsset>()->value == 2);
+		BLIB_TEST_CHECK(second.get<TestAsset>()->value == 1);
+		BLIB_TEST_CHECK(TestAsset::g_liveCount == 2);
+	}
+
+	BLIB_TEST_CHECK(TestAsset::g_liveCount == 0);
+}
+
+BLIB_TEST_CASE("ResourceManager: гибель слота-дубликата не рушит регистрацию канонического слота")
+{
+	{
+		blib::resource::ResourceManager rm;
+
+		blib::resource::ResourceRef first = rm.construct<TestAsset>("a");
+		first.get<TestAsset>()->value = 3;
+		first = rm.commit(first);
+
+		// Дубликат: ключ b перемапливается на слот a, свежий слот b
+		// умирает при переприсваивании ref'а (destroyEntry)
+		blib::resource::ResourceRef second = rm.construct<TestAsset>("b");
+		second.get<TestAsset>()->value = 3;
+		second = rm.commit(second);
+		BLIB_TEST_CHECK(second.get<TestAsset>() == first.get<TestAsset>());
+		BLIB_TEST_CHECK(TestAsset::g_liveCount == 1);
+
+		// Третий ключ с тем же содержимым обязан снова найти
+		// канонический слот: его запись в byData пережила гибель
+		// слота-дубликата (destroyEntry снимает регистрацию только
+		// если она указывает на уничтожаемый слот)
+		blib::resource::ResourceRef third = rm.construct<TestAsset>("c");
+		third.get<TestAsset>()->value = 3;
+		third = rm.commit(third);
+
+		BLIB_TEST_CHECK(third.get<TestAsset>() == first.get<TestAsset>());
+		BLIB_TEST_CHECK(TestAsset::g_liveCount == 1);
+	}
+
+	BLIB_TEST_CHECK(TestAsset::g_liveCount == 0);
+}

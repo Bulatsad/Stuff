@@ -32,6 +32,15 @@ namespace beng
         bool loop;
         bool poseDirty;
 
+        // Плейбек-состояние, восстановленное load() и применяемое к
+        // аниматору в onLoaded (аниматор в load() ещё не привязан —
+        // он живёт внутри модели SkinnedMeshComponent той же сущности).
+        // Сериализуемые поля компонента; save() пишет их из ЖИВОГО
+        // аниматора (snapshot), strongCompare сравнивает живой плейбек
+        std::string currentClipName;
+        double currentTimeMs;
+        bool playing;
+
     public:
         // Стабильное имя типа — идентичность типа в таблице типов Scene
         // (регистрация, резолв в шаблонных методах, save/load)
@@ -95,13 +104,16 @@ namespace beng
 
         // ========== ISaveLoadable: сериализация и сравнение ==========
         //
-        // Формат save: JSON-объект с собственными полями компонента
-        // (loop, poseDirty, isActive). Указатель animator — контекст:
-        // не сериализуется, сравнивается по null-состоянию (в сцене
-        // verify() = false — строгая модель). Состояние самого Animator
-        // (клип/время/play) принадлежит ассету SkinModel и не
-        // сериализуется — TODO: восстановление после появления
-        // Scene::load/onLoaded.
+        // Формат save: JSON-объект {loop, poseDirty, isActive, clipName,
+        // timeMs, playing}. Плейбек (клип/время/play) — сериализуемое
+        // состояние компонента: save() снимает snapshot с ЖИВОГО
+        // аниматора ("" при отсутствии текущего клипа), load()
+        // кладёт его в члены-«отложенное состояние», onLoaded применяет
+        // к перепривязанному аниматору модели. Указатель animator —
+        // контекст: не сериализуется, сравнивается по null-состоянию;
+        // при обоих привязанных strongCompare сравнивает ЖИВОЙ плейбек
+        // (имя клипа, время, playing) бит-в-бит — round-trip сцены
+        // воспроизводит состояние один в один.
 
         /**
          * Сохранить состояние компонента в поток (JSON-объект).
@@ -115,7 +127,8 @@ namespace beng
 
         /**
          * Строгое сравнение: базовые поля + loop/poseDirty + animator
-         * по null-состоянию.
+         * по null-состоянию; при обоих привязанных — живой плейбек
+         * (клип/время/playing) бит-в-бит.
          */
         bool strongCompare(_In const blib::core::IStrongComparable& other,
             _In blib::core::CompareSession& session) const __blib_override;
@@ -124,6 +137,16 @@ namespace beng
          * Round-trip валидация (verifyRoundTrip).
          */
         bool verify() const __blib_override;
+
+        /**
+         * Вторая фаза загрузки сцены: перепривязать аниматор к модели
+         * SkinnedMeshComponent той же сущности и восстановить плейбек
+         * (клип → время → play/pause) из load()-состояния. Вызывается
+         * Scene::load после onLoaded всех компонентов с меньшим
+         * ComponentType — тип обязан регистрироваться ПОСЛЕ
+         * beng.SkinnedMesh (см. IComponent::onLoaded).
+         */
+        void onLoaded(_In Scene& scene) __blib_override;
     };
 
 } // namespace beng

@@ -81,7 +81,7 @@
 
 ### Свет (NPR, фаза 4)
 
-- `light.h`: `DirectionalLight {direction, color, intensity}` + `AmbientLight {color, intensity}` — цвета линейные [0,1], в шейдер уходит `color * intensity`. Живут в `RenderContext` (дефолты — мягкий тёплый свет + холодный эмбиент), отправка — `sendLightsToShaderProgram()` (`gLightDir/gLightColor/gAmbientColor`).
+- `light.h`: `DirectionalLight {direction, color, intensity}` + `AmbientLight {color, intensity}` — цвета линейные [0,1], в шейдер уходит `color * intensity`. Живут в `RenderContext` (дефолты — мягкий тёплый свет + холодный эмбиент), отправка — `sendLightsToShaderProgram()` (`gLightDir/gLightColor/gAmbientColor`). **Ведомый сценой режим:** в beng-client свет описывается компонентами (`DirectionalLightComponent`/`AmbientLightComponent`), `LightSystem` копирует их в rc каждый кадр — см. BENG.md «beng-client».
 - `ICamera::getPosition()` — чистый виртуальный (rim-light/туман); `sendCameraPositionToShaderProgram()` шлёт `gCameraPosition`.
 - **sRGB-решение:** рендер линейный, гамма 2.2 — в пост-пассе (`gGammaOutput` в PostProcess), см. ниже.
 

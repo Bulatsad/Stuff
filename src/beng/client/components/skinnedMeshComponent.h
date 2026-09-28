@@ -6,6 +6,7 @@
 #include <beng/config.h>
 #include <beng/core/icomponent.h>
 
+#include <blib/core/json/json.h>
 #include <blib/core/resource/resourceManager.h>
 #include <blib/graphics/skinmodel.h>
 
@@ -33,9 +34,10 @@ namespace beng
      * getModel() возвращает АКТИВНУЮ модель (ref ?? owned).
      *
      * Сериализуемое состояние (ISaveLoadable):
-     * - ПОЛНОЕ содержимое активной модели: save() пишет {model:
-     *   <SkinModel JSON> | null, isActive}; load() восстанавливает
-     *   содержимое в активную модель (ref-слот или owned-фолбэк).
+     * - save() пишет {path: <ключ RM | "">, model: <SkinModel JSON> |
+     *   null, isActive}; load() восстанавливает содержимое модели
+     *   (owned-фолбэк) и путь; onLoaded(Scene&) при непустом пути
+     *   перезагружает модель через RM сцены (разделение/dedup)
      * - GL-состояние модели не сериализуемо (перезапечётся в draw);
      *   Bone::node (aiNode*) — контекст Assimp, после восстановления
      *   nullptr (рантайм на нём не зависит)
@@ -50,12 +52,41 @@ namespace beng
     class __beng_api SkinnedMeshComponent : public beng::IComponent
     {
     private:
+        // Пересчитать дайджест общего слота после мутации его
+        // содержимого (reCommit в modelRm): иначе dedup-индекс кеша
+        // перестаёт отражать содержимое. No-op в owned-режиме (нет
+        // RM), при пустом ref и при неудачном пересчёте
+        void reCommitSharedModel();
+
         // Owned-фолбэк (standalone/verify): аллоцируется через
         // GlobalAllocator при загрузке БЕЗ ResourceManager
         blib::graphics::SkinModel* model;
 
         // Активный режим: ref на слот кеша ресурсов сцены
         blib::resource::ResourceRef modelRef;
+
+        // Путь, из которого загружена текущая модель (ключ кеша RM).
+        // Сериализуется: Scene::load восстанавливает его, а onLoaded
+        // перезагружает модель через scene.getResources() — разделение
+        // модели между сущностями возвращается. Пуст при модели,
+        // восстановленной из встроенного содержимого без пути
+        // (standalone/verify), и при выгруженной модели
+        std::string modelPath;
+
+        // RM, из которого взят modelRef (nullptr в owned/standalone-
+        // режиме). Нужен reCommit: после мутации общего слота (onLoaded
+        // применяет встроенное содержимое, loadSkinFromFile и т.д.)
+        // дайджест слота пересчитывается — иначе dedup-индекс кеша
+        // перестаёт отражать содержимое
+        blib::resource::ResourceManager* modelRm;
+
+        // «Отложенное» встроенное содержимое модели (глубокая копия
+        // узла model из load()). onLoaded после RM-перезагрузки
+        // применяет его к слоту кеша — модель становится бит-в-бит
+        // равна сохранённой (материалы/клипы/плейбек не теряются при
+        // перезагрузке из файла). В strongCompare не участвует
+        // (внутренний буфер); Null при модели null в файле
+        blib::core::json::JsonValue embeddedModel;
 
     public:
         // Стабильное имя типа — идентичность типа в таблице типов Scene
@@ -130,9 +161,10 @@ namespace beng
 
         // ========== ISaveLoadable: сериализация и сравнение ==========
         //
-        // Формат save: JSON-объект {model: <SkinModel JSON> | null,
-        // isActive}. load() восстанавливает содержимое модели целиком
-        // (аллоцирует SkinModel при отсутствии). verify():
+        // Формат save: JSON-объект {path: <ключ RM | "">, model:
+        // <SkinModel JSON> | null, isActive}. load() восстанавливает
+        // содержимое модели целиком (аллоцирует SkinModel при
+        // отсутствии) и путь; путь пуст при модели null. verify():
         // standalone-roundtrip содержимого (GL-состояние не входит в
         // сериализуемое состояние).
 
@@ -157,6 +189,23 @@ namespace beng
          * Round-trip валидация (verifyRoundTrip).
          */
         bool verify() const __blib_override;
+
+        /**
+         * Вторая фаза загрузки сцены: если модель была загружена из
+         * файла (modelPath непуст) — перезагрузить её через кеш
+         * ресурсов сцены: слот разделяется между сущностями (dedup),
+         * owned-копия выгружается. После успешной RM-перезагрузки к
+         * слоту применяется ВСТРОЕННОЕ сохранённое содержимое
+         * (embeddedModel) — модель бит-в-бит равна сохранённой
+         * (материалы, клипы, плейбек), затем reCommit обновляет
+         * дайджест слота (см. modelRm). При неудаче RM (файл
+         * недоступен) остаётся встроенное содержимое, восстановленное
+         * load().
+         *
+         * ВАЖНО: регистрировать тип ПОСЛЕ всех компонентов, чей
+         * onLoaded от него зависит (см. IComponent::onLoaded).
+         */
+        void onLoaded(_In Scene& scene) __blib_override;
     };
 
 } // namespace beng

@@ -1,4 +1,5 @@
 #include <beng/client/components/skinnedMeshComponent.h>
+#include <beng/core/scene.h>
 
 #include <blib/core/console/console.h>
 #include <blib/core/json/json.h>
@@ -15,6 +16,7 @@ namespace beng
     {
         // Ключи JSON-объекта компонента (формат save/load); содержимое
         // модели сериализует blib::graphics::SkinModel (см. SkinModel::toJson)
+        constexpr const char* keyPath = "path";
         constexpr const char* keyModel = "model";
         constexpr const char* keyIsActive = "isActive";
 
@@ -70,6 +72,7 @@ namespace beng
 
     SkinnedMeshComponent::SkinnedMeshComponent()
         : model(nullptr)
+        , modelRm(nullptr)
     {
     }
 
@@ -99,17 +102,17 @@ namespace beng
             return false;
         }
 
+        this->modelPath = path;
         __blib_log_info("model loaded (standalone): %s", path.c_str());
         return true;
     }
 
     bool SkinnedMeshComponent::loadFromFile(_In const std::string& path, _In blib::resource::ResourceManager& rm)
     {
-        // Повторная загрузка: снимаем ref кеша и owned-модель
-        this->unload();
-
-        // Уже загруженный («опечатанный») слот — просто берём ref на
-        // общий слот: разделение модели между сущностями и dedup
+        // Уже загруженный («опечатанный») слот — берём ref на общий
+        // слот: разделение модели между сущностями и dedup. Работа с
+        // кешем идёт ДО выгрузки текущей модели: при неудаче (файл
+        // недоступен) предыдущее состояние остаётся нетронутым
         blib::resource::ResourceRef rf = rm.get(path);
         if (rf.isEmpty())
         {
@@ -127,9 +130,18 @@ namespace beng
             }
 
             rf = rm.commit(rf);
+            if (__blib_unlikely(rf.isEmpty()))
+            {
+                __blib_return_error(false, "failed to commit resource slot for '%s'", path.c_str());
+            }
         }
 
-        this->modelRef = rf; // копия ref'а: +1 к счётчику слота
+        // Успех: снять предыдущую модель (ref и/или owned-фолбэк) и
+        // взять ref на слот (копия: +1 к счётчику слота)
+        this->unload();
+        this->modelRef = rf;
+        this->modelPath = path;
+        this->modelRm = &rm;
         __blib_log_info("model loaded (shared): %s", path.c_str());
         return true;
     }
@@ -159,6 +171,10 @@ namespace beng
         {
             __blib_return_error(false, "failed to replace skin from '%s'", path.c_str());
         }
+
+        // Мутация общего слота (ref-режим) — пересчитать его дайджест
+        // в dedup-индексе кеша (см. reCommitSharedModel)
+        this->reCommitSharedModel();
 
         __blib_log_info("skin replaced: %s%s", path.c_str(), force ? " (forced)" : "");
         return true;
@@ -230,6 +246,10 @@ namespace beng
                 path.c_str(), unmatchedChannels);
         }
 
+        // Мутация общего слота (ref-режим) — пересчитать его дайджест
+        // в dedup-индексе кеша (см. reCommitSharedModel)
+        this->reCommitSharedModel();
+
         __blib_log_info("animations added: %s", path.c_str());
         return true;
     }
@@ -239,6 +259,8 @@ namespace beng
         // Снять ref кеша ресурсов: слот живёт, пока его держат другие
         // ключи/ref'ы (dedup-разделение)
         this->modelRef = blib::resource::ResourceRef();
+        this->modelPath.clear();
+        this->modelRm = nullptr;
 
         if (this->model)
         {
@@ -246,6 +268,18 @@ namespace beng
             this->model->~SkinModel();
             blib::memory::GlobalAllocator::instance().deallocate(this->model, sizeof(blib::graphics::SkinModel));
             this->model = nullptr;
+        }
+    }
+
+    void SkinnedMeshComponent::reCommitSharedModel()
+    {
+        // Мутация общего слота (embedded-контент в onLoaded, смена
+        // скина, добавление анимаций) устаревает его datahash —
+        // пересчитать дайджест и запись dedup-индекса. reCommit может
+        // вернуть ДРУГОЙ (канонический) слот — переприсваиваем ref
+        if (!this->modelRef.isEmpty() && this->modelRm != nullptr)
+        {
+            this->modelRef = this->modelRm->reCommit(this->modelRef);
         }
     }
 
@@ -265,15 +299,19 @@ namespace beng
     {
         blib::core::json::JsonValue doc = blib::core::json::JsonValue::makeObject();
 
-        // Полное содержимое АКТИВНОЙ модели или null («модель не
-        // загружена»)
+        // Активная модель
         const blib::graphics::SkinModel* pModel = this->getModel();
+
+        // Путь (ключ RM) пишется ТОЛЬКО при живой модели: выгруженная
+        // модель не должна «воскреснуть» из RM после load
         if (pModel)
         {
+            doc.set(keyPath, blib::core::json::JsonValue(this->modelPath.c_str()));
             doc.set(keyModel, pModel->toJson());
         }
         else
         {
+            doc.set(keyPath, blib::core::json::JsonValue(""));
             doc.set(keyModel, blib::core::json::JsonValue(nullptr));
         }
         doc.set(keyIsActive, blib::core::json::JsonValue(isActive));
@@ -299,6 +337,7 @@ namespace beng
         // Валидация полей компонента ДО применения (модель валидирует
         // SkinModel::fromJson — состояние при ошибке не меняется)
         if (__blib_unlikely(!doc.isObject()) ||
+            __blib_unlikely(!doc.has(keyPath) || !doc.get(keyPath).isString()) ||
             __blib_unlikely(!doc.has(keyModel)) ||
             __blib_unlikely(!doc.has(keyIsActive) || !doc.get(keyIsActive).isBool()))
         {
@@ -306,11 +345,18 @@ namespace beng
                 "SkinnedMeshComponent: missing or malformed field");
         }
 
+        // Путь читаем в локальную переменную: при модели null он
+        // отбрасывается (выгруженная модель не перезагружается из RM)
+        std::string loadedPath(doc.get(keyPath).asString().c_str());
+
         const blib::core::json::JsonValue& modelNode = doc.get(keyModel);
         if (modelNode.isNull())
         {
-            // «Модель не загружена» — выгрузить текущую
+            // «Модель не загружена» — выгрузить текущую (и путь);
+            // отложенное содержимое сбрасывается — onLoaded не будет
+            // ничего переприменять
             this->unload();
+            this->embeddedModel = blib::core::json::JsonValue(nullptr);
             isActive = doc.get(keyIsActive).asBool();
             return blib::core::LoadStatus::None;
         }
@@ -343,6 +389,16 @@ namespace beng
                 "SkinnedMeshComponent: malformed model data");
         }
 
+        // Глубокая копия узла — «отложенное» содержимое для onLoaded:
+        // после RM-перезагрузки оно переприменится к слоту кеша
+        // (бит-в-бит с сохранённым)
+        this->embeddedModel = modelNode;
+
+        // Восстановление в общий слот (ref-режим) мутирует его —
+        // пересчитать дайджест в dedup-индексе кеша
+        this->reCommitSharedModel();
+
+        this->modelPath = loadedPath;
         isActive = doc.get(keyIsActive).asBool();
 
         return blib::core::LoadStatus::None;
@@ -359,13 +415,18 @@ namespace beng
 
         const SkinnedMeshComponent& o = static_cast<const SkinnedMeshComponent&>(other);
 
-        // Базовые поля + АКТИВНАЯ модель: null-состояние должно
-        // совпадать, а при наличии моделей — полное сравнение
-        // содержимого (ref-слот и owned-фолбэк сравнимы между собой)
+        // Базовые поля + путь (сериализуемое состояние) + АКТИВНАЯ
+        // модель: null-состояние должно совпадать, а при наличии
+        // моделей — полное сравнение содержимого (ref-слот и
+        // owned-фолбэк сравнимы между собой)
         const blib::graphics::SkinModel* pModel = this->getModel();
         const blib::graphics::SkinModel* pOtherModel = o.getModel();
 
         if (getOwnerId() != o.getOwnerId() || isActive != o.isActive)
+        {
+            return false;
+        }
+        if (this->modelPath != o.modelPath)
         {
             return false;
         }
@@ -387,6 +448,42 @@ namespace beng
         // Валидируется сериализуемое состояние — CPU-содержимое
         // модели (GL-кэш в него не входит)
         return blib::core::verifyRoundTrip(*this);
+    }
+
+    void SkinnedMeshComponent::onLoaded(_In Scene& scene)
+    {
+        // Вторая фаза Scene::load: модель восстановлена во
+        // встроенное содержимое (owned-фолбэк). Если она загружалась
+        // из файла — перезагрузить через кеш ресурсов сцены: слот
+        // разделяется между сущностями (dedup), owned-копия
+        // выгружается. При неудаче (файл недоступен) loadFromFile
+        // оставляет предыдущее состояние — встроенное содержимое
+        // продолжает работать
+        if (!this->modelPath.empty())
+        {
+            this->loadFromFile(this->modelPath, scene.getResources());
+        }
+
+        // Перезагрузка из ФАЙЛА даёт «чистые» ассеты (материалы из
+        // FBX без рантайм-правок и т.п.) — встроенное сохранённое
+        // содержимое ПЕРЕПРИМЕНЯЕТСЯ к слоту кеша: модель бит-в-бит
+        // равна сохранённой. Общий слот мутируется — reCommit
+        // обновляет его дайджест в dedup-индексе
+        if (!this->embeddedModel.isNull())
+        {
+            blib::graphics::SkinModel* pModel = this->getModel();
+            if (pModel != nullptr)
+            {
+                if (pModel->fromJson(this->embeddedModel) == blib::core::LoadStatus::None)
+                {
+                    this->reCommitSharedModel();
+                }
+                else
+                {
+                    __blib_log_warning("SkinnedMeshComponent::onLoaded: failed to apply embedded model content");
+                }
+            }
+        }
     }
 
 } // namespace beng

@@ -92,6 +92,56 @@ namespace resource
 		return ResourceRef(entry);
 	}
 
+	ResourceRef ResourceManager::reCommit(_In_ const ResourceRef& rf)
+	{
+		ResourceEntry* entry = rf.entry;
+		if (entry == nullptr)
+		{
+			return ResourceRef();
+		}
+		if (!entry->committed)
+		{
+			// Не-«опечатанный» слот — обычный commit
+			return this->commit(rf);
+		}
+
+		// Свежий дайджест ВЫЧИСЛЯЕТСЯ ПЕРВЫМ: при неудаче старый
+		// индекс не трогаем (остаётся устаревшим, слот цел)
+		ResourceDigest newDigest = {};
+		if (!this->computeDigest(entry, newDigest))
+		{
+			__blib_log_warning("ResourceManager::reCommit: digest computation failed — dedup index stays stale");
+			return ResourceRef(entry);
+		}
+
+		// Снять СТАРУЮ запись индекса только если она указывает на этот
+		// слот: слот-дубликат в byData не регистрировался, а по его
+		// старому ключу может жить канонический слот (см. destroyEntry)
+		const ResourceDataKey oldKey{ entry->datahash, entry->typeName };
+		const auto oldIt = this->byData.find(oldKey);
+		if (oldIt != this->byData.end() && oldIt->second == entry)
+		{
+			this->byData.erase(oldIt);
+		}
+
+		entry->datahash = newDigest;
+
+		// Новое содержимое совпало с существующим каноническим слотом —
+		// перемапить ключ и отпустить этот слот (паттерн commit)
+		const ResourceDataKey newKey{ entry->datahash, entry->typeName };
+		const auto it = this->byData.find(newKey);
+		if (it != this->byData.end() && it->second != entry)
+		{
+			ResourceEntry* canonical = it->second;
+			this->remapEntryKey(entry, canonical);
+			__blib_log_warning("ResourceManager::reCommit: new content matches existing slot — sharing it");
+			return ResourceRef(canonical);
+		}
+
+		this->byData.emplace(newKey, entry);
+		return ResourceRef(entry);
+	}
+
 	bool ResourceManager::unload(_In_ const std::string& key)
 	{
 		ResourceKeyString storageKey(key.c_str(),
@@ -183,10 +233,16 @@ namespace resource
 	{
 		if (entry->committed)
 		{
-			// Слот мог не регистрироваться в byData (дубликат) — erase
-			// отсутствующего ключа безопасен
+			// Снять регистрацию индекса ТОЛЬКО если она указывает на
+			// этот слот: у слота-дубликата (remap при commit/reCommit)
+			// по дайджесту живёт КАНОНИЧЕСКИЙ слот — безусловный erase
+			// потерял бы его запись из dedup-индекса
 			const ResourceDataKey dataKey{ entry->datahash, entry->typeName };
-			this->byData.erase(dataKey);
+			const auto it = this->byData.find(dataKey);
+			if (it != this->byData.end() && it->second == entry)
+			{
+				this->byData.erase(it);
+			}
 		}
 
 		entry->~ResourceEntry(); // уничтожает erased-объект и его память
