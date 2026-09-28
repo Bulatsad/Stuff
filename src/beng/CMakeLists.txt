@@ -1,7 +1,8 @@
 #beng-core — Bulat Engine: переносимое ядро движка (ECS: Scene, Component,
 #System, Transform; Time). Ни графики, ни сети, ни звука.
 #Зависит только от blib-core (blib-system транзитивно).
-#Остальные таргеты движка (beng-client/beng-server/beng-editor) появятся позже.
+#beng-client/beng-editor собираются из корневого CMake (при blib-graphics),
+#beng-server появится позже.
 
 file (GLOB core_header_src "core/*.h" "core/impl/*.inl")
 file (GLOB core_impl_src "core/*.cpp")

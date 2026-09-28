@@ -260,3 +260,43 @@ BLIB_TEST_CASE("scene: isRegisteredComponentType guards against duplicate regist
 
     BLIB_TEST_CHECK(scene.getComponentPool<SceneTestComponentA>().size() == 1);
 }
+
+BLIB_TEST_CASE("scene: reset() clears entities but keeps type registry and systems")
+{
+    beng::Scene scene;
+    scene.registerComponentType<SceneTestComponentB>();
+
+    // Система: после reset() список систем сохраняется (Scene::reset
+    // не трогает systems — хост не должен перевешивать их заново)
+    std::vector<bint32> callLog;
+    RecordingSystem sys(5, &callLog);
+    scene.addSystem(&sys);
+
+    // Данные: сущность + компонент
+    beng::EntityID id = scene.createEntity();
+    scene.addComponent<SceneTestComponentB>(id, 2.0f);
+    BLIB_TEST_CHECK(scene.getEntityCount() == 1);
+    BLIB_TEST_CHECK(scene.tryGetComponent<SceneTestComponentB>(id) != nullptr);
+
+    scene.reset();
+
+    // Сцена пуста...
+    BLIB_TEST_CHECK(scene.getEntityCount() == 0);
+    BLIB_TEST_CHECK(scene.tryGetComponent<SceneTestComponentB>(id) == nullptr);
+
+    // ...но реестр типов жив (пере-регистрация не требуется)
+    BLIB_TEST_CHECK(scene.isRegisteredComponentType<SceneTestComponentB>());
+    BLIB_TEST_CHECK(scene.getComponentTypeCount() == 2); // Transform + B
+
+    // Системы живы и вызываются
+    BLIB_TEST_CHECK(scene.getSystemCount() == 1);
+    scene.update(0.016f);
+    BLIB_TEST_CHECK(callLog.size() == 1);
+
+    // Пулы пересозданы фабриками: добавление компонентов работает
+    beng::EntityID next = scene.createEntity();
+    BLIB_TEST_CHECK(next != beng::invalidEntity);
+    scene.addComponent<SceneTestComponentB>(next, 3.0f);
+    BLIB_TEST_CHECK(scene.tryGetComponent<SceneTestComponentB>(next) != nullptr);
+    BLIB_TEST_CHECK(scene.getEntityCount() == 1);
+}

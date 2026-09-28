@@ -128,4 +128,57 @@ namespace beng
         return blib::core::verifyRoundTrip(*this);
     }
 
+    // ========== Рефлексия (Inspector/эдитор) ==========
+    //
+    // Статические поля-дескрипторы: геттеры/сеттеры — лямбды без
+    // захвата через публичные API компонента. Дескриптор и поля
+    // живут всё время процесса; сцена хранит указатель на дескриптор
+    // (см. Scene::registerComponentType).
+
+    namespace
+    {
+        constexpr const char* reflectionFieldColor = "color";
+        constexpr const char* reflectionFieldIntensity = "intensity";
+
+        const FunctionField s_colorField(
+            reflectionFieldColor, FieldValue::Kind::Vector3,
+            [](_In const IComponent& component, _Out FieldValue& outValue)
+            {
+                outValue = FieldValue::fromVector3(
+                    static_cast<const AmbientLightComponent&>(component).getColor());
+            },
+            [](_In IComponent& component, _In const FieldValue& value)
+            {
+                static_cast<AmbientLightComponent&>(component).setColor(value.vector3Value);
+            });
+
+        const FunctionField s_intensityField(
+            reflectionFieldIntensity, FieldValue::Kind::Float,
+            [](_In const IComponent& component, _Out FieldValue& outValue)
+            {
+                outValue = FieldValue::fromFloat(
+                    static_cast<const AmbientLightComponent&>(component).getIntensity());
+            },
+            [](_In IComponent& component, _In const FieldValue& value)
+            {
+                static_cast<AmbientLightComponent&>(component).setIntensity(value.floatValue);
+            });
+
+        const IComponentField* const s_ambientLightFields[] = {
+            &s_colorField,
+            &s_intensityField
+        };
+
+        constexpr buint32 s_ambientLightFieldCount =
+            static_cast<buint32>(sizeof(s_ambientLightFields) / sizeof(s_ambientLightFields[0]));
+
+        const ComponentTypeDescriptor s_ambientLightReflection(
+            AmbientLightComponent::componentTypeName, s_ambientLightFields, s_ambientLightFieldCount);
+    }
+
+    const ComponentTypeDescriptor& AmbientLightComponent::componentReflection()
+    {
+        return s_ambientLightReflection;
+    }
+
 } // namespace beng

@@ -12,13 +12,13 @@
 # ============================================================
 
 # Список групп: имя группы == суффикс файла test<group>.cpp
-set(beng_test_groups registry componentPool scene entity transform time dialogWindow sceneSave)
+set(beng_test_groups registry componentPool scene entity transform time dialogWindow sceneSave reflection)
 
 # Дополнительные библиотеки групп (помимо обязательного beng-core).
 # dialogWindow рисует панель на ядре ImGui в headless-режиме
-# (без бэкенда/окна) — нужен beng-editor (PUBLIC тянет
+# (без бэкенда/окна) — нужен beng-editor-core (PUBLIC тянет
 # beng-client -> blib-graphics -> imgui)
-set(beng_test_group_libs_dialogWindow beng-editor)
+set(beng_test_group_libs_dialogWindow beng-editor-core)
 
 # Список standalone-исполняемых групп (заполняется в цикле ниже)
 set(beng_test_group_exes)
@@ -46,14 +46,14 @@ endforeach()
 
 # Агрегатный executable: все группы в одном процессе
 # (удобство — падение одной группы валит весь прогон).
-# Линкует все доп. библиотеки групп (сейчас — beng-editor для
+# Линкует все доп. библиотеки групп (сейчас — beng-editor-core для
 # dialogWindow)
 add_executable(beng_test_all)
 target_sources(beng_test_all PRIVATE $<TARGET_OBJECTS:blib_test_main>)
 foreach(group ${beng_test_groups})
 	target_sources(beng_test_all PRIVATE $<TARGET_OBJECTS:beng_test_${group}_obj>)
 endforeach()
-target_link_libraries(beng_test_all PRIVATE beng-core beng-editor)
+target_link_libraries(beng_test_all PRIVATE beng-core beng-editor-core)
 set_target_properties(beng_test_all PROPERTIES FOLDER "beng/tests")
 add_test(NAME beng_test_all COMMAND beng_test_all)
 

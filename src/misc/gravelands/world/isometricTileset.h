@@ -7,7 +7,7 @@
 namespace gravelands
 {
     /**
-     * IsometricTileset — билдер меша сетки тайлов.
+     * IsometricTileset — билдер меша сетки тайлов (часть мира Gravelands).
      * 
      * Назначение:
      * - Собирает меш сетки 10x10 квадратов на плоскости XZ одним

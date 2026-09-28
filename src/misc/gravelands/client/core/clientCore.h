@@ -4,19 +4,19 @@
 
 #include <blib/utilmacro.h>
 
-#include <string>
-#include <vector>
-
 namespace gravelands
 {
     /**
      * ClientCore — клиентское ядро Gravelands.
      * 
      * Назначение:
-     * - Владеет окном, рендер-таргетом, камерой и тайловым миром
-     * - Один кадр = ввод + обновление + отрисовка (переменный dt)
-     * - Рендерит через blib-graphics напрямую; рендер-ECS (beng-client)
-     *   придёт позже — см. ARCHITECTURE.md
+     * - Владеет окном, рендер-таргетом, изокамерой и презентацией
+     *   (пост-пасс, ImGui-оверлей, консоль);
+     * - Мир (ECS-сцена: тайлы, сфера, деревья, танцор, свет) живёт в
+     *   общем `gravelands::World` (gravelands-world) — тот же мир
+     *   правит эдитор (см. ARCHITECTURE.md, «Эдитор»);
+     * - Один кадр = ввод + обновление камеры/света + симуляция мира
+     *   + отрисовка (переменный dt);
      * 
      * Паттерн «lib + тонкий exe»: ClientCore даёт frame-API
      * (initialize/tick/shutdown) и НЕ владеет главным циклом —
@@ -36,8 +36,8 @@ namespace gravelands
         ClientCore& operator=(ClientCore&&) = delete;
 
         /**
-         * Инициализировать ядро: окно, рендер-таргет, камеру, тайлы.
-         * Вызывать один раз перед циклом.
+         * Инициализировать ядро: окно, рендер-таргет, камеру, мир
+         * (gravelands::World), ImGui. Вызывать один раз перед циклом.
          * 
          * @return true при успехе (пока всегда, зарезервировано под будущие сбои)
          */
@@ -48,39 +48,6 @@ namespace gravelands
          * Вызывается из цикла тонкого exe каждый кадр.
          */
         void tick();
-
-        /**
-         * Обновление изометрической камеры: WASD двигает цель по земле,
-         * Add/Subtract — зум. Вызывается из tick() каждый кадр.
-         */
-        void updateCamera(float deltaTime);
-
-        /**
-         * Отладочное управление светом (фаза 4): стрелки вращают
-         * источник, [ ] — интенсивность. Применяет состояние к
-         * renderTarget.rc.directionalLight. Вызывается из tick().
-         */
-        void updateLight(float deltaTime);
-
-        /**
-         * Полупрозрачный оверлей в углу: подсказка по клавишам
-         * и текущие параметры света (ImGui, без ввода). Из tick().
-         */
-        void drawOverlay();
-
-        /**
-         * Построение тестового мира сущностями (тайлы, сфера, деревья,
-         * тени): вся отрисовка — только через Scene (см. setupWorld).
-         * Из initialize().
-         */
-        void setupWorld();
-
-        /**
-         * Загрузка тестовой скелетной модели-«танцора» (фаза 9):
-         * ECS-сущность со SkinnedMeshComponent/AnimatorComponent,
-         * NPR-материалы, запуск анимации. Из initialize().
-         */
-        void loadDancerModel();
 
         /**
          * Корректно остановить ядро и освободить ресурсы.
@@ -94,27 +61,16 @@ namespace gravelands
 
     private:
         /**
-         * Пересоздать ECS-сцену на пустом месте (для scene_load):
-         * Scene::load работает только в пустую сцену, а Scene
-         * некопируема — старую разрушаем явно и конструируем свежую
-         * (placement new), заново регистрируем типы и системы.
-         * Ссылки impl на сущности мира сбрасываются (ID в файле
-         * могут не совпасть).
+         * Обновление изометрической камеры: WASD двигает цель по земле,
+         * Add/Subtract — зум. Вызывается из tick() каждый кадр.
          */
-        void resetScene();
+        void updateCamera(float deltaTime);
 
         /**
-         * Консольная команда scene_save: записать сцену в JSON-файл.
-         * args[0] — путь (необязателен; дефолт — sceneDefaultFilePath).
+         * Полупрозрачный оверлей в углу: подсказка по клавишам
+         * и текущие параметры света (ImGui, без ввода). Из tick().
          */
-        void saveSceneCommand(_In const std::vector<std::string>& args);
-
-        /**
-         * Консольная команда scene_load: загрузить сцену из JSON-файла
-         * (сцена пересоздаётся; при неудаче откат на дефолтный мир).
-         * args[0] — путь (необязателен; дефолт — sceneDefaultFilePath).
-         */
-        void loadSceneCommand(_In const std::vector<std::string>& args);
+        void drawOverlay();
 
     private:
         // Pimpl: скрывает графические объекты blib (окно/таргет/камера)

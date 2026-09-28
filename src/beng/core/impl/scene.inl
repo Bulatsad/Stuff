@@ -263,6 +263,15 @@ namespace beng
         };
         componentPoolChunkSizes[typeId] = chunkSize;
 
+        // Дескриптор рефлексии типа: если компонент предоставляет
+        // componentReflection() (трейт HasComponentReflection) — сцена
+        // хранит указатель на него (для Inspector/эдитора). Дескриптор —
+        // статический объект в .cpp компонента, живёт всё время процесса
+        if constexpr (HasComponentReflection<T>::value)
+        {
+            componentReflections[typeId] = &T::componentReflection();
+        }
+
         // Создание компонента (default-ctor + ownerId) — Scene::load.
         // Только для default-конструируемых типов: без default-ctor
         // компонент невозможно восстановить из файла (creator = nullptr,

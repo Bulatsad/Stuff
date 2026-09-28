@@ -1,4 +1,4 @@
-#include <gravelands/client/core/isometricTileset.h>
+#include <gravelands/world/isometricTileset.h>
 
 #include <blib/core/console/console.h>
 #include <blib/graphics/color.h>

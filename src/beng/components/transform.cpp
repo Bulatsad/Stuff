@@ -581,4 +581,58 @@ namespace beng
         ownerScene = &scene;
     }
 
+    // ========== Рефлексия (Inspector/эдитор) ==========
+    //
+    // Статические поля-дескрипторы: геттеры/сеттеры — лямбды без
+    // захвата через публичные API компонента (рефлексия не лезет в
+    // приватные члены). Дескриптор и поля живут всё время процесса
+    // (как componentTypeName-литерал); сцена хранит указатель на
+    // дескриптор (см. Scene::registerComponentType).
+
+    namespace
+    {
+        constexpr const char* reflectionFieldPosition = "position";
+        constexpr const char* reflectionFieldScale = "scale";
+
+        const FunctionField s_positionField(
+            reflectionFieldPosition, FieldValue::Kind::Vector3,
+            [](_In const IComponent& component, _Out FieldValue& outValue)
+            {
+                outValue = FieldValue::fromVector3(
+                    static_cast<const TransformComponent&>(component).getLocalPosition());
+            },
+            [](_In IComponent& component, _In const FieldValue& value)
+            {
+                static_cast<TransformComponent&>(component).setLocalPosition(value.vector3Value);
+            });
+
+        const FunctionField s_scaleField(
+            reflectionFieldScale, FieldValue::Kind::Vector3,
+            [](_In const IComponent& component, _Out FieldValue& outValue)
+            {
+                outValue = FieldValue::fromVector3(
+                    static_cast<const TransformComponent&>(component).getLocalScale());
+            },
+            [](_In IComponent& component, _In const FieldValue& value)
+            {
+                static_cast<TransformComponent&>(component).setLocalScale(value.vector3Value);
+            });
+
+        const IComponentField* const s_transformFields[] = {
+            &s_positionField,
+            &s_scaleField
+        };
+
+        constexpr buint32 s_transformFieldCount =
+            static_cast<buint32>(sizeof(s_transformFields) / sizeof(s_transformFields[0]));
+
+        const ComponentTypeDescriptor s_transformReflection(
+            TransformComponent::componentTypeName, s_transformFields, s_transformFieldCount);
+    }
+
+    const ComponentTypeDescriptor& TransformComponent::componentReflection()
+    {
+        return s_transformReflection;
+    }
+
 } // namespace beng

@@ -15,9 +15,11 @@
 |----------|------------|------------|
 | `blib`   | library    | Сервисы: math, graphics (OpenGL-обёртка), sound (WinMM), network (winsock), thread, algorithm (FFT), кеш ресурсов (ResourceManager). Кроссплатформенный по задумке |
 | `beng`   | library    | Bulat Engine: ECS-ядро (Scene, Entity, ComponentPool, System, TransformComponent). Целевые таргеты: beng-core / beng-client / beng-server / beng-editor (см. ARCHITECTURE.md) |
-| `model_viewer` | executable | 3D-вьювер: загрузка моделей через Assimp, скелетная анимация (.md5mesh), ImGui (Windows, поверх blib-graphics). Будущая основа 3D-ветки |
+| `model_viewer` | executable | 3D-инструмент (не эдитор): загрузка моделей через Assimp, скелетная анимация (.md5mesh), ImGui (Windows, поверх blib-graphics); первый хост каркаса `beng::editor::EditorApplication`. Будущая основа 3D-ветки |
 | `vochat` | executable | Voice chat: запись/воспроизведение звука, FFT, UDP/TCP стриминг (отдельный инструмент) |
 | `gravelands-common` | library | Gravelands: общие определения (константы; позже — компоненты, пакеты, формулы). Header-only, таргет INTERFACE |
+| `gravelands-world` | library | Gravelands: мир (`World`: ECS-сцена + контент + scene_save/load + дебаг-свет); рендер-таргет выдаёт хост. Общий для клиента и эдитора |
+| `gravelands-plugin` | library | Gravelands: игровая сторона единого эдитора (`GravelandsEditorHost` + фабрика); этап 1 — статический линк в `beng-editor.exe`, этап 2 — gravelands.dll |
 | `gravelands-client-core` + `gravelands-client` | library + exe | Gravelands: клиент (ClientCore, frame-API) + тонкий exe. Паттерн «lib + тонкий exe» |
 | `gravelands-server-core` + `gravelands-server` | library + exe | Gravelands: сервер (ServerCore: beng::Scene, фикс. тикрейт 30 Гц) + тонкий exe |
 | `test_ecs` | executable | Демо/Smoke-приложение ECS-ядра (beng/test_ecs, Scene + Transform-иерархия) |
@@ -101,7 +103,7 @@ ctest --test-dir ../build -C Debug
 - **blib — кроссплатформенный по задумке:** Windows реализован, Linux/macOS — заглушки, которые должны стать реализациями. beng зависит от blib напрямую.
 - **Паттерн «lib + тонкий exe»:** каждый исполняемый файл — тонкая обёртка (`main()`) над core-библиотекой. Core-lib даёт frame-API (`initialize`/`tick`/`shutdown`) и **не владеет** главным циклом.
 - **Сервер — всегда отдельный процесс** (одиночная игра = локальный сервер + loopback). In-process хостинг сервера допустим только внутри эдитора (PIE).
-- **Эдитор — плагин-модель:** один эдитор на все игры; игра подключается как DLL. Типы компонентов регистрируются только явно, на сцену, по стабильным именам (`scene.registerComponentType<T>()`, имя — `T::componentTypeName`; static-local ID и `typeid()` через границу DLL запрещены).
+- **Эдитор — плагин-модель:** один эдитор на все игры (единый `beng-editor.exe`); игра подключается как DLL. Типы компонентов регистрируются только явно, на сцену, по стабильным именам (`scene.registerComponentType<T>()`, имя — `T::componentTypeName`; static-local ID и `typeid()` через границу DLL запрещены).
 - **Game-слой именуется по игре:** Gravelands — таргеты `gravelands-*`, namespace `gravelands`, инклюды `<gravelands/...>` (корень `src/misc`). Таймстеп гибридный: сервер — фиксированные тики (аккумулятор, `serverFixedDelta`), клиент — переменный dt.
 
 ## Ключевые паттерны кода

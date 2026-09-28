@@ -2,6 +2,7 @@
 
 #include <beng/config.h>
 #include <beng/core/icomponent.h>
+#include <beng/core/componentReflection.h>
 
 #include <blib/core/math/vector.h>
 
@@ -42,6 +43,14 @@ namespace beng
 
         // Не прятать 1-аргументную точку входа строгого сравнения
         using blib::core::IStrongComparable::strongCompare;
+
+        /**
+         * Рефлексия компонента (контракт HasComponentReflection) —
+         * см. componentReflection.h. Определение — в .cpp.
+         *
+         * Поля: color (Vector3), intensity (Float).
+         */
+        static const ComponentTypeDescriptor& componentReflection();
 
         /**
          * Конструктор: дефолты как у RenderContext (приглушённый

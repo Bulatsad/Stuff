@@ -3,7 +3,7 @@
 > Слой: `beng`. Шпаргалка по устройству, инвариантам и граблям — чтобы не перечитывать исходники.
 > Не дублирует правила проекта (`AGENTS.md`) и roadmap (`ARCHITECTURE.md`) — только ссылается на них.
 > **Обновлять при любом изменении кода beng** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-27
+> Сверено: 2026-09-28
 
 ---
 
@@ -16,7 +16,8 @@
 |--------|--------|------------|
 | `beng-core` | реализован | ECS (`Scene`, `ComponentPool`, `ISystem`), `Transform`, `Time` |
 | `beng-client` | зачаток | `SkinnedMeshComponent`, `AnimatorComponent`, `AnimationSystem`, `RenderSystem` |
-| `beng-editor` | зачаток | панели ImGui на `IPanel` |
+| `beng-editor-core` | реализован | каркас эдитора: `EditorApplication` (окно/FBO/камера/ImGui/сцена + хуки хоста) + панели ImGui на `IPanel` |
+| `beng-editor` | реализован (скелет) | ЕДИНЫЙ exe эдитора на все игры: тонкая `main()` над `beng-editor-core`, пустая сцена + движковые типы (игра подключается плагином — см. ARCHITECTURE.md) |
 | `beng-server` | нет | headless-сервер (план — см. ARCHITECTURE.md) |
 
 - Зависимости: `beng-core` → `blib-core` (+ `blib-system` транзитивно), без графики; `beng-client`/`beng-editor` → `blib-graphics`.
@@ -35,6 +36,7 @@
 | Формат файла сохранения сцены (магия, версия, ключи) | `src/beng/core/sceneSaveFormat.h` |
 | Интерфейс системы, приоритеты | `src/beng/core/system.h` |
 | Лимиты и базовые типы ECS | `src/beng/config.h` |
+| Рефлексия компонентов (FieldValue/FunctionField/Descriptor) | `src/beng/core/componentReflection.h` |
 | Время кадра | `src/beng/core/time.h/.cpp` |
 | Transform + иерархия | `src/beng/components/transform.h/.cpp` |
 | TransformSystem | `src/beng/systems/transformSystem.h/.cpp` |
@@ -49,7 +51,10 @@
 | Отрисовка сцены | `src/beng/client/systems/renderSystem.h/.cpp` |
 | Контракт панели | `src/beng/editor/panels/iPanel.h` |
 | Панели: иерархия/анимации/вьюпорт/опции/консоль | `src/beng/editor/panels/*` |
-| Пример композиции приложения | `src/misc/model_viewer/core/viewerCore.cpp` |
+| Панели: иерархия сущностей сцены / Inspector полей | `src/beng/editor/panels/sceneHierarchyPanel.*`, `inspectorPanel.*` |
+| Каркас эдитора (окно, FBO, камера, ImGui, сцена, хуки) | `src/beng/editor/editorApplication.h/.cpp` |
+| Тонкий exe единого эдитора | `src/beng/editor/main/main.cpp` |
+| Пример композиции приложения | `src/misc/model_viewer/core/viewerCore.cpp` (инструмент), `src/misc/gravelands/plugin/gravelandsEditorHost.cpp` (плагин игры) |
 | Тесты | `src/beng/test/src/impl/test*.cpp` (фреймворк `blib::test`, `BUILD_TESTS=ON`) |
 | Интерфейсы сериализации/сравнения (blib-core) | `src/blib/core/{isaveable,iloadable,isaveloadable,icomparable,verifyHelper}.h` |
 | Демо ECS | `src/beng/test_ecs/` |
@@ -99,6 +104,15 @@
 - **Порядок жизни:** `Scene::clear()` (в деструкторе) уничтожает компоненты **до** деструктора кеша — ref'ы компонентов отпускаются раньше; внешние `ResourceRef`'ы обязаны умереть раньше сцены, иначе `~ResourceManager` фаталит (утечка ref'ов). В gravelands-клиенте сцена объявлена после окна/таргета — GL-контекст на момент уничтожения кеша жив (см. GRAPHICS.md «Владение GL»).
 - Грабли: `construct` идемпотентен по ключу (второй вызов игнорирует ctor-аргументы, warning + ref на существующий); после `commit` дубликат возвращает ref на канонический слот — паттерн `rf = rm.commit(rf)`.
 
+### Рефлексия компонентов (Inspector/эдитор)
+
+- **`componentReflection.h`** (beng-core, header-only) — рефлексия БЕЗ RTTI/typeid: `FieldValue` (type-erased значение: `Kind {Float, Int, Bool, Vector3}` + поля-члены), `IComponentField` (интерфейс поля: `getName/getKind/getValue/setValue`), `FunctionField` (поле = пара геттер/сеттер — лямбды без захвата из .cpp компонента через публичные API; рефлексия не лезет в приватные члены), `ComponentTypeDescriptor` (имя типа + массив полей, порядок = порядок в Inspector), трейт `HasComponentReflection<T>` (`T::componentReflection()` → `const ComponentTypeDescriptor&`).
+- **Дескрипторы живут как статические объекты** в .cpp компонентов (как `componentTypeName`-литералы) и предоставляются статическим методом `componentReflection()`. Сцена хранит указатель на дескриптор per-ComponentType: `registerComponentType` (`if constexpr HasComponentReflection<T>`) → `componentReflections[typeId]`; `copyComponentTypeRegistryFrom` копирует указатели (нужно `verify()`). Доступ — `Scene::tryGetComponentReflection(typeId)` (nullptr — тип без рефлексии).
+- **Сцены-API для эдитора (type-erased):** `getComponentTypeCount()`, `getComponentTypeName(typeId)` (литерал), `getEntityId(denseIndex)` (перебор сущностей, `invalidEntity` за границей), `hasComponent(entityId, typeId)`, `tryGetComponent(entityId, typeId) → IComponent*` — Inspector/Hierarchy работают без compile-time T (игра-агностик, см. ARCHITECTURE.md «Эдитор»). Всё не-fatal: эдитор не роняет приложение на устаревших ID (после scene_load).
+- **Отражаемые поля (пока):** `TransformComponent` — position/scale (Vector3); `DirectionalLightComponent` — direction/color/intensity; `AmbientLightComponent` — color/intensity. Вращение (кватернион), parent и сложные типы — позже (специализированные контролы).
+- **`Scene::reset()`** — сброс данных сцены БЕЗ сноса реестра типов и списка систем: сущности/пулы уничтожаются (пулы тут же пересоздаются фабриками — `addComponent` остаётся валидным), `nextEntityId = 1`, `resources.unloadAll()`. После reset сцена готова к `load()` или повторной постройке контента. Нужен scene_load хостов (сцена принадлежит хосту — пересоздание объекта не требуется, привязки не рвутся). Контраст с `clear()` (деструктор): тот сносит и реестр типов.
+- Тесты — группа `reflection` (`testReflection.cpp`): трейты, дескриптор Transform, get/set roundtrip, дескрипторы в сцене, type-erased API; `reset()` — группа `scene`.
+
 ### Сериализация компонентов (ISaveLoadable)
 
 - `IComponent` наследует `blib::core::ISaveLoadable` (save/load + строгое сравнение + verify). Чистые виртуальные `strongCompare(other, session)` и `verify()` реализует **каждый** конкретный компонент; `save()`/`load()` — только сериализуемые (default — `Unsupported`; `Scene::save` отклоняет такие типы с `SaveStatus::ComponentNotSerializable`). Базовые поля (`ownerId` + `isActive`) сравниваются через protected-помощник `IComponent::strongCompareBase(other)`.
@@ -124,24 +138,29 @@
 - `Scene::strongCompare` — nextEntityId + сущности (ID+маски) + компоненты в детерминированном порядке (dense-порядок сущностей, типы по возрастанию typeId). `Scene::verify()` — save → `MemoryStream` → свежая сцена с копией реестра типов → load → `strongCompare` (важно: сравнение компонентов идёт после onLoaded — контексты у обеих сцен не-null).
 - Тесты — группа `sceneSave` (`testsceneSave.cpp`, подключена к CMake): магия/документ, полный roundtrip + иерархия, отказ по магии/типу/непустоте/несериализуемости, standalone-verify Transform.
 
-### beng-editor (панели)
+### beng-editor (каркас + панели)
 
+- **`EditorApplication`** — каркас эдитора, единый для всех игр/инструментов (плагин-модель, см. ARCHITECTURE.md). Frame-API `initialize(width, height, title)` / `tick()` / `shutdown()` / `isRunning()` — каркас НЕ владеет главным циклом. Владеет игра-агностичной частью: окно + FBO вьюпорта + `OrbitCamera`, ImGui (контекст, WndProc-хук, кадр), ECS-сцена с движковыми типами beng-client (SkinnedMesh/Animator/MeshRender/DirectionalLight/AmbientLight/BlobShadow — зарегистрированы каркасом; Transform — сценой) и системами Transform → Animation → Render, панели вьюпорта/консоли, горячие клавиши тильда (консоль) и Escape (консоль → хук хоста → закрыть окно), команда консоли `clear`, отложенный ресайз FBO под размер вьюпорт-панели, дефолтная раскладка панелей по зонам `PanelZone {LeftTop, LeftBottom, Right}` + вьюпорт по центру + верхняя полоса (резерв за хостом).
+- **Хост** (игра/инструмент) наследует `EditorApplication` и переопределяет хуки: `onInitialize(scene)` (свои типы/системы/`registerPanel`), `onInput()` (свои горячие клавиши), `onSceneWillUpdate(dt)` (состояние рендера до `scene.update`), `onSceneDidUpdate(dt)` (отладочные слои в FBO), `onUi()` (верхняя полоса, модальные диалоги — позицию/размер полосы уже выставил каркас), `onEscapePressed()` (true = хост обработал Escape, окно не закрывать). Геттеры: `getScene()` / `getRenderTarget()` / `getCamera()` / `getWindow()` + `resetCamera()`. Это зародыш будущего `IGameModule` (на DLL-этапе хук-интерфейс станет границей эдитор ↔ игра).
+- **`beng-editor` (exe)** — единый эдитор на все игры: тонкая `main()` (main/main.cpp) над каркасом. Без плагина — пустая сцена; с плагином (дефайн `BENG_EDITOR_GRAVELANDS_STATIC`, этап 1 плагин-модели) — игра хостится через фабрику `gravelandsCreateEditorHost()` (та же точка входа, что станет экспортом gravelands.dll на DLL-этапе).
+- **Панели эдитора (рефлексия):** `SceneHierarchyPanel` — сущности сцены + их компоненты по именам типов, выбор (устаревший выбор сбрасывается по Transform typeId 0); `InspectorPanel` — компоненты выбранной сущности: секция на тип, поля из `ComponentTypeDescriptor` по `FieldValue::Kind` (DragFloat/DragInt/Checkbox/DragFloat3), изменение → `IComponentField::setValue`; компоненты без рефлексии — только имя. Связка: `InspectorPanel::setHierarchyPanel` — выбор живёт в Hierarchy (пока нет selection-сервиса каркаса). Регистрирует панели хост (плагин Gravelands: LeftTop/Right) — при появлении докинга панели переедут в каркас.
+- **Порядок жизни хоста:** `initialize()` создаёт свой impl ДО `EditorApplication::initialize` (каркасный `onInitialize` уже использует его); `shutdown()` разрушает свой impl (панели, LineRenderer) ДО каркасного `shutdown()` — панели/GL-ресурсы обязаны умереть раньше ImGui/GL-контекста.
 - Контракт `IPanel`:
   - панель рисует своё ImGui-окно (вызывающий уже открыл кадр);
-  - позиция/размер — ответственность вызывающего (`SetNextWindowPos/Size` до `draw()`);
+  - позиция/размер — ответственность вызывающего (`SetNextWindowPos/Size` до `draw()`; в каркасе их выставляет раскладка зон);
   - панель **не владеет данными**: получает указатели через `set*()`, nullptr = заглушка;
   - при выгрузке данных вызывающий обязан снять указатели.
 - Панели: `HierarchyPanel` (скелет + выбранная кость), `AnimationPanel` (`AnimatorComponent`), `ViewportPanel` (`IRenderTarget` + `OrbitCamera`, ввод камеры, замер размера), `RenderOptionsPanel` (галочки), `ConsolePanel` (обёртка `ConsoleWindow`; единственный консюмер буфера вывода — двух таких панелей быть не должно), `DialogWindow` (модальный вопрос «продолжить/отменить» с колбэками; позиционирует себя сам, ID = заголовок).
-- Пример композиции — `ViewerCore`: хранит панели, расставляет окна, читает геттеры (см. `misc/model_viewer`).
+- Пример композиции — `ViewerCore` (см. `misc/model_viewer`): инструмент с панелями, отладочными слоями и верхней панелью поверх каркаса; `GravelandsEditorHost` (см. `misc/gravelands/plugin`) — плагин игры: хостит общий `gravelands::World` в сцене эдитора.
 - Границы переиспользования: стек `blib-graphics` + ImGui + `beng-client`; `ViewportPanel` привязан к `OrbitCamera`, `ConsolePanel` — к синглтону `Console`.
-- Будущее: докинг и регистрация панелей в `EditorApplication` (см. комментарий в `iPanel.h`).
+- Будущее: докинг (зоны `PanelZone` — временный контракт до докинг-системы), Inspector через рефлексию, selection/undo-redo, PIE, DLL-плагин игры (см. ARCHITECTURE.md).
 
 ### Сквозные маршруты (вьювер как референс)
 
 - **Загрузка модели:** `SkinnedMeshComponent::loadFromFile` → Assimp → `SkinModel::loadFromAssimp` (скелет + аниматор + меши + материалы) → `AnimatorComponent::setAnimator(&model->getAnimator())` → панели привязываются (`setSkelet`, `setAnimatorComponent`).
 - **Внешняя анимация:** `loadAnimationsFromFile` → `Animator::appendFromAssimp(scene, &skelet, имя_файла)` → для каждого нового клипа `Skelet::bindClipToSkeleton` → вьювер выбирает последний клип и запускает его.
 - **Подмена скина:** `loadSkinFromFile` → `SkinModel::replaceMeshesFromAssimp` (атомарно; скелет и аниматор не трогаются) → внутри проверка `Skelet::isCompatibleWith` (имена + иерархия + inverse bind); при несовместимости `force = true` продолжает загрузку: перенос inverse-bind кандидата на текущий скелет (`adoptOffsetMatricesFrom` — меш рендерится как нативно скиннутый к текущему ригу, швы суставов не расходятся при анимации) + remap весов неизвестных костей на предков (или отброс с ренормализацией).
-- **Кадр вьювера:** ввод → `time.tick()` → `scene.update(dt)` (Transform → Animation → Render в FBO) → отладочные слои (скелет/каркас) → UI в back buffer → `swapBuffers()`. Ресайз FBO измеряется в UI-кадре и применяется в начале следующего.
+- **Кадр вьювера:** каркасный `EditorApplication::tick()`: ввод (тильда/Escape/`onInput`) → `time.tick()` → отложенный ресайз FBO → `onSceneWillUpdate` → `scene.update(dt)` (Transform → Animation → Render в FBO) → `onSceneDidUpdate` (отладочные слои: скелет/каркас) → UI в back buffer (`onUi` — верхняя панель/диалоги) → `swapBuffers()`. Ресайз FBO измеряется в UI-кадре и применяется в начале следующего.
 
 ---
 
@@ -161,9 +180,10 @@
 
 ## TODO
 
-- [ ] Фаза 2 модульных доков beng: `MODEL_VIEWER.md`, `CLIENT.md`, `EDITOR.md` (`GRAVELANDS.md` — готов, см. `misc/gravelands`).
+- [ ] Фаза 2 модульных доков beng: `CLIENT.md`, `EDITOR.md` (`GRAVELANDS.md` и `MODEL_VIEWER.md` — готовы, см. `misc/`).
 - [ ] `beng-server` — не реализован (см. ARCHITECTURE.md).
-- [ ] `Application`, рефлексия компонентов, `ResourceManager` — не реализованы (must-требования ARCHITECTURE.md).
+- [ ] `Application` (frame-API приложения beng-core) — не реализован (must-требование ARCHITECTURE.md); рефлексия компонентов и ResourceManager — реализованы.
+- [ ] Эдитор: докинг (замена зон `PanelZone`), selection-сервис каркаса (сейчас выбор в Hierarchy), gizmo/подсветка выбранной сущности во вьюпорте, поля-вращения/родителя в рефлексии, PIE, DLL-плагин игры (см. ARCHITECTURE.md).
 
 ---
 

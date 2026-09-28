@@ -4,7 +4,7 @@
 > (`blib` → `beng` → `game`), требования к движку beng и целевую
 > архитектуру референсной игры (диаблоид). Статус: план, не код.
 > Обновляется вместе с развитием кодовой базы.
-> Сверено: 2026-09-24
+> Сверено: 2026-09-28
 
 ---
 
@@ -18,8 +18,9 @@
    к конкретной игре (правила, контент, геймплей), живёт в слое game.
 4. **Каждый исполняемый файл — тонкая обёртка над core-библиотекой**
    (паттерн «lib + тонкий exe»). Core-библиотеки не владеют главным циклом.
-5. **Эдитор — один на все игры** (плагин-модель, как Unity/Unreal): игра
-   поставляется эдитору как библиотека/DLL, сам эдитор игру не знает.
+5. **Эдитор — один на все игры** (плагин-модель, как Unity/Unreal): один
+   `beng-editor.exe`, игра поставляется ему как библиотека/DLL, сам эдитор
+   игру не знает. Никаких эдиторов на игру (типа `gravelands-editor`) нет.
 6. **Производительность игры не зависит от выбора модели эдитора** —
    горячие циклы никогда не пересекают границу плагина.
 
@@ -60,7 +61,8 @@
 | `beng-core` | общее ядро: ECS, Application, тикрейт, интерфейсы модулей, рефлексия, сетевой фрейминг | blib-core, blib-system |
 | `beng-client` | клиентская среда: RenderModule, InputModule, AudioModule, рендер-ECS, сетевой клиент | beng-core, blib-graphics, blib-sound |
 | `beng-server` | headless-сервер: NetworkServer, WorldManager (save/load), снапшоты | beng-core, blib-network |
-| `beng-editor` | каркас эдитора: докинг, Hierarchy, Inspector, вьюпорт, gizmo, selection, undo/redo | beng-client, ImGui |
+| `beng-editor-core` | каркас эдитора: `EditorApplication` (окно/вьюпорт/панели/раскладка — есть) + докинг, Hierarchy, Inspector, gizmo, selection, undo/redo | beng-client, ImGui |
+| `beng-editor` | ЕДИНЫЙ exe эдитора на все игры: тонкая `main()` над `beng-editor-core` (есть, пустая сцена); игра — плагин | beng-editor-core |
 
 ### Требования
 
@@ -76,7 +78,10 @@
 - Симуляция идёт с **фиксированным тикрейтом**; рендер и ввод — с частотой кадра.
 - `beng-core` предоставляет **рефлексию компонентов**: статический дескриптор
   типа (имя, список полей с доступом). Из неё растут Inspector, сериализация
-  сцен, save/load мира и будущая сетевая репликация.
+  сцен, save/load мира и будущая сетевая репликация. **Сделано (2026-09-28):**
+  `componentReflection.h` (FieldValue/IComponentField/FunctionField/
+  ComponentTypeDescriptor, трейт `HasComponentReflection`) + type-erased
+  сцены-API для эдитора — см. BENG.md, «Рефлексия компонентов».
 - `beng-server` работает headless: без рендера, звука и ввода.
 - `beng-editor` — игра-агностик: работает только с `beng-core` типами
   и рефлексией, конкретных игровых типов не знает.
@@ -107,7 +112,7 @@
 ```
 gravelands-client.exe ──> gravelands-client-core ──> beng-client ──> beng-core ──> blib
 gravelands-server.exe ──> gravelands-server-core ──> beng-server ──> beng-core ──> blib
-gravelands-editor.exe ──> beng-editor + gravelands-client-core + gravelands-server-core + gravelands-common
+beng-editor.exe ──> beng-editor-core (EditorApplication) + game plugin ──> beng-client ──> beng-core ──> blib
 gravelands-common ──> beng-core ──> blib
 ```
 
@@ -115,8 +120,10 @@ gravelands-common ──> beng-core ──> blib
   **не владеют** while-циклом.
 - Тонкий exe содержит только `main()`: создаёт приложение, крутит цикл,
   корректно гасит.
-- Этот же паттерн позволяет эдитору хостить игру in-process: он сам вызывает
-  `tick` ядер внутри своего ImGui-цикла.
+- **Эдитор — единый `beng-editor.exe` на все игры** (никаких
+  `gravelands-editor` и пр.): `EditorApplication` (каркас beng-editor)
+  + плагин игры (этап 1 — статический линк, этап 2 — DLL). Он же хостит
+  игру in-process в PIE: сам вызывает `tick` ядер внутри своего ImGui-цикла.
 - Игра названа **Gravelands** (диаблоид): таргеты именуются `gravelands-*`,
   namespace — `gravelands`, инклюды — `<gravelands/...>` (корень `src/misc`).
 
@@ -132,9 +139,11 @@ gravelands-common ──> beng-core ──> blib
 | Модуль | Тип | Назначение |
 |--------|-----|------------|
 | `gravelands-common` | library | общие определения: константы (есть), позже — компоненты, пакеты протокола, формулы, статы |
+| `gravelands-world` | library | мир: `World` — общая ECS-сцена (контент + системы + scene_save/load), рендер-таргет выдаёт хост; общий для клиента и эдитора (плагин) |
+| `gravelands-plugin` | library (STATIC/SHARED) | плагин игры для единого эдитора: `GravelandsEditorHost` + фабрика `gravelandsCreateEditorHost()` (на DLL-этапе — экспорт gravelands.dll) |
 | `gravelands-server-core` + `gravelands-server.exe` | library + exe | авторитетная симуляция: Movement, Combat, Loot, Session |
 | `gravelands-client-core` + `gravelands-client.exe` | library + exe | представление: ввод, камера, интерполяция, рендер, UI |
-| `gravelands-editor.exe` | exe | эдитор: правит сцены, Play mode (PIE) |
+| `beng-editor.exe` (единый на все игры) | exe | эдитор: правит сцены любой игры (плагин), Play mode (PIE) |
 
 **Сервер — всегда отдельный процесс.** Даже одиночная игра: запускается
 локальный `gravelands-server.exe`, клиент подключается по loopback. In-process
@@ -180,21 +189,46 @@ core-библиотеку — см. раздел про эдитор.
 
 ## 🖥️ Эдитор (один на все игры, плагин-модель)
 
-Как в Unity/Unreal: **единый эдитор** создаёт и правит сцены любой игры,
-игра подключается к нему как плагин (DLL).
+Как в Unity/Unreal: **единый `beng-editor.exe`** создаёт и правит сцены любой
+игры, игра подключается к нему как плагин. Никаких эдиторов на игру нет.
 
 ```
-gravelands-editor.exe
-   ├── beng-editor (каркас: панели, вьюпорт, gizmo, selection, undo/redo)
-   ├── загружает gravelands.dll (плагин игры: регистрация типов + правила сериализации)
+beng-editor.exe (единственный эдитор, аналог UnrealEditor.exe; есть —
+                 с миром Gravelands через плагин, этап 1)
+   ├── EditorApplication (beng-editor-core: окно, вьюпорт, панели, раскладка,
+   │     сцена с движковыми типами; хуки хоста on*() — есть)
+   ├── плагин игры (gravelands-plugin): GravelandsEditorHost + фабрика
+   │     gravelandsCreateEditorHost() — единственная точка входа; этап 1 —
+   │     статический линк (CMake gravelands_plugin_type=STATIC), этап 2 —
+   │     та же фабрика становится экспортом gravelands.dll
    └── Play mode: хостит gravelands-client-core in-process + gravelands-server-core in-process
         (связь между ними — loopback TCP, сетевой код-путь остаётся настоящим)
 ```
 
-- **Inspector** строит поля из дескрипторов рефлексии beng-core — эдитор
-  не знает типов игры.
-- **Сцены сериализуются** в текстовый версионированный формат (pdl),
-  типы ссылаются по стабильным именам из реестра — не `typeid`, не адрес.
+- **`EditorApplication` (сделано, 2026-09-28)** — игра-агностичный каркас:
+  окно/FBO вьюпорта/орбитальная камера, ImGui (контекст, WndProc-хук, кадр),
+  ECS-сцена с движковыми типами beng-client и системами Transform→Animation→Render,
+  панели вьюпорта/консоли, горячие клавиши, раскладка панелей по зонам.
+  Хост (игра/инструмент) наследует каркас и переопределяет хуки
+  `onInitialize/onInput/onSceneWillUpdate/onSceneDidUpdate/onUi/onEscapePressed`
+  — это зародыш `IGameModule`: на DLL-этапе хук-интерфейс станет границей
+  эдитор ↔ игра. Хосты: `model_viewer` (инструмент) и `GravelandsEditorHost`
+  (плагин игры).
+- **Плагин Gravelands (этап 1, сделано 2026-09-28):** `gravelands-plugin`
+  хостит общий `gravelands::World` в сцене эдитора (та же сцена, что у
+  клиента — эдитор правит игру), подключает `scene_save`/`scene_load`,
+  дебаг-свет и hot-reload шейдеров. Статический линк и DLL используют
+  одну фабрику `gravelandsCreateEditorHost()` — переход на DLL меняет
+  способ доставки, не код плагина; статический режим остаётся удобным
+  режимом отладки и после DLL-этапа.
+- **Inspector строит поля из дескрипторов рефлексии beng-core** — эдитор
+  не знает типов игры. **Сделано (2026-09-28, первая версия):**
+  `SceneHierarchyPanel` (сущности + компоненты + выбор) и `InspectorPanel`
+  (поля по рефлексии) в beng-editor-core, регистрирует плагин Gravelands
+  (LeftTop/Right); отражаются Transform (position/scale) и свет.
+- **Сцены сериализуются** в текстовый версионированный формат (JSON,
+  `sceneSaveFormat.h`), типы ссылаются по стабильным именам из реестра —
+  не `typeid`, не адрес.
 - **Play mode (PIE)** без Process API: оба ядра хостятся in-process,
   принцип «сервер — отдельный процесс» соблюдается в продакшене тонкими exe.
 
@@ -212,7 +246,10 @@ gravelands-editor.exe
    коллизия имени в сцене — fatal, guard — `isRegisteredComponentType<T>()`.
    Осталось: `registerGameTypes` для эдитора (имена + рефлексия).
 3. **Стабильный интерфейс эдитор ↔ игра** (`IGameModule`): регистрация типов,
-   хуки сериализации, жизненный цикл PIE.
+   хуки сериализации, жизненный цикл PIE. **Задел сделан:** хук-интерфейс
+   `EditorApplication::on*()` + фабрика плагина `gravelandsCreateEditorHost()`
+   (gravelands-plugin); на DLL-этапе фабрика станет экспортом gravelands.dll,
+   а хук-интерфейс вырастет в `IGameModule`.
 4. **Экспорт символов:** `__blib_api`/`__beng_api` становятся настоящими
    `dllexport/dllimport`, всё публичное API помечается.
 5. **Версионированный формат сцен** и стабильные имена типов — сцена должна
@@ -224,9 +261,10 @@ gravelands-editor.exe
 8. **Сборка/отладка**: эдитор находит нужную game.dll (Debug/Release).
 
 **Поэтапное внедрение:** пункты 1, 2, 5 закладываются сразу (shared core,
-явная регистрация, версионированный формат); на первом этапе плагин игры
-можно линковать в эдитор статически — это меняет только CMake, не код игры,
-и ускоряет появление эдитора.
+явная регистрация, версионированный формат). **Этап 1 (статический линк) —
+сделан (2026-09-28):** плагин игры линкуется в эдитор через CMake-опцию
+`gravelands_plugin_type` (STATIC — дефолт/отладка, SHARED — DLL-этап); код
+плагина один и тот же, меняется только способ доставки.
 
 ---
 
@@ -241,15 +279,19 @@ src/
 │   ├── systems/     # движковые системы (TransformSystem — есть)
 │   ├── test/        # юнит-тесты beng (beng_test_*, BUILD_TESTS)
 │   ├── test_ecs/    # демо/Smoke ECS-ядра (есть)
-│   ├── client/      # beng-client (будущее)
+│   ├── client/      # beng-client (есть)
 │   ├── server/      # beng-server (будущее)
-│   └── editor/      # beng-editor (каркас, будущее)
+│   └── editor/      # beng-editor-core: EditorApplication + панели (есть);
+│                    # beng-editor: единый exe эдитора, main/ (есть)
 ├── misc/gravelands/         # игра Gravelands (диаблоид)
 │   ├── common/      # gravelands-common (lib, есть)
+│   ├── world/       # gravelands-world: мир World (ECS-сцена + контент, есть) —
+│   │                # общий для клиента и эдитора
+│   ├── plugin/      # gravelands-plugin: игровая сторона эдитора (хост +
+│   │                # фабрика; этап 1 — статика, этап 2 — gravelands.dll)
 │   ├── client/      # gravelands-client-core (lib) + gravelands-client (тонкий exe, есть)
-│   ├── server/      # gravelands-server-core (lib) + gravelands-server (тонкий exe, есть)
-│   └── editor/      # gravelands-editor (exe, будущее)
-├── misc/model_viewer/   # будущая 3D-ветка (меши/анимация), не трогать до этапа 3D
+│   └── server/      # gravelands-server-core (lib) + gravelands-server (тонкий exe, есть)
+├── misc/model_viewer/   # отдельный 3D-инструмент (хост EditorApplication), не трогать до этапа 3D
 ├── vochat/          # отдельный инструмент, не часть игровой архитектуры
 └── thirdparty/
 ```
@@ -264,7 +306,7 @@ src/
 | Как устроен игровой цикл, тикрейт, ECS, ресурсы? | beng |
 | Какие у монстра статы и формулы урона? | gravelands |
 | Кто авторитет в мире: клиент или сервер? | сервер (gravelands-server-core) |
-| Кто знает, как выглядит эдитор? | beng-editor |
+| Кто знает, как выглядит эдитор (окно, панели, вьюпорт)? | beng-editor (`EditorApplication`) |
 | Кто знает, какие типы есть у игры? | плагин игры (gravelands-common) |
 | Кто владеет while-циклом процесса? | тонкий exe (или эдитор в PIE) |
 
@@ -283,8 +325,11 @@ src/
    RESOURCE_MANAGER.md.)*
 4. **Геймплей-петля диаблоида**: бой, лут, скиллы (gravelands-common/server),
    UI (ImGui), звук.
-5. **beng-editor + gravelands-editor**: панели, вьюпорт, Inspector через
-   рефлексию, сериализация сцен, PIE (in-process хостинг, loopback TCP).
+5. **beng-editor (единый эдитор)**: `EditorApplication` (каркас — **сделан**,
+   см. BENG.md; первый хост — model_viewer) + тонкий `beng-editor.exe`;
+   Inspector через рефлексию, докинг, selection/undo-redo; плагин игры
+   (этап 1 — статический линк через хук-интерфейс, этап 2 — DLL);
+   PIE (in-process хостинг, loopback TCP).
 6. **Опционально**: UDP-канал, hot-reload плагина. *(3D-меши с изокамерой —
    сделано раньше плана: `MeshRenderComponent` + слои `RenderLayer`, единый
    ECS-рендер; контент-плейсхолдеры из obj_spider — опционально.)*
@@ -306,6 +351,28 @@ src/
   `printf` заменён на Console; IsometricTileset пересобран на Mesh
   (старый код опирался на уже удалённые Romb/Rectangle).
 - `misc/misc` (legacy Types/ObjectPool/LinkedList) удалён.
+- **`EditorApplication` выделен в beng-editor (2026-09-28):** игра-агностичный
+  каркас эдитора (окно/FBO/камера/ImGui/сцена/раскладка + хуки хоста)
+  вынесен из `ViewerCore`; вьювер стал первым хостом каркаса (инструмент,
+  не эдитор); `gravelands-editor` из плана убран — эдитор один на все игры.
+- **`beng-editor` стал exe (2026-09-28):** таргет переименован в
+  `beng-editor-core` (каркас), добавлен тонкий `beng-editor` (main/) —
+  единый эдитор запускается с пустой сценой и движковыми типами;
+  модель_viewer/тесты переведены на `beng-editor-core`.
+- **Мир Gravelands вынесен в `gravelands-world` (2026-09-28):** `World`
+  (ECS-сцена + контент + scene_save/load + дебаг-свет) — общий для
+  клиента и эдитора; `ClientCore` ужат до окна/камеры/ввода/презентации.
+- **Плагин Gravelands в эдиторе, этап 1 (2026-09-28):** `gravelands-plugin`
+  (GravelandsEditorHost + фабрика `gravelandsCreateEditorHost()`) линкуется
+  в `beng-editor.exe` статически (`gravelands_plugin_type=STATIC`, дефайн
+  `BENG_EDITOR_GRAVELANDS_STATIC`) — единый эдитор правит мир Gravelands;
+  на DLL-этапе та же фабрика станет экспортом gravelands.dll.
+- **Рефлексия + Inspector (2026-09-28):** `componentReflection.h` в beng-core
+  (FieldValue/FunctionField/ComponentTypeDescriptor), дескрипторы в сцене
+  per-тип; панели `SceneHierarchyPanel`/`InspectorPanel`; `Scene::reset()`
+  (сброс данных без сноса реестра) — scene_load хостов; мир привязывается
+  к сцене хоста (`World::initialize(scene)`), базовый рендер-пайплайн вешает
+  хост, мир добавляет только свои системы (тень/свет).
 
 **Осталось (по roadmap):**
 

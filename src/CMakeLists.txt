@@ -45,7 +45,8 @@ add_subdirectory(${beng_dir})
 if(TARGET blib-graphics)
 	add_subdirectory(${beng_dir}/client)
 
-	# beng-editor — панели эдитора на ImGui; тоже требует blib-graphics
+	# beng-editor-core (каркас: EditorApplication + панели ImGui) +
+	# beng-editor (единый exe эдитора); тоже требуют blib-graphics
 	add_subdirectory(${beng_dir}/editor)
 endif()
 
@@ -60,6 +61,15 @@ endif()
 
 # misc/gravelands — игра Gravelands (диаблоид): библиотеки + тонкие exe
 add_subdirectory(misc/gravelands)
+
+# Единый эдитор с плагином игры (этап 1 плагин-модели: статический
+# линк; см. ARCHITECTURE.md, «Эдитор»). Переключатель на DLL —
+# gravelands_plugin_type=SHARED (этап 2). Дефайн включает ветку
+# фабрики в main.cpp эдитора
+if(TARGET beng-editor AND TARGET gravelands-plugin)
+	target_link_libraries(beng-editor PRIVATE gravelands-plugin)
+	target_compile_definitions(beng-editor PRIVATE BENG_EDITOR_GRAVELANDS_STATIC)
+endif()
 
 # Тесты движка (BUILD_TESTS) — по образцу blib/test
 if(BUILD_TESTS)

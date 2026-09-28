@@ -2,6 +2,7 @@
 
 #include <beng/config.h>
 #include <beng/core/icomponent.h>
+#include <beng/core/componentReflection.h>
 #include <beng/components/transform.h>
 #include <beng/core/componentPool.h>
 #include <beng/core/system.h>
@@ -331,6 +332,77 @@ namespace beng
         template<typename T>
         ComponentPool<T>* tryGetComponentPool();
 
+        // ========== Reflection / Inspector API (type-erased) ==========
+        //
+        // Доступ к рефлексии и перебору сущностей/типов БЕЗ compile-time
+        // T — для Inspector/Hierarchy эдитора (эдитор не знает игровых
+        // типов, см. ARCHITECTURE.md «Эдитор»).
+
+        /**
+         * Дескриптор рефлексии типа (ComponentTypeDescriptor) или
+         * nullptr, если тип не зарегистрирован или не имеет рефлексии
+         * (HasComponentReflection<T> == false).
+         *
+         * @param typeId Локальный индекс типа в сцене
+         */
+        const ComponentTypeDescriptor* tryGetComponentReflection(ComponentType typeId) const;
+
+        /**
+         * Количество зарегистрированных типов компонентов сцены.
+         * Индексы типов — 0 .. getComponentTypeCount()-1 (Transform —
+         * всегда 0, инвариант сцены).
+         */
+        buint32 getComponentTypeCount() const { return static_cast<buint32>(typeNames.size()); }
+
+        /**
+         * Стабильное имя типа по локальному индексу (литерал
+         * T::componentTypeName; nullptr при выходе за границы).
+         */
+        const char* getComponentTypeName(ComponentType typeId) const;
+
+        /**
+         * Перебор сущностей сцены по плотному индексу
+         * (0 .. getEntityCount()-1); invalidEntity при выходе за
+         * границы. Порядок — dense (совпадает с порядком создания,
+         * destroy двигает последнюю на место удалённой).
+         */
+        EntityID getEntityId(buint32 denseIndex) const;
+
+        /**
+         * Проверить наличие компонента заданного ТИПА (по локальному
+         * индексу, не шаблонно) у сущности. Не-fatal: false при
+         * невалидном типе/сущности — Inspector не должен ронять
+         * эдитор на устаревших ID.
+         */
+        bool hasComponent(EntityID entityId, ComponentType typeId) const;
+
+        /**
+         * Получить компонент по локальному индексу типа (type-erased;
+         * nullptr если сущность/тип/компонент отсутствуют).
+         */
+        IComponent* tryGetComponent(EntityID entityId, ComponentType typeId);
+
+        const IComponent* tryGetComponent(EntityID entityId, ComponentType typeId) const;
+
+        /**
+         * Сбросить сцену в «пустое» состояние, СОХРАНИВ реестр типов
+         * (имена, словарь, type-erased fn-таблицы), список систем и
+         * привязки систем к рендер-таргету: уничтожаются все сущности
+         * и их компоненты (пулы через deleters; ref'ы компонентов к
+         * кешу ресурсов отпускаются), nextEntityId возвращается к 1,
+         * кеш ресурсов очищается (unloadAll — слоты освобождаются).
+         *
+         * После reset() сцена снова пуста и готова:
+         * - к Scene::load (типы зарегистрированы — пулы создаются
+         *   фабриками по требованию);
+         * - к повторному построению контента хостом.
+         *
+         * Нужен scene_load эдитора/клиента: сцена принадлежит хосту,
+         * и вместо пересоздания объекта (Scene некопируема) сцена
+         * сбрасывается на месте — привязки хоста к сцене не рвутся.
+         */
+        void reset();
+
         // ========== System Management ==========
 
         /**
@@ -561,6 +633,14 @@ namespace beng
 
         // Получение компонента из пула по EntityID — save/strongCompare/onLoaded
         IComponent* (*componentPoolGetters[maxComponentTypes])(void*, EntityID) = { nullptr };
+
+        // Дескрипторы рефлексии на тип (индекс = ComponentType).
+        // Заполняются в registerComponentType (if constexpr
+        // HasComponentReflection<T>); nullptr — тип без рефлексии.
+        // Дескрипторы — статические объекты в .cpp компонентов
+        // (живут всё время процесса, копируются между сценами в
+        // copyComponentTypeRegistryFrom)
+        const ComponentTypeDescriptor* componentReflections[maxComponentTypes] = { nullptr };
 
         // ========== Systems ==========
 

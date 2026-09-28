@@ -1,18 +1,19 @@
-# MODEL_VIEWER — 3D-вьювер моделей (прототип эдитора)
+# MODEL_VIEWER — 3D-вьювер моделей (инструмент поверх beng-editor)
 
 > Модуль: `src/misc/model_viewer`. Шпаргалка по устройству, инвариантам и граблям — чтобы не перечитывать исходники.
 > Не дублирует правила проекта (`AGENTS.md`) и roadmap (`ARCHITECTURE.md`) — только ссылается на них.
 > **Обновлять при любом изменении кода вьювера** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-21
+> Сверено: 2026-09-28
 
 ---
 
 ## Назначение и границы
 
-- **ViewerCore** — ядро вьювера: ECS-сцена beng + орбитальная камера + панели beng-editor на Dear ImGui + отладочные слои (скелет, wireframe). Собирается по паттерну «lib + тонкий exe» (`core/viewerCore.h/.cpp` + `main/main.cpp`, который крутит главный цикл через frame-API `initialize/tick/shutdown/isRunning`).
-- Референсный потребитель `beng-client` и `beng-editor`: проверяет, как композиция панелей и компонентов выглядит извне, — будущая основа эдитора (PIE).
+- **ViewerCore** — ядро 3D-вьювера моделей: **хост поверх каркаса `beng::editor::EditorApplication`** (см. BENG.md, «beng-editor»). Вьювер — отдельный инструмент (как vochat), НЕ эдитор: единый эдитор проекта — `beng-editor` (см. ARCHITECTURE.md, «Эдитор»). Собирается по паттерну «lib + тонкий exe» (`core/viewerCore.h/.cpp` + `main/main.cpp`, который крутит главный цикл через frame-API `initialize/tick/shutdown/isRunning`).
+- Каркас даёт окно/FBO/камеру/ImGui/ECS-сцену/раскладку; вьювер через хуки добавляет: модель (Entity с Transform/SkinnedMesh/Animator), панели иерархии костей/анимаций/опций рендера, верхнюю панель загрузки, отладочные слои (скелет линиями, wireframe), модальный диалог несовместимого скина.
+- Референсный потребитель `beng-client` и `beng-editor`: первый хост `EditorApplication`, на нём обкатывается хук-интерфейс — зародыш будущего `IGameModule`.
 - Только Windows (Win32-файлдиалог, WndProc-хук ImGui, GL-загрузка blib).
-- Что НЕ в этом доке: правила кодирования (AGENTS.md), устройство ECS (BENG.md), детали скелета/анимации/мешей (GRAPHICS.md).
+- Что НЕ в этом доке: правила кодирования (AGENTS.md), устройство ECS (BENG.md), детали скелета/анимации/мешей (GRAPHICS.md), каркас эдитора (BENG.md, «beng-editor»).
 
 ## Ключевые файлы (навигация)
 
@@ -24,15 +25,17 @@
 
 ## Инварианты и поток данных
 
-- **Модель = Entity** с `TransformComponent` + `SkinnedMeshComponent` + `AnimatorComponent`; системы — Transform → Animation → Render (регистрируются в `initialize()`).
+- **Модель = Entity** с `TransformComponent` + `SkinnedMeshComponent` + `AnimatorComponent`; движковые системы и типы компонентов регистрирует каркас (`EditorApplication::initialize`), вьювер своих типов не заводит.
+- **Хуки каркаса (вьювер переопределяет):** `onInitialize` — регистрация панелей в зоны (`LeftTop` — иерархия, `LeftBottom` — опции, `Right` — анимации); `onInput` — Ctrl+O (диалог выбора модели); `onSceneWillUpdate` — флаг диффузных текстур в `RenderContext`; `onSceneDidUpdate` — скелет/wireframe в FBO вьюпорта; `onUi` — верхняя панель + модальный диалог (позицию/размер полосы выставляет каркас); `onEscapePressed` — диалог открыт → true (окно не закрывать).
 - **Панели не владеют данными:** `setSkelet`/`setAnimatorComponent` привязывают к модели; при `unloadModel` указатели обязательно снимаются (иначе висячие ссылки).
-- **Кадр:** ввод (Engine-клавиатура + горячие клавиши) → `time.tick()` → `scene.update(dt)` в FBO → отладочные слои в тот же FBO → переключение на back-буфер → ImGui (панели + консоль + модальные диалоги) → презентация. Ресайз FBO измеряется в UI-кадре и применяется в начале следующего.
+- **Кадр:** каркасный `EditorApplication::tick()` (см. BENG.md, «Сквозные маршруты»); вьюверский вклад — только хуки выше. Ресайз FBO и перспектива — каркас.
+- **Жизненный цикл:** `initialize()` создаёт impl вьювера ДО каркасного `initialize` (хук `onInitialize` использует панели); `shutdown()` — `unloadModel()` → разрушение impl вьювера (панели/LineRenderer до GL-контекста) → каркасный `shutdown()`.
 - **Оси:** MD5 — Z-up (поворот −90° вокруг X), FBX/DAE/OBJ — Y-up (без поворота); определяется по расширению `.md5mesh`.
 - **Маршруты загрузки:**
-  - `loadModel(path)`: unload старой → новая Entity → `SkinnedMeshComponent::loadFromFile` → привязка панелей → сброс камеры.
+  - `loadModel(path)`: unload старой → новая Entity → `SkinnedMeshComponent::loadFromFile` → привязка панелей → `resetCamera()` (каркас).
   - `changeSkin()`: `loadSkinFromFile(path)`; при отказе (несовместимый скелет и т.п.) — модальный `DialogWindow` «Skeleton mismatch» с кнопками **Force Apply** / **Cancel**. Force → `loadSkinFromFile(path, true)`: веса неизвестных костей отбрасываются и ренормализуются (см. GRAPHICS.md), анимации и скелет не трогаются.
   - `addAnimation()`: `loadAnimationsFromFile` + выбор последнего клипа и `play()`.
-- **Escape:** консоль → закрыть консоль; открытый модальный диалог → отмена диалога (окно приложения НЕ закрывается); иначе → закрыть приложение.
+- **Escape:** каркас закрывает консоль первым; `onEscapePressed` вьювера отменяет открытый модальный диалог (окно приложения НЕ закрывается); иначе каркас закрывает приложение.
 
 ## Подводные камни и баги
 
@@ -44,9 +47,9 @@
 
 ## TODO
 
-- Докинг панелей в `EditorApplication` (вместо ручной раскладки `SetNextWindowPos/Size`) — см. BENG.md.
 - Поддержка нескольких диалогов/очереди диалогов (сейчас `DialogWindow` — один на вьювер, ID = заголовок).
 - Проверка ренормализации весов на моделях с расщеплёнными ригами.
+- (Каркасные TODO эдитора — докинг/Inspector/PIE/плагин — см. BENG.md и ARCHITECTURE.md.)
 
 ## Связанные доки
 

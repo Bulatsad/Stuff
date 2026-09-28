@@ -284,6 +284,55 @@ namespace beng
         systemsDirty = false;
     }
 
+    void Scene::reset()
+    {
+        // Сброс ДАННЫХ сцены без сноса реестра типов и списка систем:
+        // сцена снова пуста, но типы зарегистрированы и системы
+        // висят — хост может scene.load() (пулы создадутся фабриками)
+        // или построить контент заново (setupWorld)
+
+        // Сущности: компоненты уничтожаются вместе с пулами ниже —
+        // их ResourceRef'ы к кешу отпускаются до unloadAll
+        entities.clear();
+        entityMasks.clear();
+        entityLookup.clear();
+
+        // Пулы уничтожаются (type-erased deleters); fn-таблицы
+        // (deleters/factories/creators/getters) ОСТАЮТСЯ — пулы тут же
+        // пересоздаются фабриками: addComponent/getComponentPool
+        // требуют живого пула
+        for (ComponentType typeId = 0; typeId < maxComponentTypes; ++typeId)
+        {
+            void* poolPtr = componentPools[typeId];
+            void (*deleter)(void*) = componentPoolDeleters[typeId];
+            if (poolPtr != nullptr && deleter != nullptr)
+            {
+                deleter(poolPtr);
+            }
+            componentPools[typeId] = nullptr;
+        }
+
+        const ComponentType typeCount = static_cast<ComponentType>(typeNames.size());
+        for (ComponentType typeId = 0; typeId < typeCount; ++typeId)
+        {
+            if (componentPoolFactories[typeId] != nullptr)
+            {
+                componentPools[typeId] =
+                    componentPoolFactories[typeId](componentPoolChunkSizes[typeId]);
+            }
+        }
+
+        // Кеш ресурсов: слоты (тайлы/модели) освобождаются — после
+        // reset сцена строит контент с чистого листа (dedup-индекс
+        // остаётся согласованным)
+        resources.unloadAll();
+
+        // Системы не трогаем: список и привязки (setRenderTarget
+        // систем) остаются валидными
+
+        nextEntityId = 1;
+    }
+
     blib::core::SaveStatus Scene::save(_In blib::core::IOutputStream& os) const
     {
         using blib::core::json::JsonError;
@@ -817,6 +866,9 @@ namespace beng
             componentPoolChunkSizes[typeId] = other.componentPoolChunkSizes[typeId];
             componentPoolCreators[typeId] = other.componentPoolCreators[typeId];
             componentPoolGetters[typeId] = other.componentPoolGetters[typeId];
+            // Дескрипторы рефлексии — статические объекты компонентов:
+            // копируются указателями, живы всё время процесса
+            componentReflections[typeId] = other.componentReflections[typeId];
         }
 
         // Имена типов — литералы компонентов (живут всё время процесса),
@@ -838,6 +890,58 @@ namespace beng
                 blib::memory::StdAllocatorAdapter<char>(&containerAllocator));
             typeIdByName.emplace(std::move(key), typeId);
         }
+    }
+
+    // ========== Reflection / Inspector API (type-erased) ==========
+
+    const ComponentTypeDescriptor* Scene::tryGetComponentReflection(ComponentType typeId) const
+    {
+        if (typeId >= maxComponentTypes)
+        {
+            return nullptr;
+        }
+        return componentReflections[typeId];
+    }
+
+    const char* Scene::getComponentTypeName(ComponentType typeId) const
+    {
+        return (typeId < typeNames.size()) ? typeNames[typeId] : nullptr;
+    }
+
+    EntityID Scene::getEntityId(buint32 denseIndex) const
+    {
+        return (denseIndex < entities.size()) ? entities[denseIndex] : invalidEntity;
+    }
+
+    bool Scene::hasComponent(EntityID entityId, ComponentType typeId) const
+    {
+        // Не-fatal: невалидные typeId/сущность → false (Inspector
+        // работает с устаревшими ID после scene_load — см. GRAVELANDS.md)
+        if (typeId >= maxComponentTypes)
+        {
+            return false;
+        }
+        return getComponentBit(entityId, typeId);
+    }
+
+    IComponent* Scene::tryGetComponent(EntityID entityId, ComponentType typeId)
+    {
+        if (typeId >= maxComponentTypes || componentPoolGetters[typeId] == nullptr)
+        {
+            return nullptr;
+        }
+        if (!getComponentBit(entityId, typeId))
+        {
+            return nullptr;
+        }
+        return componentPoolGetters[typeId](componentPools[typeId], entityId);
+    }
+
+    const IComponent* Scene::tryGetComponent(EntityID entityId, ComponentType typeId) const
+    {
+        // Неконстантный getter читает пул и не мутирует его — const_cast
+        // оправдан: контракт const-версии гарантирует только чтение
+        return const_cast<Scene*>(this)->tryGetComponent(entityId, typeId);
     }
 
 } // namespace beng

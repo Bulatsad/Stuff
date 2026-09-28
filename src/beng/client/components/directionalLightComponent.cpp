@@ -138,4 +138,71 @@ namespace beng
         return blib::core::verifyRoundTrip(*this);
     }
 
+    // ========== Рефлексия (Inspector/эдитор) ==========
+    //
+    // Статические поля-дескрипторы: геттеры/сеттеры — лямбды без
+    // захвата через публичные API компонента. Дескриптор и поля
+    // живут всё время процесса; сцена хранит указатель на дескриптор
+    // (см. Scene::registerComponentType).
+
+    namespace
+    {
+        constexpr const char* reflectionFieldDirection = "direction";
+        constexpr const char* reflectionFieldColor = "color";
+        constexpr const char* reflectionFieldIntensity = "intensity";
+
+        const FunctionField s_directionField(
+            reflectionFieldDirection, FieldValue::Kind::Vector3,
+            [](_In const IComponent& component, _Out FieldValue& outValue)
+            {
+                outValue = FieldValue::fromVector3(
+                    static_cast<const DirectionalLightComponent&>(component).getDirection());
+            },
+            [](_In IComponent& component, _In const FieldValue& value)
+            {
+                static_cast<DirectionalLightComponent&>(component).setDirection(value.vector3Value);
+            });
+
+        const FunctionField s_colorField(
+            reflectionFieldColor, FieldValue::Kind::Vector3,
+            [](_In const IComponent& component, _Out FieldValue& outValue)
+            {
+                outValue = FieldValue::fromVector3(
+                    static_cast<const DirectionalLightComponent&>(component).getColor());
+            },
+            [](_In IComponent& component, _In const FieldValue& value)
+            {
+                static_cast<DirectionalLightComponent&>(component).setColor(value.vector3Value);
+            });
+
+        const FunctionField s_intensityField(
+            reflectionFieldIntensity, FieldValue::Kind::Float,
+            [](_In const IComponent& component, _Out FieldValue& outValue)
+            {
+                outValue = FieldValue::fromFloat(
+                    static_cast<const DirectionalLightComponent&>(component).getIntensity());
+            },
+            [](_In IComponent& component, _In const FieldValue& value)
+            {
+                static_cast<DirectionalLightComponent&>(component).setIntensity(value.floatValue);
+            });
+
+        const IComponentField* const s_directionalLightFields[] = {
+            &s_directionField,
+            &s_colorField,
+            &s_intensityField
+        };
+
+        constexpr buint32 s_directionalLightFieldCount =
+            static_cast<buint32>(sizeof(s_directionalLightFields) / sizeof(s_directionalLightFields[0]));
+
+        const ComponentTypeDescriptor s_directionalLightReflection(
+            DirectionalLightComponent::componentTypeName, s_directionalLightFields, s_directionalLightFieldCount);
+    }
+
+    const ComponentTypeDescriptor& DirectionalLightComponent::componentReflection()
+    {
+        return s_directionalLightReflection;
+    }
+
 } // namespace beng

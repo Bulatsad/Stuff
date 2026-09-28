@@ -2,6 +2,7 @@
 
 #include <beng/config.h>
 #include <beng/core/icomponent.h>
+#include <beng/core/componentReflection.h>
 
 #include <blib/core/math/vector.h>
 #include <blib/core/math/quaternion.h>
@@ -72,6 +73,17 @@ namespace beng
         // Не прятать 1-аргументную точку входа строгого сравнения
         // (IStrongComparable::strongCompare(other)) за перегрузкой ниже
         using blib::core::IStrongComparable::strongCompare;
+
+        /**
+         * Рефлексия компонента (контракт HasComponentReflection):
+         * статический дескриптор полей для Inspector/эдитора —
+         * см. componentReflection.h. Определение — в transform.cpp.
+         *
+         * Поля: position, scale (локальный TRS; вращение — кватернион,
+         * правка рефлексией не предусмотрена — специализированный
+         * контрол позже).
+         */
+        static const ComponentTypeDescriptor& componentReflection();
 
         /**
          * Конструктор TransformComponent.

@@ -1,7 +1,8 @@
-#model_viewer — 3D-вьювер моделей (прототип эдитора).
+#model_viewer — 3D-вьювер моделей (инструмент, хост EditorApplication).
 #Паттерн «lib + тонкий exe»:
 #  - model_viewer-core: ViewerCore (frame-API initialize/tick/shutdown),
-#    ECS-сцена beng, панели beng-editor, рендер в FBO вьюпорта;
+#    ECS-сцена каркаса beng::editor::EditorApplication, панели beng-editor,
+#    рендер в FBO вьюпорта;
 #  - model_viewer: тонкий exe, только main().
 #Собирается только под Windows (добавляется из корневого CMake при
 #наличии таргета blib-graphics).
@@ -26,9 +27,9 @@ set_target_properties(model_viewer-core PROPERTIES FOLDER "misc/model_viewer" LI
 # (имя каталога повторяет имя таргета — как <gravelands/...>)
 target_include_directories(model_viewer-core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
-# beng-editor тянет beng-client, beng-core и blib-graphics (PUBLIC):
+# beng-editor-core тянет beng-client, beng-core и blib-graphics (PUBLIC):
 # ImGui-хедеры, консоль, рендер — всё доступно транзитивно
-target_link_libraries(model_viewer-core PUBLIC beng-editor)
+target_link_libraries(model_viewer-core PUBLIC beng-editor-core)
 
 # Assimp + zlib (prebuilt .lib из thirdparty/assimplib) — нужны
 # на этапе линковки exe (Importer::ReadFile и зилевые символы)
