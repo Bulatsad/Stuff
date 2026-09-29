@@ -35,8 +35,10 @@
 #include <imgui/imgui_impl_win32.h>
 
 #include <Windows.h>
+#include <commdlg.h>
 #include <gl/GL.h>
 
+#include <string.h>
 #include <vector>
 
 // ---------------------------------------------------------------
@@ -149,6 +151,98 @@ namespace beng
             constexpr blib::graphics::Keyboard::Key gizmoRotateKey = blib::graphics::Keyboard::Key::E;
             constexpr blib::graphics::Keyboard::Key gizmoScaleKey = blib::graphics::Keyboard::Key::R;
 
+            // ---------------------------------------------------------------
+            // Тема эдитора (ImGui): Unity-подобная палитра тёмно-серых
+            // тонов + синий акцент, скругления, плотность. Числа здесь —
+            // таблица стиля, а не логика: константы ради читаемости
+            // таблицы и правила «без вшитых литералов»
+            // ---------------------------------------------------------------
+
+            // Скругления (Unity-подобные: окна чуть, скроллбары — пилюли)
+            constexpr float themeWindowRounding = 4.0f;
+            constexpr float themeChildRounding = 3.0f;
+            constexpr float themeFrameRounding = 3.0f;
+            constexpr float themePopupRounding = 4.0f;
+            constexpr float themeGrabRounding = 2.0f;
+            constexpr float themeScrollbarRounding = 8.0f;
+            constexpr float themeTabRounding = 4.0f;
+
+            // Плотность: «воздух» между элементами, компактные фреймы
+            constexpr ImVec2 themeWindowPadding(8.0f, 8.0f);
+            constexpr ImVec2 themeFramePadding(5.0f, 4.0f);
+            constexpr ImVec2 themeItemSpacing(6.0f, 6.0f);
+            constexpr ImVec2 themeItemInnerSpacing(6.0f, 4.0f);
+            constexpr float themeIndentSpacing = 18.0f;
+            constexpr float themeScrollbarSize = 12.0f;
+            constexpr float themeGrabMinSize = 10.0f;
+            constexpr ImVec2 themeTitleAlign(0.0f, 0.5f);
+
+            // Бордеры: тонкие тёмные линии на границах панелей
+            constexpr float themeWindowBorderSize = 1.0f;
+            constexpr float themeChildBorderSize = 1.0f;
+            constexpr float themePopupBorderSize = 1.0f;
+            constexpr float themeTabBorderSize = 1.0f;
+
+            // Палитра (0..1): тёплый тёмно-серый разных тонов —
+            // многотонность помогает считывать иерархию UI
+            constexpr ImVec4 themeWindowBg(0.18f, 0.18f, 0.18f, 1.00f);
+            constexpr ImVec4 themeChildBg(0.16f, 0.16f, 0.16f, 1.00f);
+            constexpr ImVec4 themePopupBg(0.21f, 0.21f, 0.21f, 0.98f);
+            constexpr ImVec4 themeTitleBg(0.15f, 0.15f, 0.15f, 1.00f);
+            constexpr ImVec4 themeTitleBgActive(0.20f, 0.20f, 0.20f, 1.00f);
+            constexpr ImVec4 themeMenuBarBg(0.20f, 0.20f, 0.20f, 1.00f);
+            constexpr ImVec4 themeText(0.90f, 0.90f, 0.90f, 1.00f);
+            constexpr ImVec4 themeTextDisabled(0.50f, 0.50f, 0.50f, 1.00f);
+            constexpr ImVec4 themeBorder(0.11f, 0.11f, 0.11f, 1.00f);
+            constexpr ImVec4 themeFrameBg(0.24f, 0.24f, 0.24f, 1.00f);
+            constexpr ImVec4 themeFrameHovered(0.31f, 0.31f, 0.31f, 1.00f);
+            constexpr ImVec4 themeFrameActive(0.20f, 0.20f, 0.20f, 1.00f);
+            constexpr ImVec4 themeElementBg(0.24f, 0.24f, 0.24f, 1.00f);
+            constexpr ImVec4 themeElementHovered(0.31f, 0.31f, 0.31f, 1.00f);
+            constexpr ImVec4 themeElementActive(0.20f, 0.20f, 0.20f, 1.00f);
+            constexpr ImVec4 themeScrollbarBg(0.13f, 0.13f, 0.13f, 1.00f);
+            constexpr ImVec4 themeScrollbarGrab(0.32f, 0.32f, 0.32f, 1.00f);
+            constexpr ImVec4 themeScrollbarGrabHovered(0.40f, 0.40f, 0.40f, 1.00f);
+            constexpr ImVec4 themeScrollbarGrabActive(0.48f, 0.48f, 0.48f, 1.00f);
+            constexpr ImVec4 themeSliderGrab(0.45f, 0.45f, 0.45f, 1.00f);
+            constexpr ImVec4 themeResizeGrip(0.30f, 0.30f, 0.30f, 1.00f);
+            constexpr ImVec4 themeResizeGripHovered(0.40f, 0.40f, 0.40f, 1.00f);
+            constexpr ImVec4 themeTransparent(0.00f, 0.00f, 0.00f, 0.00f);
+
+            // Акцент Unity-синего: выделение, чекбоксы, активные элементы
+            constexpr ImVec4 themeAccent(0.13f, 0.59f, 0.95f, 1.00f);
+            constexpr ImVec4 themeAccentDark(0.13f, 0.47f, 0.75f, 1.00f);
+            constexpr ImVec4 themeSelectionBg(0.13f, 0.47f, 0.75f, 0.55f);
+            constexpr ImVec4 themeSeparatorHovered(0.13f, 0.59f, 0.95f, 0.78f);
+
+            // ---------------------------------------------------------------
+            // UI-шрифт: размер, системный дефолт, диалог выбора файла
+            // ---------------------------------------------------------------
+            constexpr float editorFontSizePx = 15.0f;
+#ifdef _WIN32
+            constexpr const char* defaultEditorFontPath = "C:\\Windows\\Fonts\\segoeui.ttf";
+#endif
+            constexpr buint32 uiFontPathBufferSize = 512;
+            // Фильтр OpenFileName: пары «описание\0маска\0», финальный \0\0
+            constexpr const char fontFileFilter[] =
+                "TrueType fonts (*.ttf)\0*.ttf\0All files (*.*)\0*.*\0";
+            constexpr const char* loadFontDialogTitle = "Select UI Font";
+
+            // ---------------------------------------------------------------
+            // Меню-бар каркаса (File/Edit/Help) + диалог About
+            // ---------------------------------------------------------------
+            constexpr const char* menuFileLabel = "File";
+            constexpr const char* menuFileExit = "Exit";
+            constexpr const char* menuEditLabel = "Edit";
+            constexpr const char* menuEditLoadFont = "Load Font...";
+            constexpr const char* menuEditResetFont = "Reset Font";
+            constexpr const char* menuHelpLabel = "Help";
+            constexpr const char* menuHelpAbout = "About";
+            constexpr const char* aboutPopupName = "About##EditorAboutPopup";
+            constexpr const char* aboutText = "Stuff - game engine\nbeng editor framework, ImGui UI";
+            constexpr const char* okButtonLabel = "OK";
+            constexpr float aboutOkButtonWidth = 120.0f;
+
             // Окружность gizmo (режим Rotate): аппроксимация отрезками в
             // плоскости, натянутой на базисные векторы u/v (нормаль — ось
             // вращения). Сегменты — gizmoCircleSegments
@@ -170,6 +264,143 @@ namespace beng
                     gizmo.addLine(previous, point, color);
                     previous = point;
                 }
+            }
+
+            // Применение темы эдитора: Unity-подобная палитра, скругления,
+            // плотность, hover/active-состояния. Вызывается один раз после
+            // создания ImGui-контекста
+            void applyEditorTheme()
+            {
+                ImGuiStyle& style = ImGui::GetStyle();
+
+                // Скругления: окна/фреймы слегка, скроллбары — пилюли
+                style.WindowRounding = themeWindowRounding;
+                style.ChildRounding = themeChildRounding;
+                style.FrameRounding = themeFrameRounding;
+                style.PopupRounding = themePopupRounding;
+                style.GrabRounding = themeGrabRounding;
+                style.ScrollbarRounding = themeScrollbarRounding;
+                style.TabRounding = themeTabRounding;
+
+                // Плотность: «воздух» между элементами, компактные фреймы,
+                // заголовки слева, меню-кнопка слева (как в Unity)
+                style.WindowPadding = themeWindowPadding;
+                style.FramePadding = themeFramePadding;
+                style.ItemSpacing = themeItemSpacing;
+                style.ItemInnerSpacing = themeItemInnerSpacing;
+                style.IndentSpacing = themeIndentSpacing;
+                style.ScrollbarSize = themeScrollbarSize;
+                style.GrabMinSize = themeGrabMinSize;
+                style.WindowTitleAlign = themeTitleAlign;
+                style.WindowMenuButtonPosition = ImGuiDir_Left;
+
+                // Бордеры: тонкие тёмные границы панелей
+                style.WindowBorderSize = themeWindowBorderSize;
+                style.ChildBorderSize = themeChildBorderSize;
+                style.PopupBorderSize = themePopupBorderSize;
+                style.FrameBorderSize = 0.0f;
+                style.TabBorderSize = themeTabBorderSize;
+                style.SeparatorTextBorderSize = 0.0f;
+
+                // Тексты и фоны (многотонность серого: окно → панель →
+                // заголовок → элемент читаются отдельными тонами)
+                style.Colors[ImGuiCol_Text] = themeText;
+                style.Colors[ImGuiCol_TextDisabled] = themeTextDisabled;
+                style.Colors[ImGuiCol_WindowBg] = themeWindowBg;
+                style.Colors[ImGuiCol_ChildBg] = themeChildBg;
+                style.Colors[ImGuiCol_PopupBg] = themePopupBg;
+                style.Colors[ImGuiCol_Border] = themeBorder;
+                style.Colors[ImGuiCol_BorderShadow] = themeTransparent;
+                style.Colors[ImGuiCol_FrameBg] = themeFrameBg;
+                style.Colors[ImGuiCol_FrameBgHovered] = themeFrameHovered;
+                style.Colors[ImGuiCol_FrameBgActive] = themeFrameActive;
+                style.Colors[ImGuiCol_TitleBg] = themeTitleBg;
+                style.Colors[ImGuiCol_TitleBgActive] = themeTitleBgActive;
+                style.Colors[ImGuiCol_TitleBgCollapsed] = themeTitleBg;
+                style.Colors[ImGuiCol_MenuBarBg] = themeMenuBarBg;
+
+                // Скроллбары
+                style.Colors[ImGuiCol_ScrollbarBg] = themeScrollbarBg;
+                style.Colors[ImGuiCol_ScrollbarGrab] = themeScrollbarGrab;
+                style.Colors[ImGuiCol_ScrollbarGrabHovered] = themeScrollbarGrabHovered;
+                style.Colors[ImGuiCol_ScrollbarGrabActive] = themeScrollbarGrabActive;
+
+                // Интерактивные элементы: серый в покое, светлее на hover,
+                // темнее/синий в активном состоянии (обратная связь)
+                style.Colors[ImGuiCol_CheckMark] = themeAccent;
+                style.Colors[ImGuiCol_SliderGrab] = themeSliderGrab;
+                style.Colors[ImGuiCol_SliderGrabActive] = themeAccent;
+                style.Colors[ImGuiCol_Button] = themeElementBg;
+                style.Colors[ImGuiCol_ButtonHovered] = themeElementHovered;
+                style.Colors[ImGuiCol_ButtonActive] = themeElementActive;
+                style.Colors[ImGuiCol_Header] = themeElementBg;
+                style.Colors[ImGuiCol_HeaderHovered] = themeElementHovered;
+                style.Colors[ImGuiCol_HeaderActive] = themeAccentDark;
+                style.Colors[ImGuiCol_Separator] = themeBorder;
+                style.Colors[ImGuiCol_SeparatorHovered] = themeSeparatorHovered;
+                style.Colors[ImGuiCol_SeparatorActive] = themeAccent;
+                style.Colors[ImGuiCol_ResizeGrip] = themeResizeGrip;
+                style.Colors[ImGuiCol_ResizeGripHovered] = themeResizeGripHovered;
+                style.Colors[ImGuiCol_ResizeGripActive] = themeAccent;
+                style.Colors[ImGuiCol_Tab] = themeChildBg;
+                style.Colors[ImGuiCol_TabHovered] = themeElementHovered;
+                style.Colors[ImGuiCol_TabSelected] = themeElementBg;
+                style.Colors[ImGuiCol_TabDimmed] = themeTitleBg;
+                style.Colors[ImGuiCol_TabDimmedSelected] = themeTitleBgActive;
+                style.Colors[ImGuiCol_TextSelectedBg] = themeSelectionBg;
+                style.Colors[ImGuiCol_NavHighlight] = themeAccent;
+            }
+
+            // Перезагрузка UI-шрифта ImGui: ttfPath — путь к TTF-файлу;
+            // nullptr/"" — дефолтный шрифт (системный Segoe UI, иначе
+            // встроенный ProggyClean). Атлас пересобирается целиком:
+            // бэкенд ImGui 1.92 с ImGuiBackendFlags_RendererHasTextures
+            // пересоздаёт GL-текстуру сам (на следующем NewFrame).
+            // true — запрошенный TTF загружен; false — подставлен дефолт
+            bool reloadEditorFont(_In_opt const char* ttfPath)
+            {
+                ImGuiIO& io = ImGui::GetIO();
+                ImFontAtlas* atlas = io.Fonts;
+
+                const bool customRequested = (ttfPath != nullptr && ttfPath[0] != '\0');
+                bool loadedRequested = false;
+
+                atlas->Clear();
+
+                ImFont* font = nullptr;
+                if (customRequested)
+                {
+                    font = atlas->AddFontFromFileTTF(
+                        ttfPath, editorFontSizePx, nullptr, atlas->GetGlyphRangesCyrillic());
+                    loadedRequested = (font != nullptr);
+                    if (font == nullptr)
+                    {
+                        __blib_log_warning("EditorApplication: cannot load UI font '%s'", ttfPath);
+                    }
+                }
+
+#ifdef _WIN32
+                if (font == nullptr)
+                {
+                    font = atlas->AddFontFromFileTTF(
+                        defaultEditorFontPath, editorFontSizePx, nullptr, atlas->GetGlyphRangesCyrillic());
+                    if (font == nullptr)
+                    {
+                        __blib_log_warning("EditorApplication: default UI font not found (%s)", defaultEditorFontPath);
+                    }
+                }
+#endif
+
+                if (font == nullptr)
+                {
+                    font = atlas->AddFontDefault();
+                }
+
+                io.FontDefault = font;
+                // Build() вызывать нельзя: ImGui 1.92 с бэкендом
+                // RendererHasTextures строит атлас сам (assert в
+                // imgui_draw.cpp), текстуру пересоздаёт на NewFrame
+                return loadedRequested;
             }
         }
 
@@ -262,6 +493,14 @@ namespace beng
             // Консоль
             bool showConsole;
 
+            // Меню-бар каркаса: флаг модального диалога About (рисуется
+            // в конце UI-кадра, поверх всех окон)
+            bool showAboutPopup;
+
+            // Путь активного UI-шрифта (пустая строка — дефолтный).
+            // Сессионная настройка: не персистится (io.IniFilename = nullptr)
+            char uiFontPath[uiFontPathBufferSize];
+
             // Отложенный ресайз FBO под размер вьюпорт-панели (0 = нет):
             // размер измеряется в ImGui-кадре, а сцена рендерится раньше —
             // применяем в начале следующего кадра
@@ -293,6 +532,8 @@ namespace beng
                 , panels(blib::memory::StdAllocatorAdapter<RegisteredPanel>(&this->panelListAllocator))
                 , windowTitle(title)
                 , showConsole(false)
+                , showAboutPopup(false)
+                , uiFontPath{}
                 , pendingViewportWidth(0)
                 , pendingViewportHeight(0)
             {
@@ -435,12 +676,16 @@ namespace beng
             // ImGui + WndProc-хук
             IMGUI_CHECKVERSION();
             ImGui::CreateContext();
-            ImGuiIO& io = ImGui::GetIO(); (void)io;
+            ImGuiIO& io = ImGui::GetIO();
             io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
             // Не писать imgui.ini в рабочую директорию (мусорит в корне
             // репозитория при запуске из студии)
             io.IniFilename = nullptr;
-            ImGui::StyleColorsDark();
+
+            // Тема эдитора (Unity-подобная палитра, скругления,
+            // плотность) + UI-шрифт (Segoe UI, встроенный — fallback)
+            applyEditorTheme();
+            reloadEditorFont(nullptr);
 
             HWND hwnd = __blib_render_window_context(this->impl->window.__getCtx())->hwnd;
             ImGui_ImplWin32_Init(hwnd);
@@ -595,8 +840,12 @@ namespace beng
             this->drawGizmo();
 
             // UI: переключаемся на back-буфер (иначе ImGui-бэкенд
-            // рисует в FBO, а вьюпорт сэмплит его же — feedback loop)
+            // рисует в FBO, а вьюпорт сэмплит его же — feedback loop).
+            // Фон — цвет окна темы: скруглённые углы панелей «впиваются»
+            // в подложку без чёрных щелей на стыках
             this->impl->renderTarget.rc.api.ogl.ext.__blib_gl_glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            this->impl->renderTarget.rc.api.ogl.__blib_glClearColor(
+                themeWindowBg.x, themeWindowBg.y, themeWindowBg.z, themeWindowBg.w);
             this->impl->renderTarget.rc.api.ogl.__blib_gl_glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             ImGui_ImplOpenGL3_NewFrame();
@@ -608,22 +857,27 @@ namespace beng
                 const float windowW = static_cast<float>(this->impl->window.getWight());
                 const float windowH = static_cast<float>(this->impl->window.getHeight());
                 const float hierarchyHeight = windowH * hierarchyHeightFraction;
+                // Верх окна: меню-бар каркаса (высота = высоте фрейма
+                // текущего шрифта), под ним — верхняя полоса хоста,
+                // ещё ниже — панели и вьюпорт
+                const float menuBarOffset = ImGui::GetFrameHeight();
+                const float topStripOffset = menuBarOffset + topBarHeight;
 
                 for (const EditorApplicationImpl::RegisteredPanel& registered : this->impl->panels)
                 {
                     switch (registered.zone)
                     {
                         case PanelZone::LeftTop:
-                            ImGui::SetNextWindowPos(ImVec2(0.0f, topBarHeight), ImGuiCond_FirstUseEver);
-                            ImGui::SetNextWindowSize(ImVec2(leftPanelWidth, hierarchyHeight - topBarHeight), ImGuiCond_FirstUseEver);
+                            ImGui::SetNextWindowPos(ImVec2(0.0f, topStripOffset), ImGuiCond_FirstUseEver);
+                            ImGui::SetNextWindowSize(ImVec2(leftPanelWidth, hierarchyHeight - topStripOffset), ImGuiCond_FirstUseEver);
                             break;
                         case PanelZone::LeftBottom:
                             ImGui::SetNextWindowPos(ImVec2(0.0f, hierarchyHeight), ImGuiCond_FirstUseEver);
                             ImGui::SetNextWindowSize(ImVec2(leftPanelWidth, windowH - hierarchyHeight), ImGuiCond_FirstUseEver);
                             break;
                         case PanelZone::Right:
-                            ImGui::SetNextWindowPos(ImVec2(windowW - rightPanelWidth, topBarHeight), ImGuiCond_FirstUseEver);
-                            ImGui::SetNextWindowSize(ImVec2(rightPanelWidth, windowH - topBarHeight), ImGuiCond_FirstUseEver);
+                            ImGui::SetNextWindowPos(ImVec2(windowW - rightPanelWidth, topStripOffset), ImGuiCond_FirstUseEver);
+                            ImGui::SetNextWindowSize(ImVec2(rightPanelWidth, windowH - topStripOffset), ImGuiCond_FirstUseEver);
                             break;
                     }
                     registered.panel->draw();
@@ -631,14 +885,17 @@ namespace beng
 
                 // Свои ImGui-окна хоста: верхняя полоса (позицию/
                 // размер задаёт каркас — полоса зарезервирована за
-                // хостом), модальные диалоги
-                ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_FirstUseEver);
+                // хостом; она плоская: примыкает к меню-бару и краю
+                // окна — скругления дали бы щели), модальные диалоги
+                ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+                ImGui::SetNextWindowPos(ImVec2(0.0f, menuBarOffset), ImGuiCond_FirstUseEver);
                 ImGui::SetNextWindowSize(ImVec2(windowW, topBarHeight), ImGuiCond_FirstUseEver);
                 this->onUi();
+                ImGui::PopStyleVar();
 
                 // Центр: вьюпорт
-                ImGui::SetNextWindowPos(ImVec2(leftPanelWidth, topBarHeight), ImGuiCond_FirstUseEver);
-                ImGui::SetNextWindowSize(ImVec2(windowW - leftPanelWidth - rightPanelWidth, windowH - topBarHeight), ImGuiCond_FirstUseEver);
+                ImGui::SetNextWindowPos(ImVec2(leftPanelWidth, topStripOffset), ImGuiCond_FirstUseEver);
+                ImGui::SetNextWindowSize(ImVec2(windowW - leftPanelWidth - rightPanelWidth, windowH - topStripOffset), ImGuiCond_FirstUseEver);
                 this->impl->viewportPanel.draw();
 
                 // Gizmo-манипулятор: драг за стрелку/окружность (режим
@@ -670,6 +927,11 @@ namespace beng
                     ImGui::SetNextWindowSize(ImVec2(consoleWidth, consoleHeight), ImGuiCond_FirstUseEver);
                     this->impl->consolePanel.draw();
                 }
+
+                // Меню-бар каркаса (File/Edit/Help) + диалог About —
+                // рисуется последним: попап About обязан лечь ПОВЕРХ
+                // консоли и всех панелей
+                this->drawMainMenuBar();
             }
 
             ImGui::Render();
@@ -697,6 +959,88 @@ namespace beng
             // Презентация без блита FBO: сцена уже показана во вьюпорте,
             // UI отрисован поверх back-буфера
             this->impl->window.swapBuffers();
+        }
+
+        void EditorApplication::drawMainMenuBar()
+        {
+            // Меню-бар каркаса: File (выход), Edit (UI-шрифт), Help
+            // (About). Полоса занимает весь верх окна (позицию/высоту
+            // задаёт BeginMainMenuBar; раскладка панелей учитывает
+            // высоту фрейма текущего шрифта — см. tick)
+            if (ImGui::BeginMainMenuBar())
+            {
+                if (ImGui::BeginMenu(menuFileLabel))
+                {
+                    if (ImGui::MenuItem(menuFileExit))
+                    {
+                        this->impl->window.close();
+                    }
+                    ImGui::EndMenu();
+                }
+
+                if (ImGui::BeginMenu(menuEditLabel))
+                {
+                    if (ImGui::MenuItem(menuEditLoadFont))
+                    {
+                        // Win32-диалог выбора TTF. Блокирует кадр до
+                        // закрытия — штатно для прототипа (прецедент:
+                        // файлдиалог вьювера, см. MODEL_VIEWER.md)
+                        char pathBuffer[uiFontPathBufferSize] = "";
+                        OPENFILENAMEA ofn;
+                        ZeroMemory(&ofn, sizeof(ofn));
+                        ofn.lStructSize = sizeof(ofn);
+                        ofn.hwndOwner = __blib_render_window_context(this->impl->window.__getCtx())->hwnd;
+                        ofn.lpstrFilter = fontFileFilter;
+                        ofn.lpstrFile = pathBuffer;
+                        ofn.nMaxFile = uiFontPathBufferSize;
+                        ofn.lpstrTitle = loadFontDialogTitle;
+                        ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+
+                        if (GetOpenFileNameA(&ofn) && reloadEditorFont(pathBuffer))
+                        {
+                            strncpy_s(this->impl->uiFontPath, pathBuffer, _TRUNCATE);
+                            __blib_log_info("UI font loaded: %s", pathBuffer);
+                        }
+                    }
+                    if (ImGui::MenuItem(menuEditResetFont))
+                    {
+                        this->impl->uiFontPath[0] = '\0';
+                        reloadEditorFont(nullptr);
+                        __blib_log_info("UI font reset to default");
+                    }
+                    ImGui::EndMenu();
+                }
+
+                if (ImGui::BeginMenu(menuHelpLabel))
+                {
+                    if (ImGui::MenuItem(menuHelpAbout))
+                    {
+                        this->impl->showAboutPopup = true;
+                    }
+                    ImGui::EndMenu();
+                }
+
+                ImGui::EndMainMenuBar();
+            }
+
+            // Диалог About: модальный попап по центру, поверх всех окон
+            // (рисуется после консоли — см. tick)
+            if (this->impl->showAboutPopup)
+            {
+                ImGui::OpenPopup(aboutPopupName);
+            }
+            if (ImGui::BeginPopupModal(aboutPopupName, &this->impl->showAboutPopup, ImGuiWindowFlags_AlwaysAutoResize))
+            {
+                ImGui::TextWrapped("%s", aboutText);
+                ImGui::Spacing();
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - aboutOkButtonWidth);
+                if (ImGui::Button(okButtonLabel, ImVec2(aboutOkButtonWidth, 0.0f)))
+                {
+                    ImGui::CloseCurrentPopup();
+                    this->impl->showAboutPopup = false;
+                }
+                ImGui::EndPopup();
+            }
         }
 
         bool EditorApplication::isRunning() const

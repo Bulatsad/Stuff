@@ -36,6 +36,9 @@ target_include_directories(beng-editor-core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/.
 # blib-graphics — ImGui-хедеры, ConsoleWindow, OrbitCamera
 target_link_libraries(beng-editor-core PUBLIC beng-client)
 
+# Comdlg32 — Win32-файлдиалог (Edit → Load Font... в меню-баре каркаса)
+target_link_libraries(beng-editor-core PUBLIC Comdlg32)
+
 # Assimp + zlib (prebuilt .lib из thirdparty/assimplib) — нужны на
 # этапе линковки exe: SkinnedMeshComponent/Material используют Assimp
 # (паттерн gravelands-client/model_viewer)
