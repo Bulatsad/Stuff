@@ -2,7 +2,7 @@
 
 > Слой: `blib`. TCP/UDP сокеты (winsock). **Статус: Windows-only; TCP-часть доведена до рабочего состояния (2026-09-28), UDP — недоделан (в проде не использовать).**
 > Шпаргалка по устройству. **Обновлять при изменениях кода модуля** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-28
+> Сверено: 2026-09-29
 
 ---
 
@@ -37,8 +37,8 @@
 - **`NetworkError`** (`socket.h`): enum-код модуля (`None = 0, Unknown, NotInitialized, CreateFailed, BindFailed, ListenFailed, ConnectFailed, SendFailed, RecvFailed, WouldBlock, Closed`) — детализирующая причина последнего отказа; читается через `getLastError()` у `Socket`/`TcpSocket`/`TcpListener`.
 - **`SocketStatus`**: `{OK, Partial, Disconnected, WouldBlock, Error}`. `WouldBlock` — неблокирующая операция не готова: повторить позже (НЕ ошибка). `Partial` — отправлена часть данных (прогресс — через `sentOut`).
 - **`Address`**: value-тип (deep copy, move, деструктор); `fromIPv4(str, ok)` (ошибка → пустой адрес + ok=false), `setPort(int)` — с переводом в сетевой порядок байт; статические `AnyIPv4/NoneIPv4/LocalhostIPv4/BroadcastIPv4`.
-- **`Socket`**: `create(...)`, `setBlocking(bool)` (возвращает УСПЕХ — семантика исправлена), `bind`, `close`, `destroy`, `getLastError`; хендл — через `GlobalAllocator` (без new/delete).
-- **`TcpSocket`**: `connect(Address&)` — в неблокирующем режиме WouldBlock = «в процессе» (повторять; WSAEISCONN → OK); `send(data, size, sentOut)` — цикл до полной отправки, при WouldBlock прогресс в `sentOut` (вызывающий продолжает с того же места!); `recv(data, size)` — `size` in/out: фактически принятые байты (частичный приём — НЕ ошибка, TCP — поток).
+- **`Socket`**: `create(...)`, `setBlocking(bool)` (возвращает УСПЕХ — семантика исправлена), `setTcpNoDelay(bool)` — TCP_NODELAY (отключает алгоритм Нейгла для real-time трафика; см. «Подводные камни»), `bind`, `close`, `destroy`, `getLastError`; хендл — через `GlobalAllocator` (без new/delete).
+- **`TcpSocket`**: `connect(Address&)` — в неблокирующем режиме WouldBlock = «в процессе» (повторять; WSAEISCONN → OK); `send(data, size, sentOut)` — цикл до полной отправки, при WouldBlock прогресс в `sentOut` (вызывающий продолжает с того же места!); `recv(data, size)` — `size` in/out: фактически принятые байты (частичный приём — НЕ ошибка, TCP — поток); `setTcpNoDelay(bool)` — проброс на `Socket`.
 - **`TcpListener`**: `listen(backlog = 16)`, `accept(TcpSocket&)` — WouldBlock = «подключений нет» (неблокирующий режим).
 - **`InitBlibSocket()`** — `bool`, идемпотентна; вызывать до создания сокетов. `WSACleanup` не вызывается (процесс живёт долго).
 
@@ -65,6 +65,7 @@
 
 ## Подводные камни
 
+- **Nagle vs real-time:** TCP_NODELAY по умолчанию ВЫКЛЮЧЕН системой — мелкие пакеты накапливаются (Nagle + delayed ACK дают до ~200 мс латентности на одиночном мелком пакете). Для real-time сообщений (команды ввода, снапшоты) обязательно `setTcpNoDelay(true)` на ПОДКЛЮЧЁННОМ/принятом сокете (так делает gravelands: сервер — после accept, клиент — после connect).
 - **UDP недоделан**: `recv` не возвращает размер/адрес корректно, ошибки не транслируются — не использовать в проде.
 - IPv6/прочие семейства: bind/connect реализованы только для IPv4 (прочие — Error).
 - `send` в неблокирующем режиме при заполненных буферах — WouldBlock с частичным прогрессом (см. контракт выше).

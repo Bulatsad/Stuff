@@ -21,7 +21,7 @@
 | `gravelands-world` | library | Gravelands: мир (`World`: ECS-сцена + контент + scene_save/load + дебаг-свет); рендер-таргет выдаёт хост. Общий для клиента и эдитора |
 | `gravelands-plugin` | library | Gravelands: игровая сторона единого эдитора (`GravelandsEditorHost` + extern "C"-фабрики create/destroy); `gravelands_plugin_type`: STATIC — линк в `beng-editor.exe` (дефолт/отладка), SHARED — gravelands.dll через LoadLibrary |
 | `gravelands-client-core` + `gravelands-client` | library + exe | Gravelands: клиент (ClientCore, frame-API) + тонкий exe. Паттерн «lib + тонкий exe» |
-| `gravelands-server-core` + `gravelands-server` | library + exe | Gravelands: сервер (ServerCore: beng::Scene, фикс. тикрейт 30 Гц) + тонкий exe |
+| `gravelands-server-core` + `gravelands-server` | library + exe | Gravelands: сервер (ServerCore: beng::Scene, фикс. тикрейт 60 Гц) + тонкий exe |
 | `test_ecs` | executable | Демо/Smoke-приложение ECS-ядра (beng/test_ecs, Scene + Transform-иерархия) |
 
 ### Сторонние библиотеки (все в `thirdparty/`, без пакетных менеджеров):

@@ -45,6 +45,9 @@ namespace gravelands
             blib::network::SocketType::Stream,
             blib::network::SocketProtocol::TCP);
         this->socket.setBlocking(false);
+        // Real-time трафик: команда ввода — 5 байт; Nagle задерживал бы
+        // её на delayed-ACK (до ~200 мс) — отклик управления заметно хуже
+        this->socket.setTcpNoDelay(true);
 
         blib::network::Address serverAddress = blib::network::Address::LocalhostIPv4;
         serverAddress.setPort(static_cast<int>(port));

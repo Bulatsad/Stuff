@@ -304,6 +304,44 @@ BLIB_TEST_CASE("network: large message send/recv roundtrip")
     BLIB_TEST_CHECK(std::memcmp(bigSend, bigRecv, bigMessageSize) == 0);
 }
 
+BLIB_TEST_CASE("network: setTcpNoDelay succeeds on connected loopback pair")
+{
+    BLIB_TEST_REQUIRE(blib::network::InitBlibSocket());
+
+    // Nagle — причина латентности мелких real-time пакетов; опция
+    // должна выставляться на обоих концах соединения без ошибки
+    blib::network::TcpListener listener(blib::network::AddressType::IPv4);
+    BLIB_TEST_CHECK(listener.setBlocking(false));
+    blib::network::Address listenAddress = blib::network::Address::LocalhostIPv4;
+    listenAddress.setPort(testPort + 5);
+    BLIB_TEST_CHECK(listener.bind(listenAddress) == blib::network::SocketStatus::OK);
+    BLIB_TEST_CHECK(listener.listen() == blib::network::SocketStatus::OK);
+
+    blib::network::TcpSocket client(blib::network::AddressType::IPv4);
+    blib::network::Address serverAddress = blib::network::Address::LocalhostIPv4;
+    serverAddress.setPort(testPort + 5);
+    BLIB_TEST_CHECK(connectNonBlocking(client, serverAddress));
+
+    blib::network::TcpSocket accepted;
+    BLIB_TEST_CHECK(acceptNonBlocking(listener, accepted));
+    BLIB_TEST_CHECK(accepted.setBlocking(false));
+
+    BLIB_TEST_CHECK(client.setTcpNoDelay(true));
+    BLIB_TEST_CHECK(accepted.setTcpNoDelay(true));
+
+    // Roundtrip с включённым NODELAY — передача по-прежнему корректна
+    const char* message = "nodelay";
+    BLIB_TEST_CHECK(client.send(message, static_cast<int>(std::strlen(message))) == blib::network::SocketStatus::OK);
+    char buffer[messageBufferSize] = {};
+    int received = messageBufferSize;
+    BLIB_TEST_CHECK(waitFor([&]() {
+        received = messageBufferSize;
+        return accepted.recv(buffer, received) == blib::network::SocketStatus::OK;
+    }));
+    BLIB_TEST_CHECK(received == static_cast<int>(std::strlen(message)));
+    BLIB_TEST_CHECK(std::strcmp(buffer, message) == 0);
+}
+
 BLIB_TEST_CASE("network: address ipv4 parse and port (network byte order)")
 {
     // Разбор адреса

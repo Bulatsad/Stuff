@@ -3,7 +3,7 @@
 > Слой: `blib`. Общая философия, карта модулей и правила сборки.
 > Не дублирует строгие правила проекта (`AGENTS.md`) и roadmap (`ARCHITECTURE.md`) — только ссылается.
 > **Обновлять при любых изменениях кода/сборки blib** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-28
+> Сверено: 2026-09-29
 
 ---
 
@@ -45,7 +45,7 @@
 | `blib-core` | Переносимое ядро: math, console, streams, string/folder, JSON, алгоритмы (hash, compression, DFT/FFT), PDL, iterator/linkedList, endian | `blib-system` | `core/CORE.md` |
 | `blib-graphics` | OpenGL/WGL, Win32-окно, ассеты (mesh/material/texture/skin), камеры, ImGui, консольное окно; **Windows-only** | `blib-core`, `Opengl32`, Assimp, ImGui, stb | `graphics/GRAPHICS.md` |
 | `blib-sound` | Запись/воспроизведение звука (WinMM); **Windows-only, недоделан** | `blib-core`, `Winmm` | `sound/SOUND.md` |
-| `blib-network` | TCP/UDP сокеты (winsock); **Windows-only, недоделан** | `blib-core`, `Ws2_32` | `network/NETWORK.md` |
+| `blib-network` | TCP/UDP сокеты (winsock); **Windows-only; TCP доведён (2026-09-28), UDP — недоделан** | `blib-core`, `Ws2_32` | `network/NETWORK.md` |
 | `blib/test` | Фреймворк `blib::test` и группы тестов (CTest) | `blib-core` | `test/TESTING.md` |
 
 Потребители внутри проекта: `beng-core` → `blib-core`; `beng-client`/`beng-editor` → `blib-graphics`; `vochat` → `blib-sound` + `blib-network` + `blib-core`.
@@ -74,7 +74,7 @@
 ## TODO
 
 - [ ] Обсудить и составить каталог известных багов модулей (отдельная задача; в доках пока только архитектурные грабли).
-- [ ] Довести `blib-sound` и `blib-network` до рабочего состояния (сейчас недоделаны, см. их доки).
+- [ ] Довести `blib-sound` до рабочего состояния и доделать UDP в `blib-network` (см. их доки).
 - [ ] Linux/macOS: заглушки/реализации для graphics/sound/network (сейчас только `rwlock` имеет Linux-реализацию).
 - [ ] Починить `bint*Max` в `blibint.h`.
 - [ ] Убрать мёртвые файлы (или пометить как черновики) — `doc/interfaces.h`, `Новый текстовый документ.txt`, пустые `.cpp`.

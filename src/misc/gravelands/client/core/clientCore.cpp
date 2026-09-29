@@ -73,6 +73,11 @@ namespace gravelands
         // Скорость перемещения цели камеры по миру (WASD), мир. ед./с
         constexpr float cameraMoveSpeed = 60.0f;
 
+        // Экспоненциальное сглаживание цели камеры при следовании за
+        // зеркалом игрока (1/с): гасит остаточную дрожь интерполяции
+        // снапшотов — жёсткая привязка передавала бы её камере
+        constexpr float cameraFollowSmoothing = 12.0f;
+
         // Скорость зума (Add/Subtract), изменение дистанции в ед./с
         constexpr float cameraZoomSpeed = 120.0f;
 
@@ -155,15 +160,31 @@ namespace gravelands
         ClientMirror mirrors[maxNetworkUnits];
         buint32 mirrorCount;
 
-        // Два последних снапшота (интерполяция между ними)
-        SnapshotEntry snapshotA[maxNetworkUnits];
-        SnapshotEntry snapshotB[maxNetworkUnits];
-        buint32 snapshotACount;
-        buint32 snapshotBCount;
-        float snapshotATime; // время приёма (сек, totalTime)
-        float snapshotBTime;
-        bool snapshotAValid;
-        bool snapshotBValid;
+        // Кольцевой буфер последних снапшотов: интерполяция идёт по
+        // tick number сервера между парой, охватывающей целевое время
+        // (фикс. задержка рендера), а не по времени приёма — последнее
+        // дышит вместе с кадром (PIE: двойной GL-контекст, ImGui) и
+        // рвало бы скорость интерполяции (дрожь/телепорты зеркал)
+        SnapshotEntry snapshotBuffer[snapshotBufferSize][maxNetworkUnits];
+        buint32 snapshotCount[snapshotBufferSize];   // юнитов в слоте
+        buint32 snapshotTick[snapshotBufferSize];    // tick number сервера
+        bool snapshotValid[snapshotBufferSize];
+        buint32 snapshotHead; // индекс слота под следующий снапшот
+
+        // Следование камеры за зеркалом игрока: флаг «цель захвачена» —
+        // при первом появлении зеркала камера встаёт сразу (без полёта
+        // через карту), дальше — экспоненциальное сглаживание
+        bool cameraFollowActive;
+
+        // ========== Client-side prediction игрока ==========
+        // Предсказанная позиция + текущий локальный ввод. Ввод
+        // интегрируется локально той же формулой, что MovementSystem
+        // сервера (нормализованная диагональ × playerMoveSpeed, кламп
+        // worldBounds) — движение начинается МГНОВЕННО, сеть и кадровое
+        // время влияют только на реконсиляцию (reconcilePlayerPrediction)
+        blib::graphics::Vector3f predictedPosition;
+        bool predictionActive;
+        PlayerCommand predictionCommand;
 
         // Последняя отправленная команда (dedup — слать при изменении)
         PlayerCommand lastSentCommand;
@@ -179,12 +200,19 @@ namespace gravelands
         // ImGui-презентация включена (false — PIE: контекст эдитора)
         bool imguiEnabled;
 
-        ClientCoreImpl()
-            : window(static_cast<uint16_t>(windowWidth), static_cast<uint16_t>(windowHeight), gameTitle)
-            , renderTarget(windowWidth, windowHeight)
+        ClientCoreImpl(bool imguiEnabledParam)
+            : window(
+                static_cast<uint16_t>(imguiEnabledParam ? windowWidth : pieWindowWidth),
+                static_cast<uint16_t>(imguiEnabledParam ? windowHeight : pieWindowHeight),
+                gameTitle)
+            , renderTarget(
+                imguiEnabledParam ? windowWidth : pieWindowWidth,
+                imguiEnabledParam ? windowHeight : pieWindowHeight)
             , camera()
             , postProcess()
-            , postEnabled(true)
+            // Пост-пасс в PIE выключен: кадр эдитора и так двойной
+            // (вьюпорт + клиентское окно) — экономия целого прохода
+            , postEnabled(imguiEnabledParam)
             , scene()
             , transformSystem()
             , animationSystem()
@@ -193,24 +221,31 @@ namespace gravelands
             , networkClient()
             , playerNetworkEntity(beng::invalidEntity)
             , mirrorCount(0)
-            , snapshotACount(0)
-            , snapshotBCount(0)
-            , snapshotATime(0.0f)
-            , snapshotBTime(0.0f)
-            , snapshotAValid(false)
-            , snapshotBValid(false)
+            , snapshotHead(0)
+            , cameraFollowActive(false)
+            , predictedPosition(0.0f, 0.0f, 0.0f)
+            , predictionActive(false)
+            , predictionCommand{ 0, 0 }
             , lastSentCommand{ 0, 0 }
             , lastSentCommandValid(false)
             , time()
             , consoleWindow()
             , showConsole(false)
-            , imguiEnabled(true)
+            , imguiEnabled(imguiEnabledParam)
         {
             // Зеркала: невалидные ID (нет привязки)
             for (buint32 i = 0; i < maxNetworkUnits; ++i)
             {
                 this->mirrors[i].serverEntityId = beng::invalidEntity;
                 this->mirrors[i].clientEntityId = beng::invalidEntity;
+            }
+
+            // Кольцевой буфер снапшотов: все слоты пусты
+            for (buint32 i = 0; i < snapshotBufferSize; ++i)
+            {
+                this->snapshotCount[i] = 0;
+                this->snapshotTick[i] = 0;
+                this->snapshotValid[i] = false;
             }
         }
     };
@@ -233,8 +268,7 @@ namespace gravelands
         // Аллокация через GlobalAllocator + placement new (проектное правило:
         // выделяющие new/delete запрещены, placement new разрешён)
         impl = static_cast<ClientCoreImpl*>(globalAllocator.allocate(sizeof(ClientCoreImpl)));
-        new (impl) ClientCoreImpl();
-        impl->imguiEnabled = imguiEnabled;
+        new (impl) ClientCoreImpl(imguiEnabled);
 
         // Изометрическая камера: фиксированный ракурс, лёгкая перспектива.
         // Наклон/азимут уже стоят по умолчанию в конструкторе камеры
@@ -427,11 +461,17 @@ namespace gravelands
         // Сеть: опрос + применение снапшотов (зеркала юнитов)
         this->updateNetworkState();
 
-        // Команда игрока (WASD) — при подключённом сервере
+        // Команда игрока (WASD) — при подключённом сервере; она же
+        // питает локальное предсказание (см. updatePlayerPrediction)
         if (impl->networkClient.getState() == gravelands::NetworkClient::State::Connected)
         {
             this->sendMovementCommand();
         }
+
+        // Client-side prediction: локальный ввод применяется к зеркалу
+        // игрока немедленно (интерполированная позиция перекрывается) —
+        // отклик на клавиши мгновенный, независимо от кадрового времени
+        this->updatePlayerPrediction(simDeltaTime);
 
         // Единственная точка отрисовки мира: вся сцена (тайлы, тени,
         // плоскости, сфера, скелетная модель) рисуется RenderSystem'ом
@@ -509,7 +549,24 @@ namespace gravelands
                     impl->world.getScene().tryGetComponent<beng::TransformComponent>(mirrorId);
                 if (mirrorTransform != nullptr)
                 {
-                    impl->camera.setTarget(mirrorTransform->getWorldPosition());
+                    const blib::graphics::Vector3f mirrorPosition = mirrorTransform->getWorldPosition();
+                    if (!impl->cameraFollowActive)
+                    {
+                        // Первое следование (старт сессии, переход
+                        // офлайн→сеть): снап-установка — без полёта
+                        // камеры через карту к далёкому зеркалу
+                        impl->camera.setTarget(mirrorPosition);
+                        impl->cameraFollowActive = true;
+                    }
+                    else
+                    {
+                        // Экспоненциальное сглаживание цели: alpha —
+                        // frame-rate независимый фактор (1 - e^(-k*dt))
+                        const float alpha = 1.0f - std::exp(-cameraFollowSmoothing * deltaTime);
+                        const blib::graphics::Vector3f smoothed =
+                            impl->camera.getTarget() + (mirrorPosition - impl->camera.getTarget()) * alpha;
+                        impl->camera.setTarget(smoothed);
+                    }
                     impl->camera.update();
                     return;
                 }
@@ -519,6 +576,11 @@ namespace gravelands
             impl->camera.update();
             return;
         }
+
+        // Офлайн-режим: WASD двигает цель камеры в плоскости земли;
+        // флаг следования сбрасывается — при следующем подключении
+        // камера снова встанет на зеркало снап-установкой
+        impl->cameraFollowActive = false;
 
         // Офлайн-режим: WASD двигает цель камеры в плоскости земли
         // Горизонтальное направление взгляда (от камеры к цели, без Y):
@@ -667,105 +729,198 @@ namespace gravelands
                 static_cast<unsigned long long>(welcome.playerEntityId));
         }
 
-        // Снапшот: сдвиг буфера (B → A) и приём нового (→ B)
+        // Снапшоты: слив ВСЕХ накопленных за кадр в кольцевой буфер.
+        // (Раньше брался только последний — при догоняющих пачках
+        // тиков сервера кольцо получало редкие снапшоты с дырками в
+        // десятки тиков, lerp растягивался и рвал движение/позицию.)
         SnapshotEntry entries[maxNetworkUnits];
-        buint32 entryCount = 0;
-        buint32 tickNumber = 0;
-        if (impl->networkClient.takeSnapshot(tickNumber, entries, maxNetworkUnits, entryCount))
+        buint32 drainedCount = 0;
+        SnapshotEntry newestEntries[maxNetworkUnits];
+        buint32 newestEntryCount = 0;
+
+        // Был ли хоть один снапшот за сессию (до слива)
+        bool hadSnapshot = false;
+        for (buint32 i = 0; i < snapshotBufferSize; ++i)
         {
-            impl->snapshotAValid = impl->snapshotBValid;
-            impl->snapshotACount = impl->snapshotBCount;
-            impl->snapshotATime = impl->snapshotBTime;
-            for (buint32 i = 0; i < impl->snapshotBCount; ++i)
+            if (impl->snapshotValid[i])
             {
-                impl->snapshotA[i] = impl->snapshotB[i];
-            }
-
-            impl->snapshotBValid = true;
-            impl->snapshotBCount = entryCount;
-            impl->snapshotBTime = impl->time.getTotalTime();
-            for (buint32 i = 0; i < entryCount; ++i)
-            {
-                impl->snapshotB[i] = entries[i];
-            }
-
-            // Первый снапшот — сеть жива: локальная сфера-заглушка
-            // больше не нужна (юниты приходят зеркалами)
-            if (!impl->snapshotAValid)
-            {
-                impl->world.removeLocalPlayerEntity();
+                hadSnapshot = true;
+                break;
             }
         }
+
+        for (;;)
+        {
+            buint32 entryCount = 0;
+            buint32 tickNumber = 0;
+            if (!impl->networkClient.takeSnapshot(tickNumber, entries, maxNetworkUnits, entryCount))
+            {
+                break;
+            }
+
+            if (!hadSnapshot)
+            {
+                // Первый снапшот за сессию — сеть жива: локальная
+                // сфера-заглушка больше не нужна (юниты приходят зеркалами)
+                impl->world.removeLocalPlayerEntity();
+                hadSnapshot = true;
+            }
+
+            const buint32 slot = impl->snapshotHead;
+            impl->snapshotCount[slot] = entryCount;
+            impl->snapshotTick[slot] = tickNumber;
+            for (buint32 i = 0; i < entryCount; ++i)
+            {
+                impl->snapshotBuffer[slot][i] = entries[i];
+            }
+            impl->snapshotValid[slot] = true;
+            impl->snapshotHead = (impl->snapshotHead + 1) % snapshotBufferSize;
+
+            // Последний слитый — новейший: цель реконсиляции предсказания
+            for (buint32 i = 0; i < entryCount; ++i)
+            {
+                newestEntries[i] = entries[i];
+            }
+            newestEntryCount = entryCount;
+            ++drainedCount;
+        }
+
+        if (__blib_unlikely(drainedCount > 1))
+        {
+            // Догоняющая пачка (кадр длиннее тика) — диагностика перфа
+            __blib_log_debug("network: drained %u snapshots this frame", drainedCount);
+        }
+
+        // Реконсиляция client-side prediction по новейшему снапшоту
+        this->reconcilePlayerPrediction(newestEntries, newestEntryCount);
 
         this->applyNetworkInterpolation();
     }
 
     void ClientCore::applyNetworkInterpolation()
     {
-        if (!impl->snapshotBValid)
+        // Новейший снапшот в буфере (по tick number, не по позиции в
+        // кольце — слоты пишутся по кругу)
+        bool foundNewest = false;
+        buint32 newestTick = 0;
+        for (buint32 i = 0; i < snapshotBufferSize; ++i)
         {
-            return;
-        }
-
-        // Фактор интерполяции между снапшотами A и B по локальному
-        // времени приёма: 0 = время A, 1 = время B; при отставании
-        // клампится в 1 (последнее известное состояние)
-        float factor = 0.0f;
-        if (impl->snapshotAValid && impl->snapshotBTime > impl->snapshotATime)
-        {
-            const float span = impl->snapshotBTime - impl->snapshotATime;
-            factor = (impl->time.getTotalTime() - impl->snapshotBTime) / span;
-            if (factor < 0.0f)
+            if (!impl->snapshotValid[i])
             {
-                factor = 0.0f;
+                continue;
             }
-            if (factor > 1.0f)
+            if (!foundNewest || impl->snapshotTick[i] > newestTick)
             {
-                factor = 1.0f;
+                newestTick = impl->snapshotTick[i];
+                foundNewest = true;
             }
         }
-
-        beng::Scene& scene = impl->world.getScene();
-
-        for (buint32 i = 0; i < impl->snapshotBCount; ++i)
+        if (!foundNewest)
         {
-            const SnapshotEntry& entryB = impl->snapshotB[i];
+            return; // снапшотов ещё не было
+        }
 
-            // Интерполированная позиция: lerp между записями A и B
-            blib::math::Vector<float, 3> position(
-                entryB.positionX, entryB.positionY, entryB.positionZ);
-            if (impl->snapshotAValid && factor > 0.0f)
+        // Рендерим на snapshotRenderDelayTicks тиков позади новейшего:
+        // постоянный лаг вместо «сколько успело прийти» — скорость
+        // интерполяции постоянна, джиттер приёма поглощается буфером
+        const buint32 targetTick = newestTick - snapshotRenderDelayTicks;
+
+        // Пара снапшотов, охватывающая targetTick: A — ближайший к нему
+        // СНИЗУ (<=), B — ближайший СВЕРХУ (>)
+        bool foundA = false;
+        bool foundB = false;
+        buint32 indexA = 0;
+        buint32 indexB = 0;
+        buint32 tickA = 0;
+        buint32 tickB = 0;
+        for (buint32 i = 0; i < snapshotBufferSize; ++i)
+        {
+            if (!impl->snapshotValid[i])
             {
-                for (buint32 j = 0; j < impl->snapshotACount; ++j)
+                continue;
+            }
+            const buint32 tick = impl->snapshotTick[i];
+            if (tick <= targetTick && (!foundA || tick > tickA))
+            {
+                indexA = i;
+                tickA = tick;
+                foundA = true;
+            }
+            if (tick > targetTick && (!foundB || tick < tickB))
+            {
+                indexB = i;
+                tickB = tick;
+                foundB = true;
+            }
+        }
+
+        if (foundA && foundB)
+        {
+            // Интерполяция между A и B по tick number: span всегда
+            // кратен тиковому интервалу — движение ровное; пропущенные
+            // снапшоты (gap) не рвут скорость, а растягивают переход
+            float factor = 0.0f;
+            if (tickB > tickA)
+            {
+                factor = static_cast<float>(targetTick - tickA)
+                    / static_cast<float>(tickB - tickA);
+            }
+
+            for (buint32 i = 0; i < impl->snapshotCount[indexB]; ++i)
+            {
+                const SnapshotEntry& entryB = impl->snapshotBuffer[indexB][i];
+
+                blib::math::Vector<float, 3> position(
+                    entryB.positionX, entryB.positionY, entryB.positionZ);
+                for (buint32 j = 0; j < impl->snapshotCount[indexA]; ++j)
                 {
-                    if (impl->snapshotA[j].entityId == entryB.entityId)
+                    const SnapshotEntry& entryA = impl->snapshotBuffer[indexA][j];
+                    if (entryA.entityId == entryB.entityId)
                     {
-                        const SnapshotEntry& entryA = impl->snapshotA[j];
                         position.x = entryA.positionX + (entryB.positionX - entryA.positionX) * factor;
                         position.y = entryA.positionY + (entryB.positionY - entryA.positionY) * factor;
                         position.z = entryA.positionZ + (entryB.positionZ - entryA.positionZ) * factor;
                         break;
                     }
                 }
-            }
 
-            // Зеркало юнита: найти или создать, применить позицию
-            beng::EntityID mirrorId = this->findMirror(entryB.entityId);
-            if (mirrorId == beng::invalidEntity)
-            {
-                mirrorId = this->createMirror(entryB.entityId);
+                this->applyMirrorPosition(entryB.entityId, position);
             }
-            if (mirrorId == beng::invalidEntity)
-            {
-                continue;
-            }
+            return;
+        }
 
-            beng::TransformComponent* mirrorTransform =
-                scene.tryGetComponent<beng::TransformComponent>(mirrorId);
-            if (mirrorTransform != nullptr)
-            {
-                mirrorTransform->setLocalPosition(position);
-            }
+        // Краевой случай: охватывающей пары нет. targetTick старше всех
+        // (буфер только начал наполняться) — старейшее состояние; новее
+        // всех (буфер отстал) — заморозка на новейшем
+        const buint32 sourceIndex = foundB ? indexB : indexA;
+        for (buint32 i = 0; i < impl->snapshotCount[sourceIndex]; ++i)
+        {
+            const SnapshotEntry& entry = impl->snapshotBuffer[sourceIndex][i];
+            blib::math::Vector<float, 3> position(
+                entry.positionX, entry.positionY, entry.positionZ);
+            this->applyMirrorPosition(entry.entityId, position);
+        }
+    }
+
+    void ClientCore::applyMirrorPosition(buint64 serverEntityId,
+        _In const blib::math::Vector<float, 3>& position)
+    {
+        // Зеркало юнита: найти или создать, применить позицию
+        beng::EntityID mirrorId = this->findMirror(serverEntityId);
+        if (mirrorId == beng::invalidEntity)
+        {
+            mirrorId = this->createMirror(serverEntityId);
+        }
+        if (mirrorId == beng::invalidEntity)
+        {
+            return;
+        }
+
+        beng::TransformComponent* mirrorTransform =
+            impl->world.getScene().tryGetComponent<beng::TransformComponent>(mirrorId);
+        if (mirrorTransform != nullptr)
+        {
+            mirrorTransform->setLocalPosition(position);
         }
     }
 
@@ -789,6 +944,108 @@ namespace gravelands
             impl->networkClient.sendCommand(command);
             impl->lastSentCommand = command;
             impl->lastSentCommandValid = true;
+        }
+
+        // Текущий ввод питает локальное предсказание (каждый кадр)
+        impl->predictionCommand = command;
+    }
+
+    void ClientCore::reconcilePlayerPrediction(
+        _In const SnapshotEntry* entries, buint32 entryCount)
+    {
+        if (impl->playerNetworkEntity == beng::invalidEntity)
+        {
+            return; // Welcome ещё не пришёл — игрока не знаем
+        }
+
+        // Позиция игрока в новейшем слитом снапшоте
+        const SnapshotEntry* playerEntry = nullptr;
+        for (buint32 i = 0; i < entryCount; ++i)
+        {
+            if (entries[i].entityId == impl->playerNetworkEntity)
+            {
+                playerEntry = &entries[i];
+                break;
+            }
+        }
+        if (playerEntry == nullptr)
+        {
+            return;
+        }
+
+        const blib::graphics::Vector3f serverPosition(
+            playerEntry->positionX, playerEntry->positionY, playerEntry->positionZ);
+
+        if (!impl->predictionActive)
+        {
+            // Первый снапшот игрока: предсказание стартует от серверной
+            // позиции (скачка при старте сессии нет)
+            impl->predictedPosition = serverPosition;
+            impl->predictionActive = true;
+            return;
+        }
+
+        // Штатное расхождение = скорость × латентность команды (сервер
+        // воспроизводит те же команды, просто отстаёт на кадр) — ему
+        // доверяем: постоянная коррекция дала бы видимый rubber-band
+        // на остановке. Снап — только при реальной рассинхронизации
+        const blib::graphics::Vector3f error = impl->predictedPosition - serverPosition;
+        const float errorLength = blib::math::length(error);
+        if (errorLength > predictionSnapDistance)
+        {
+            __blib_log_debug("network: prediction snapped to server (divergence %.1f)",
+                static_cast<double>(errorLength));
+            impl->predictedPosition = serverPosition;
+        }
+    }
+
+    void ClientCore::updatePlayerPrediction(float deltaTime)
+    {
+        if (impl->networkClient.getState() != gravelands::NetworkClient::State::Connected)
+        {
+            // Разрыв сессии — предсказание гасится; при следующем
+            // подключении стартует заново от первого снапшота
+            impl->predictionActive = false;
+            impl->predictionCommand = PlayerCommand{ 0, 0 };
+            return;
+        }
+        if (!impl->predictionActive)
+        {
+            return; // первый снапшот ещё не пришёл
+        }
+
+        // Интеграция ввода — формула 1:1 с MovementSystem сервера
+        // (нормализованная диагональ, playerMoveSpeed, кламп worldBounds):
+        // предсказанная траектория совпадает с серверной, просто
+        // начинается раньше (сервер применяет команды с лагом кадра)
+        const bint8 moveX = impl->predictionCommand.moveX;
+        const bint8 moveZ = impl->predictionCommand.moveZ;
+        if (moveX != 0 || moveZ != 0)
+        {
+            blib::graphics::Vector3f direction(
+                static_cast<float>(moveX), 0.0f, static_cast<float>(moveZ));
+            direction = blib::math::normalize(direction);
+
+            blib::graphics::Vector3f position = impl->predictedPosition;
+            position = position + direction * (playerMoveSpeed * deltaTime);
+            if (position.x > worldBounds) position.x = worldBounds;
+            if (position.x < -worldBounds) position.x = -worldBounds;
+            if (position.z > worldBounds) position.z = worldBounds;
+            if (position.z < -worldBounds) position.z = -worldBounds;
+            impl->predictedPosition = position;
+        }
+
+        // Зеркало игрока рендерится по предсказанию — интерполированная
+        // позиция (applyNetworkInterpolation) для игрока перекрывается
+        const beng::EntityID mirrorId = this->findMirror(impl->playerNetworkEntity);
+        if (mirrorId != beng::invalidEntity)
+        {
+            beng::TransformComponent* mirrorTransform =
+                impl->world.getScene().tryGetComponent<beng::TransformComponent>(mirrorId);
+            if (mirrorTransform != nullptr)
+            {
+                mirrorTransform->setLocalPosition(impl->predictedPosition);
+            }
         }
     }
 

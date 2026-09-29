@@ -1,4 +1,5 @@
 #include <WinSock2.h>
+#include <Ws2tcpip.h>
 
 #include <blib/core/console/console.h>
 #include <blib/network/socket.h>
@@ -64,6 +65,31 @@ bool blib::network::Socket::setBlocking(bool isBlocking)
     u_long arg = isBlocking ? 0 : 1;
     int res = ioctlsocket(*__blib_cast_socket_handler(this->ctx), FIONBIO, &arg);
     if (res == NO_ERROR)
+    {
+        return true;
+    }
+    this->lastError = NetworkError::Unknown;
+    return false;
+}
+
+bool blib::network::Socket::setTcpNoDelay(bool enable)
+{
+    if (this->ctx == nullptr)
+    {
+        this->lastError = NetworkError::Unknown;
+        return false;
+    }
+
+    // TCP_NODELAY = выключить алгоритм Нейгла: мелкие real-time пакеты
+    // (команды ввода, снапшоты) не ждут накопления/ACK
+    const BOOL value = enable ? TRUE : FALSE;
+    const int result = ::setsockopt(
+        *__blib_cast_socket_handler(this->ctx),
+        IPPROTO_TCP,
+        TCP_NODELAY,
+        reinterpret_cast<const char*>(&value),
+        sizeof(value));
+    if (result == NO_ERROR)
     {
         return true;
     }

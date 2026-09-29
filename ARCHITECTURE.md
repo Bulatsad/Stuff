@@ -4,7 +4,7 @@
 > (`blib` → `beng` → `game`), требования к движку beng и целевую
 > архитектуру референсной игры (диаблоид). Статус: план, не код.
 > Обновляется вместе с развитием кодовой базы.
-> Сверено: 2026-09-28
+> Сверено: 2026-09-29
 
 ---
 
@@ -151,7 +151,7 @@ gravelands-common ──> beng-core ──> blib
 core-библиотеку — см. раздел про эдитор.
 
 **Таймстеп — гибридный** (как FixedUpdate/Update в Unity):
-сервер шагает симуляцию фиксированными тиками 30 Гц с аккумулятором
+сервер шагает симуляцию фиксированными тиками 60 Гц с аккумулятором
 (`serverTickRate`/`serverFixedDelta` в `gravelands-common`), клиент рендерит
 и читает ввод с переменным dt.
 
@@ -376,7 +376,7 @@ src/
 - `misc/game` → `misc/gravelands`: игра именуется Gravelands, namespace `gravelands`,
   инклюды `<gravelands/...>` (корень `src/misc`).
 - `server/engine/` (дубль ECS с битыми инклюдами) удалён; вместо него —
-  `gravelands-server-core` (ServerCore: beng::Scene + аккумулятор фикс. 30 Гц)
+  `gravelands-server-core` (ServerCore: beng::Scene + аккумулятор фикс. 60 Гц)
   + тонкий `gravelands-server`.
 - `client` переписан на паттерн «lib + тонкий exe»: `gravelands-client-core`
   (ClientCore с pimpl: окно/таргет/камера/тайлы) + тонкий `gravelands-client`;
@@ -425,6 +425,13 @@ src/
   (`NetworkClient`, офлайн-фолбэк); PIE — `PieSession` + Play/Stop в
   `beng-editor.exe` (клиент в PIE без своего ImGui-контекста,
   `EditorApplication::setEditorInputEnabled`).
+- **Сетевой feel (2026-09-29):** Nagle выключен (`setTcpNoDelay` в
+  blib-network); интерполяция клиента — кольцевой буфер снапшотов +
+  фиксированная задержка рендера по tick number; слив ВСЕХ снапшотов за
+  кадр; **client-side prediction игрока** (локальная интеграция ввода
+  формулой сервера, реконсиляция снапом при расхождении > порога);
+  тикрейт 30→60 Гц; PIE-перф (уменьшенное окно клиента, пост-пасс off,
+  debug-лог кадрового времени).
 
 **Осталось (по roadmap):**
 

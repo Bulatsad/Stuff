@@ -18,6 +18,12 @@ namespace blib
 
             bool setBlocking(bool isBlocking);
 
+            /**
+             * См. Socket::setTcpNoDelay: отключение алгоритма Нейгла для
+             * real-time трафика. Вызывать на подключённом сокете.
+             */
+            bool setTcpNoDelay(bool enable);
+
             SocketStatus bind(Address& addr);
 
             /**

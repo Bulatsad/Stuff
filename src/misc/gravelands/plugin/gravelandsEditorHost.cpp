@@ -52,6 +52,9 @@ namespace gravelands
         constexpr float pickMaxDistance = 100000.0f;
         constexpr float pickFallbackRadius = 8.0f;
         constexpr float pickEpsilon = 0.000001f;
+
+        // Интервал логирования среднего кадрового времени PIE (сек)
+        constexpr float pieLogIntervalSeconds = 1.0f;
     }
 
     namespace
@@ -221,10 +224,18 @@ namespace gravelands
         // иначе остаток кадра эдитора рисует в чужом контексте
         bool pieStartPending;
 
+        // Замер кадрового времени PIE: суммарное dt и число кадров
+        // за интервал логирования (см. onSceneWillUpdate) — диагностика
+        // «тяжёлого кадра» (сеть в PIE кадрово-зависима)
+        float pieLogAccumulator;
+        buint32 pieLogFrameCount;
+
         GravelandsEditorHostImpl()
             : world()
             , pieSession()
             , pieStartPending(false)
+            , pieLogAccumulator(0.0f)
+            , pieLogFrameCount(0)
         {
         }
     };
@@ -289,6 +300,22 @@ namespace gravelands
         // каркас вернёт контекст эдитора сразу после этого хука
         if (this->impl->pieSession.isRunning())
         {
+            // Замер кадрового времени PIE: сеть кадрово-зависима
+            // (команды/снапшоты движутся с частотой кадров эдитора) —
+            // среднее за секунду видно в debug-логе
+            this->impl->pieLogAccumulator += deltaTime;
+            ++this->impl->pieLogFrameCount;
+            if (this->impl->pieLogAccumulator >= pieLogIntervalSeconds)
+            {
+                __blib_log_debug("PIE frame: %.1f ms average over %u frames",
+                    static_cast<double>(
+                        this->impl->pieLogAccumulator * 1000.0f
+                        / static_cast<float>(this->impl->pieLogFrameCount)),
+                    static_cast<unsigned int>(this->impl->pieLogFrameCount));
+                this->impl->pieLogAccumulator = 0.0f;
+                this->impl->pieLogFrameCount = 0;
+            }
+
             this->impl->pieSession.tick();
         }
     }

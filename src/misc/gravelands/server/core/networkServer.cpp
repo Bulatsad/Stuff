@@ -72,6 +72,9 @@ namespace gravelands
             if (status == blib::network::SocketStatus::OK)
             {
                 this->client.setBlocking(false);
+                // Real-time трафик: команды/снапшоты — мелкие пакеты,
+                // Nagle даёт заметную латентность (см. Socket::setTcpNoDelay)
+                this->client.setTcpNoDelay(true);
                 this->clientConnected = true;
                 this->clientJustConnected = true;
                 this->framer.reset();

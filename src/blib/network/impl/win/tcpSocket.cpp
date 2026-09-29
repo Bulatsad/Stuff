@@ -40,6 +40,11 @@ bool blib::network::TcpSocket::setBlocking(bool isBlocking)
     return this->socket.setBlocking(isBlocking);
 }
 
+bool blib::network::TcpSocket::setTcpNoDelay(bool enable)
+{
+    return this->socket.setTcpNoDelay(enable);
+}
+
 blib::network::SocketStatus blib::network::TcpSocket::bind(Address& addr)
 {
     return this->socket.bind(addr);

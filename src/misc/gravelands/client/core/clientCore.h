@@ -1,9 +1,11 @@
 #pragma once
 
 #include <gravelands/common/config.h>
+#include <gravelands/common/protocol.h>
 
 #include <beng/config.h>
 
+#include <blib/core/math/vector.h>
 #include <blib/utilmacro.h>
 
 namespace gravelands
@@ -88,10 +90,36 @@ namespace gravelands
         void updateNetworkState();
 
         /**
-         * Применение интерполяции к зеркалам юнитов (между двумя
-         * последними снапшотами). Из updateNetworkState().
+         * Применение интерполяции к зеркалам юнитов (кольцевой буфер
+         * снапшотов, фиксированная задержка рендера в тиках сервера).
+         * Из updateNetworkState().
          */
         void applyNetworkInterpolation();
+
+        /**
+         * Найти (или создать) зеркало серверного юнита и применить
+         * позицию. Общий код обеих ветвей интерполяции.
+         */
+        void applyMirrorPosition(buint64 serverEntityId,
+            _In const blib::math::Vector<float, 3>& position);
+
+        /**
+         * Реконсиляция client-side prediction игрока: сверка
+         * предсказанной позиции с позицией игрока в новейшем снапшоте.
+         * Доверяем предсказанию (сервер воспроизводит те же команды
+         * с лагом); снап — только при расхождении больше
+         * predictionSnapDistance. Из updateNetworkState().
+         */
+        void reconcilePlayerPrediction(
+            _In const SnapshotEntry* entries, buint32 entryCount);
+
+        /**
+         * Интеграция локального ввода в предсказанную позицию игрока
+         * (формула 1:1 с MovementSystem сервера) и применение её к
+         * зеркалу игрока. Движение начинается мгновенно, независимо
+         * от сети и кадрового времени. Из tick().
+         */
+        void updatePlayerPrediction(float deltaTime);
 
         /**
          * Отправка команды игрока (WASD-вектор) при изменении.

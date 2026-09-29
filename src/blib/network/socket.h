@@ -84,6 +84,18 @@ namespace blib
              */
             bool setBlocking(bool isBlocking);
 
+            /**
+             * Алгоритм Нейгла (TCP_NODELAY). Включён по умолчанию
+             * системой: мелкие пакеты накапливаются и уходят с
+             * задержкой (Nagle + delayed ACK) — для real-time сообщений
+             * (команды, снапшоты) это заметная латентность.
+             * Вызывать на ПОДКЛЮЧЁННОМ/принятом сокете.
+             *
+             * @param enable true — пакеты отправляются немедленно
+             * @return true — опция установлена
+             */
+            bool setTcpNoDelay(bool enable);
+
             SocketStatus bind(Address& addr);
 
             SocketStatus close();
