@@ -14,11 +14,11 @@
 
 | Таргет | Тип | Содержимое |
 |--------|-----|------------|
-| `gravelands-common` | library (header-only, INTERFACE) | общие константы (`config.h`); позже — компоненты, пакеты, формулы |
+| `gravelands-common` | library (STATIC) | общие определения: константы, бинарный сетевой протокол (`protocol.h`), компоненты (`UnitComponent` — первый игровой) |
 | `gravelands-world` | library | **мир**: `World` (ECS-сцена + контент: тайлы, сфера, деревья, тени, свет, танцор), системы, консольные команды `scene_save`/`scene_load`, дебаг-свет клавишами; рендер-таргет выдаёт хост. Общий для клиента и эдитора (плагин-модель) |
-| `gravelands-plugin` | library (STATIC/SHARED) | **плагин игры для единого эдитора**: `GravelandsEditorHost` поверх `EditorApplication` (мир в сцене эдитора) + фабрика `gravelandsCreateEditorHost()` — точка входа будущей gravelands.dll |
-| `gravelands-server-core` + `gravelands-server` | library + exe | авторитетная ECS-симуляция (Scene + TransformSystem), фикс. тикрейт 30 Гц |
-| `gravelands-client-core` + `gravelands-client` | library + exe | представление: окно, изокамера, ввод, пост-пасс, ImGui (оверлей/консоль); мир — из `gravelands-world` |
+| `gravelands-plugin` | library (STATIC/SHARED) | **плагин игры для единого эдитора**: `GravelandsEditorHost` поверх `EditorApplication` (мир в сцене эдитора) + extern "C"-фабрики `gravelandsCreateEditorHost`/`gravelandsDestroyEditorHost` (экспорт gravelands.dll; гашение парной фабрикой — тип хоста известен только плагину); **PIE**: `PieSession` (Play/Stop в верхней полосе) |
+| `gravelands-server-core` + `gravelands-server` | library + exe | авторитетная симуляция: `ServerCore` (Scene + TransformSystem + `MovementSystem`, фикс. тикрейт 30 Гц), `NetworkServer` (TCP, команды/снапшоты) |
+| `gravelands-client-core` + `gravelands-client` | library + exe | представление: окно, изокамера, пост-пасс, ImGui (оверлей/консоль); `NetworkClient` (снапшоты + интерполяция зеркал юнитов); мир — из `gravelands-world` |
 
 - Слои: клиент/сервер зависят от beng/blib; `gravelands-common` — только от blib-int/beng-core.
 - Что НЕ в этом доке: правила кодирования (AGENTS.md), план развития (ARCHITECTURE.md), детали ECS (BENG.md), детали рендера (GRAPHICS.md).
@@ -32,11 +32,15 @@
 | Общие константы (тикрейт, окно, имя игры) | `common/config.h` |
 | **Мир** (сцена, контент, scene_save/load, дебаг-свет) | `world/world.h/.cpp` |
 | Сетка тайлов (квадраты на XZ) | `world/isometricTileset.h/.cpp` |
-| Плагин игры для эдитора (хост + фабрика) | `plugin/gravelandsEditorHost.h/.cpp` |
+| Плагин игры для эдитора (хост + фабрики + PIE) | `plugin/gravelandsEditorHost.h/.cpp`, `plugin/pieSession.h/.cpp` |
 | Клиентское ядро (frame-API, pimpl) | `client/core/clientCore.h/.cpp` |
-| Тонкий exe клиента | `client/main/main.cpp` |
-| Серверное ядро (аккумулятор тиков) | `server/core/serverCore.h/.cpp` |
-| Тонкий exe сервера | `server/main/main.cpp` |
+| Сетевой клиент (снапшоты/команды) | `client/core/networkClient.h/.cpp` |
+| Серверное ядро (аккумулятор тиков + сеть) | `server/core/serverCore.h/.cpp` |
+| Сетевой сервер (accept/команды/снапшоты) | `server/core/networkServer.h/.cpp` |
+| Перемещение юнитов (сервер) | `server/core/movementSystem.h/.cpp` |
+| Бинарный протокол + фреймер | `common/protocol.h` |
+| Игровой компонент юнита | `common/unitComponent.h/.cpp` |
+| Тонкий exe клиента / сервера | `client/main/main.cpp`, `server/main/main.cpp` |
 | CMake-композиция подпроектов | `CMakeLists.txt` (корень gravelands) |
 
 ---
@@ -47,7 +51,24 @@
 
 - **Сервер** — авторитет: `serverCore::tick()` меряет реальное dt (`beng::Time`), копит в аккумулятор и шагает `scene.update(serverFixedDelta)` фиксированными тиками 30 Гц (`serverTickRate`/`serverFixedDelta` из `common/config.h`). Несколько тиков за кадр — норм (догон), неиспользованный остаток живёт в аккумуляторе.
 - **Клиент** — переменный dt кадра (`beng::Time::getDeltaTime()`), рендер каждый кадр.
-- Сетевой цикл (команды TCP → тик → снапшоты TCP → интерполяция) ещё не реализован — см. ARCHITECTURE.md.
+- Сетевой цикл реализован (2026-09-28) — см. ниже «Сетевой цикл».
+
+### Сетевой цикл (команды → тики → снапшоты → интерполяция)
+
+- **Протокол** (`common/protocol.h`, header-only бинарный кодек без аллокаций): сообщение = `[type:u8][payloadSize:u16 LE][payload]`. Типы: `Command` (ввод игрока: moveX/moveZ — bint8-вектор), `Snapshot` (tickNumber + позиции юнитов), `Welcome` (тикрейт + EntityID игрока). `MessageFramer` — накопление TCP-потока и разбор целых сообщений (payload копируется в буфер вызывающего — внутренний буфер сдвигается). Тесты — группа beng `protocol`.
+- **Транспорт** — TCP (loopback; PIE использует тот же код-путь). Сокеты **неблокирующие** + опрос в кадрах (без потоков — нет гонок). blib-network доведён до рабочего состояния (NetworkError, WouldBlock-контракт, Address — value-тип; тесты — группа blib `network`).
+- **Сервер** (`NetworkServer`): accept (MVP — один клиент, новый заменяет старого) → Welcome; команды копятся в «последнюю» (сервер не доверяет клиенту — применяет только к юниту игрока); после каждого тика — снапшот авторитетных позиций юнитов (сущности с `UnitComponent`). `MovementSystem` двигает юниты по входному вектору (диагональ нормализована, кламп `worldBounds`). При WouldBlock на отправке — снапшот пропускается (клиент догонит).
+- **Клиент** (`NetworkClient`): асинхронный connect (WouldBlock-цикл); приём снапшотов в буфер двух последних; **интерполяция** между ними по локальному времени приёма (фактор клампится в [0,1] — при отставании замораживается последнее состояние); зеркала юнитов — сферы-плейсхолдеры в клиентской сцене (создаются при первом появлении в снапшоте). Камера следует за зеркалом ИГРОКА (EntityID из Welcome). WASD в сетевом режиме — команда серверу (dedup — при изменении вектора).
+- **Офлайн-режим:** сервер не запущен — клиент логирует предупреждение и работает как раньше (локальная сфера-персонаж, WASD двигает камеру). При первом снапшоте локальная сфера удаляется (`World::removeLocalPlayerEntity`).
+- **Ограничения (MVP):** один клиент; статический контент мира — процедурный на клиенте (Welcome-синхронизация полного мира — TODO); экстраполяции нет (кламп в последний снапшот); переподключение после потери сервера — нет (остаётся офлайн-режим).
+
+### PIE (Play In Editor)
+
+- **`PieSession`** (плагин): in-process хостинг `ServerCore` + `ClientCore`; `start(port)` — сервер слушает порт, затем клиент подключается (loopback TCP — настоящий сетевой путь); `tick()` — оба ядра; `stop()` — клиент → сервер.
+- **Кнопки Play/Stop** в верхней полосе эдитора (`GravelandsEditorHost::onUi`); кадр сессии — из `onSceneWillUpdate` (до отрисовки сцены эдитора); при остановке эдитора сессия гасится первой.
+- **Клиент в PIE — без собственного ImGui** (`ClientCore::initialize(false)`): контекст у эдитора один, второй сломал бы его кадр; оверлей/консоль клиента в PIE недоступны. Ввод игры и горячие клавиши эдитора конфликтуют на общей клавиатуре — на время PIE каркас отключает редакторский ввод (`EditorApplication::setEditorInputEnabled(false)`).
+- **Два GL-контекста (multi-window):** клиентское окно — свой HGLRC; каждое окно делает свой контекст текущим в `update()`/`swapBuffers()` (`RenderWindow::makeCurrent`, кэш по `wglGetCurrentContext` — переключение только при смене окна); каркас возвращает контекст эдитора после PIE-тика. **Play отложен на начало кадра** (нельзя создавать окно в середине ImGui-кадра). ВРЕМЕННО (2 переключения/кадр в PIE) — целевое: Game-вьюпорт или поток рендера клиента (см. GRAPHICS.md «Владение GL»).
+- Порт — `serverDefaultPort` (занят внешним сервером — PIE-старт провалится с логом; параметр порта — TODO).
 
 ### Мир (World, gravelands-world)
 
@@ -118,11 +139,14 @@
 - [x] **ResourceManager + миграция танцора и тайлов** (2026-09-24): кеш `ISaveLoadable` в blib-core (dedup по MD5 сериализованной формы, `ResourceRef`-refcount, слот в `Scene::getResources()`); тайлы собираются в слот кеша, танцор грузится через кеш с разделением слота. Сфера/деревья/тени — вне кеша (типы не ISaveLoadable); компоненты в dual-mode (ref ?? owned-фолбэк для verifyRoundTrip).
 - [x] **Сохранение/загрузка сцены из консоли** (2026-09-25): `Scene::save`/`load` + `IComponent::onLoaded` (beng) — тильда-консоль, `scene_save`/`scene_load`, пересоздание сцены в `resetScene()`, плейбек аниматора восстанавливается бит-в-бит (`AnimatorComponent`), проверка `scene.verify()` после load (см. секцию «Сохранение/загрузка сцены»).
 - [x] **Мир вынесен в `gravelands-world`** (2026-09-28): `World` (ECS-сцена + контент + scene_save/load + дебаг-свет) — общий для клиента и эдитора; `ClientCore` ужат до окна/камеры/ввода/пост-пасса/ImGui; деревья-билборды зашиты на стандартный ракурс (45°) — см. TODO ниже.
-- [x] **Плагин Gravelands в эдиторе, этап 1** (2026-09-28): `gravelands-plugin` (GravelandsEditorHost + фабрика) линкуется в `beng-editor.exe` статически — единый эдитор правит мир Gravelands (мир — в каркасной сцене; панели Scene Hierarchy + Inspector, gizmo W/E/R, undo/redo и выбор кликом — каркасные; верхняя полоса — хост; ray-picking плагина через `onViewportClick`: ray-AABB мешей + сфера-фолбэк; `World::setSceneResetCallback` чистит историю команд на scene_load); DLL-этап — та же фабрика как экспорт gravelands.dll (см. ARCHITECTURE.md, «Эдитор»).
-- [ ] Эдитор (DLL-этап): shared blib/beng-core + dllexport + IGameModule + загрузчик; `gravelands_plugin_type=SHARED`.
+- [x] **Плагин Gravelands в эдиторе, этап 1** (2026-09-28): `gravelands-plugin` (GravelandsEditorHost + фабрика) линкуется в `beng-editor.exe` статически — единый эдитор правит мир Gravelands (мир — в каркасной сцене; панели Scene Hierarchy + Inspector, gizmo W/E/R, undo/redo и выбор кликом — каркасные; верхняя полоса — хост; ray-picking плагина через `onViewportClick`: ray-AABB мешей + сфера-фолбэк; `World::setSceneResetCallback` чистит историю команд на scene_load).
+- [x] **Плагин Gravelands в эдиторе, этап 2 — DLL** (2026-09-28): shared-сборка blib/beng (`*_build_dynamic`), `gravelands_plugin_type=SHARED` → gravelands.dll с единственной точкой входа (extern "C"-фабрики create/destroy), beng-editor.exe грузит её через LoadLibrary/GetProcAddress; оба режима собираются и проходят тесты (см. ARCHITECTURE.md, «Эдитор»).
+- [x] **Сетевой цикл + PIE** (2026-09-28): дочинен blib-network (NetworkError/WouldBlock/value-Address, группа тестов `network`); бинарный протокол + фреймер (группа `protocol`); `UnitComponent`; сервер: `NetworkServer` + `MovementSystem` + снапшоты; клиент: `NetworkClient` + интерполяция зеркал + офлайн-фолбэк; PIE: `PieSession` + Play/Stop в эдиторе (`setEditorInputEnabled` каркаса, клиент без своего ImGui).
+- [ ] Welcome-синхронизация полного мира (статика из сервера вместо процедурной на клиенте).
+- [ ] Мультиплеер (несколько клиентов, сессии), UDP-канал снапшотов, экстраполяция, переподключение.
+- [ ] Запуск локального сервера клиентом при одиночной игре (сервер — всегда отдельный процесс; сейчас — вручную или PIE).
+- [ ] Спрайтовые персонажи (визуал юнитов вместо сфер-плейсхолдеров).
 - [ ] Билборды: хост передаёт миру направление своей камеры (у эдитора — орбитальной).
-- [ ] Сетевой слой: TCP-команды/снапшоты, запуск локального сервера при одиночной игре.
-- [ ] Спрайтовые персонажи/интерполяция между снапшотами (клиент).
 - [ ] Normalize движения камеры по диагонали, подгон скорости к дистанции зума.
 
 ---

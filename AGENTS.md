@@ -19,7 +19,7 @@
 | `vochat` | executable | Voice chat: запись/воспроизведение звука, FFT, UDP/TCP стриминг (отдельный инструмент) |
 | `gravelands-common` | library | Gravelands: общие определения (константы; позже — компоненты, пакеты, формулы). Header-only, таргет INTERFACE |
 | `gravelands-world` | library | Gravelands: мир (`World`: ECS-сцена + контент + scene_save/load + дебаг-свет); рендер-таргет выдаёт хост. Общий для клиента и эдитора |
-| `gravelands-plugin` | library | Gravelands: игровая сторона единого эдитора (`GravelandsEditorHost` + фабрика); этап 1 — статический линк в `beng-editor.exe`, этап 2 — gravelands.dll |
+| `gravelands-plugin` | library | Gravelands: игровая сторона единого эдитора (`GravelandsEditorHost` + extern "C"-фабрики create/destroy); `gravelands_plugin_type`: STATIC — линк в `beng-editor.exe` (дефолт/отладка), SHARED — gravelands.dll через LoadLibrary |
 | `gravelands-client-core` + `gravelands-client` | library + exe | Gravelands: клиент (ClientCore, frame-API) + тонкий exe. Паттерн «lib + тонкий exe» |
 | `gravelands-server-core` + `gravelands-server` | library + exe | Gravelands: сервер (ServerCore: beng::Scene, фикс. тикрейт 30 Гц) + тонкий exe |
 | `test_ecs` | executable | Демо/Smoke-приложение ECS-ядра (beng/test_ecs, Scene + Transform-иерархия) |

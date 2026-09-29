@@ -3,7 +3,7 @@
 > Слой: `blib`. Общая философия, карта модулей и правила сборки.
 > Не дублирует строгие правила проекта (`AGENTS.md`) и roadmap (`ARCHITECTURE.md`) — только ссылается.
 > **Обновлять при любых изменениях кода/сборки blib** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-22
+> Сверено: 2026-09-28
 
 ---
 
@@ -54,8 +54,8 @@
 
 ## Сборка
 
-- **Таргеты создаются хелперами** `blib_add_module(...)` и `blib_configure_module(target export_define)` (`src/blib/CMakeLists.txt`). Второй пробрасывает PUBLIC-дефайны конфигурации (числовые значения платформы/типа библиотеки, читаемые `config.h` в каждом TU), экспортный дефайн модуля (`blib_core_export`, …) и include-корень `src/`.
-- **Тип сборки:** `blib_build_type` = `blib_build_static` (по умолчанию) | `blib_build_dynamic`. В shared-сборке Windows API-макросы становятся `dllimport`, а текущий модуль — `dllexport`; в static — пустые.
+- **Таргеты создаются хелперами** `blib_add_module(...)` и `blib_configure_module(target export_define)` (`src/blib/CMakeLists.txt`). Второй пробрасывает PUBLIC-дефайны конфигурации (числовые значения платформы/типа библиотеки, читаемые `config.h` в каждом TU), экспортный дефайн модуля (`blib_core_export`, … — PRIVATE: экспортирует только сам модуль, PUBLIC сломал бы импорт у потребителей) и include-корень `src/`.
+- **Тип сборки:** `blib_build_type` = `blib_build_static` (по умолчанию) | `blib_build_dynamic`. Shared-сборка Windows (нужна плагин-модели эдитора — см. ARCHITECTURE.md): модуль — `dllexport` (blib_*_export) + `WINDOWS_EXPORT_ALL_SYMBOLS` (template-инстанции/неразмеченные символы); потребители — БЕЗ `dllimport` (inline-члены классов не существуют в DLL — линкер резолвит напрямую через импорт-таблицу), статические данные классов — `__blib_data_api` (dllimport; сами данные в импорт-либе от авто-экспорта). Все exe/DLL — в общий `bin/` (см. корневой CMake). В static — все макросы пустые.
 - **Inline-режим:** `blib_inline_mode` = `__blib_inline_compiler` (по умолчанию) | `__blib_inline_always` | `__blib_inline_never`.
 - **Платформа:** определяется CMake (`WIN32` → windows, `CMAKE_SYSTEM_NAME` → linux/macos) и уходит в `config.h` числовыми дефайнами. На не-Windows `BLIB_BUILD_GRAPHICS/SOUND/NETWORK` по умолчанию OFF; принудительное включение — `FATAL_ERROR` («has no non-Windows implementation yet»).
 - **MSVC-флаги захардкожены** в CMake (`/std:c++17 /EHsc /Gd /Gy /Oi /Gm- /MP /W3 /ZI /MD`; Debug — `/Od /MDd`). Для GCC/Clang в Debug добавляется `-DBLIB_DEBUG`.
@@ -64,7 +64,7 @@
 ### Известные грабли сборки/конфигурации
 
 - **Два механизма определения платформы:** `align.h` и `inline.h` проверяют CMake-дефайн `WIN32`, а `config.h` — `__blib_compile_platform_windows`. При нестандартной сборке они могут разойтись.
-- **`AGENTS.md` упоминает `__blib_api`** — такого макроса в blib нет: API-макросы по-модульные (`__blib_core_api` и т.д.).
+- **`AGENTS.md` упоминает `__blib_api`** — такого макроса в blib нет: API-макросы по-модульные (`__blib_core_api` и т.д.); данные — `__blib_data_api`.
 - **Баг в `blibint.h`:** все `bint8Max/bint16Max/bint32Max/bint64Max` равны `UINT8_MAX` (255) — для знаковых типов это неверно; `buint*Max` корректны.
 - **Мёртвые/черновые файлы:** `src/blib/doc/interfaces.h` (скетч `Transormable`, нигде не подключён), `src/blib/graphics/Новый текстовый документ.txt` (черновик), пустые `allocator.h`, `linkedList.cpp`, `algorithm/fdft.h`, `algorithm/impl/dft.cpp`, `algorithm/impl/fdft.cpp`.
 - `config.h` при отсутствии платформенных дефайнов не падает (`#error` закомментирован) — платформа молча остаётся undefined.

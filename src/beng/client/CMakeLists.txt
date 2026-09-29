@@ -16,13 +16,15 @@ GroupSoureces("${SourceGroupPrefix}/client/components" "${component_impl_src}")
 GroupSoureces("${HeaderGroupPrefix}/client/systems" "${system_header_src}")
 GroupSoureces("${SourceGroupPrefix}/client/systems" "${system_impl_src}")
 
-add_library(beng-client STATIC
+beng_add_module(beng-client
     ${component_header_src}
     ${component_impl_src}
 
     ${system_header_src}
     ${system_impl_src}
 )
+
+beng_configure_module(beng-client beng_export)
 
 set_target_properties(beng-client PROPERTIES FOLDER "beng" LINKER_LANGUAGE CXX)
 

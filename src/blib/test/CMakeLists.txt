@@ -16,7 +16,7 @@ target_link_libraries(blib_test_main PRIVATE blib-core)
 set_target_properties(blib_test_main PROPERTIES FOLDER "blib/tests")
 
 # Test group list: group name == file suffix test<group>.cpp
-set(blib_test_groups angle matrix pdl quaternion vector allocator allocatoraware typeerased iterator stream binary compression hash circlequeue console skinmesh transformmatrix json resource)
+set(blib_test_groups angle matrix pdl quaternion vector allocator allocatoraware typeerased iterator stream binary compression hash circlequeue console skinmesh transformmatrix json resource network)
 
 # Per-group source lists (по умолчанию — src/impl/test<group>.cpp).
 # Группа json разбита на файлы по зонам ответственности:
@@ -39,6 +39,9 @@ set(blib_test_group_link_dirs_skinmesh ${assimp_lib})
 # что у skinmesh: blib-graphics + prebuilt assimp/zlib
 set(blib_test_group_libs_transformmatrix blib-graphics debug assimpd debug zlibstaticd optimized assimp optimized zlibstatic)
 set(blib_test_group_link_dirs_transformmatrix ${assimp_lib})
+# network тестирует сокеты (loopback): blib-network + Ws2_32
+# (Ws2_32 у blib-network PRIVATE — exe линкует сам)
+set(blib_test_group_libs_network blib-network Ws2_32)
 
 # Список standalone-исполняемых групп (заполняется в цикле ниже)
 set(blib_test_group_exes)
@@ -84,7 +87,7 @@ foreach(group ${blib_test_groups})
 	target_sources(blib_test_all PRIVATE $<TARGET_OBJECTS:blib_test_${group}_obj>)
 endforeach()
 target_link_directories(blib_test_all PRIVATE ${assimp_lib})
-target_link_libraries(blib_test_all PRIVATE blib-core blib-graphics
+target_link_libraries(blib_test_all PRIVATE blib-core blib-graphics blib-network Ws2_32
 	debug assimpd debug zlibstaticd optimized assimp optimized zlibstatic)
 set_target_properties(blib_test_all PROPERTIES FOLDER "blib/tests")
 add_test(NAME blib_test_all COMMAND blib_test_all)

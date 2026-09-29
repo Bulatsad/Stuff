@@ -1,4 +1,6 @@
 #include <gravelands/client/core/clientCore.h>
+#include <gravelands/client/core/networkClient.h>
+#include <gravelands/common/protocol.h>
 #include <gravelands/world/world.h>
 
 #include <beng/client/components/ambientLightComponent.h>
@@ -6,12 +8,14 @@
 #include <beng/client/components/meshRenderComponent.h>
 #include <beng/client/systems/animationSystem.h>
 #include <beng/client/systems/renderSystem.h>
+#include <beng/components/transform.h>
 #include <beng/core/componentPool.h>
 #include <beng/core/scene.h>
 #include <beng/core/time.h>
 #include <beng/systems/transformSystem.h>
 
 #include <blib/core/console/console.h>
+#include <blib/graphics/color.h>
 #include <blib/graphics/console/consoleWindow.h>
 #include <blib/graphics/impl/win/winRenderWindowUtil.h>
 #include <blib/graphics/isometricCamera.h>
@@ -20,6 +24,7 @@
 #include <blib/graphics/rendertarget.h>
 #include <blib/graphics/renderWindow.h>
 #include <blib/graphics/shader.h>
+#include <blib/graphics/sphere.h>
 #include <blib/system/memory/globalAllocator.h>
 
 #include <imgui/imgui.h>
@@ -89,6 +94,19 @@ namespace gravelands
         // Текст-заглушка оверлея, когда компонент света в сцене
         // отсутствует (после загрузки чужих сцен)
         constexpr const char* overlayValueMissing = "-";
+
+        // ========== Сеть (зеркала юнитов из снапшотов) ==========
+
+        // Визуал сетевого юнита: радиус и сегменты сферы-плейсхолдера
+        constexpr buint32 networkUnitSegments = 24;
+        constexpr buint8 networkUnitColorR = 200;
+        constexpr buint8 networkUnitColorG = 160;
+        constexpr buint8 networkUnitColorB = 110;
+        constexpr buint8 networkUnitColorA = 255;
+
+        // Текст статуса сети в оверлее
+        constexpr const char* networkConnectedLabel = "connected";
+        constexpr const char* networkOfflineLabel = "offline";
     }
 
     // Внутренности клиента: окно, рендер-таргет, изокамера, мир, таймер.
@@ -120,12 +138,46 @@ namespace gravelands
         // эдитором. Объявлен после систем — разрушается раньше них
         gravelands::World world;
 
+        // ========== Сеть ==========
+
+        // Сетевой клиент (loopback, неблокирующий опрос в кадре)
+        gravelands::NetworkClient networkClient;
+
+        // EntityID игрока на сервере (из Welcome)
+        buint64 playerNetworkEntity;
+
+        // Зеркала серверных юнитов в клиентской сцене
+        struct ClientMirror
+        {
+            buint64 serverEntityId;
+            beng::EntityID clientEntityId;
+        };
+        ClientMirror mirrors[maxNetworkUnits];
+        buint32 mirrorCount;
+
+        // Два последних снапшота (интерполяция между ними)
+        SnapshotEntry snapshotA[maxNetworkUnits];
+        SnapshotEntry snapshotB[maxNetworkUnits];
+        buint32 snapshotACount;
+        buint32 snapshotBCount;
+        float snapshotATime; // время приёма (сек, totalTime)
+        float snapshotBTime;
+        bool snapshotAValid;
+        bool snapshotBValid;
+
+        // Последняя отправленная команда (dedup — слать при изменении)
+        PlayerCommand lastSentCommand;
+        bool lastSentCommandValid;
+
         beng::Time time;
 
         // Консоль (тильда): ImGui-окно поверх blib::console::Console —
         // команды вводятся строкой (Enter), история/дополнение — ядро
         blib::graphics::console::ConsoleWindow consoleWindow;
         bool showConsole;
+
+        // ImGui-презентация включена (false — PIE: контекст эдитора)
+        bool imguiEnabled;
 
         ClientCoreImpl()
             : window(static_cast<uint16_t>(windowWidth), static_cast<uint16_t>(windowHeight), gameTitle)
@@ -138,10 +190,28 @@ namespace gravelands
             , animationSystem()
             , renderSystem()
             , world()
+            , networkClient()
+            , playerNetworkEntity(beng::invalidEntity)
+            , mirrorCount(0)
+            , snapshotACount(0)
+            , snapshotBCount(0)
+            , snapshotATime(0.0f)
+            , snapshotBTime(0.0f)
+            , snapshotAValid(false)
+            , snapshotBValid(false)
+            , lastSentCommand{ 0, 0 }
+            , lastSentCommandValid(false)
             , time()
             , consoleWindow()
             , showConsole(false)
+            , imguiEnabled(true)
         {
+            // Зеркала: невалидные ID (нет привязки)
+            for (buint32 i = 0; i < maxNetworkUnits; ++i)
+            {
+                this->mirrors[i].serverEntityId = beng::invalidEntity;
+                this->mirrors[i].clientEntityId = beng::invalidEntity;
+            }
         }
     };
 
@@ -156,7 +226,7 @@ namespace gravelands
         shutdown();
     }
 
-    bool ClientCore::initialize()
+    bool ClientCore::initialize(bool imguiEnabled)
     {
         auto& globalAllocator = blib::memory::GlobalAllocator::instance();
 
@@ -164,6 +234,7 @@ namespace gravelands
         // выделяющие new/delete запрещены, placement new разрешён)
         impl = static_cast<ClientCoreImpl*>(globalAllocator.allocate(sizeof(ClientCoreImpl)));
         new (impl) ClientCoreImpl();
+        impl->imguiEnabled = imguiEnabled;
 
         // Изометрическая камера: фиксированный ракурс, лёгкая перспектива.
         // Наклон/азимут уже стоят по умолчанию в конструкторе камеры
@@ -209,20 +280,30 @@ namespace gravelands
         impl->world.setupWorld();
         impl->world.loadDancerModel();
 
-        // ImGui + WndProc-хук (паттерн model_viewer): нужен для
-        // полупрозрачного оверлея-подсказки в углу
-        IMGUI_CHECKVERSION();
-        ImGui::CreateContext();
-        ImGuiIO& io = ImGui::GetIO(); (void)io;
-        // Не писать imgui.ini в рабочую директорию
-        io.IniFilename = nullptr;
-        ImGui::StyleColorsDark();
+        // Сеть: попытка подключения к локальному серверу (loopback).
+        // При неудаче клиент остаётся в офлайн-дебаг-режиме
+        // (локальная сфера-персонаж, WASD двигает камеру)
+        impl->networkClient.connect(serverDefaultPort);
 
-        HWND hwnd = __blib_render_window_context(impl->window.__getCtx())->hwnd;
-        ImGui_ImplWin32_Init(hwnd);
-        ImGui_ImplOpenGL3_Init();
-        s_engineWndProc = reinterpret_cast<WNDPROC>(
-            SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(gravelandsImguiWndProc)));
+        // ImGui + WndProc-хук (паттерн model_viewer): нужен для
+        // полупрозрачного оверлея-подсказки в углу. В PIE-режиме
+        // (imguiEnabled == false) контекст НЕ создаётся — он уже есть
+        // у эдитора, второй контекст сломал бы его кадр
+        if (impl->imguiEnabled)
+        {
+            IMGUI_CHECKVERSION();
+            ImGui::CreateContext();
+            ImGuiIO& io = ImGui::GetIO(); (void)io;
+            // Не писать imgui.ini в рабочую директорию
+            io.IniFilename = nullptr;
+            ImGui::StyleColorsDark();
+
+            HWND hwnd = __blib_render_window_context(impl->window.__getCtx())->hwnd;
+            ImGui_ImplWin32_Init(hwnd);
+            ImGui_ImplOpenGL3_Init();
+            s_engineWndProc = reinterpret_cast<WNDPROC>(
+                SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(gravelandsImguiWndProc)));
+        }
 
         __blib_log_info("%s client core initialized (%ux%u window)",
             gameTitle, windowWidth, windowHeight);
@@ -343,6 +424,15 @@ namespace gravelands
         // в мире (крутит компоненты света в его сцене)
         impl->world.updateLight(simDeltaTime);
 
+        // Сеть: опрос + применение снапшотов (зеркала юнитов)
+        this->updateNetworkState();
+
+        // Команда игрока (WASD) — при подключённом сервере
+        if (impl->networkClient.getState() == gravelands::NetworkClient::State::Connected)
+        {
+            this->sendMovementCommand();
+        }
+
         // Единственная точка отрисовки мира: вся сцена (тайлы, тени,
         // плоскости, сфера, скелетная модель) рисуется RenderSystem'ом
         // внутри world.update() по слоям (см. RenderLayer)
@@ -363,6 +453,13 @@ namespace gravelands
         else
         {
             impl->window.blitToBackbuffer(impl->renderTarget);
+        }
+
+        if (!impl->imguiEnabled)
+        {
+            // PIE-режим: без ImGui-кадра — только презентация
+            impl->window.swapBuffers();
+            return;
         }
 
         ImGui_ImplOpenGL3_NewFrame();
@@ -390,6 +487,40 @@ namespace gravelands
 
     void ClientCore::updateCamera(float deltaTime)
     {
+        // Зум — в обоих режимах: Add — приближение (дистанция
+        // уменьшается), Subtract — отдаление
+        if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Add))
+        {
+            impl->camera.zoom(-cameraZoomSpeed * deltaTime);
+        }
+        if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Subtract))
+        {
+            impl->camera.zoom(cameraZoomSpeed * deltaTime);
+        }
+
+        // Сетевой режим: камера следует за зеркалом игрового юнита
+        // (WASD уходит в команды серверу — см. sendMovementCommand)
+        if (impl->networkClient.getState() == gravelands::NetworkClient::State::Connected)
+        {
+            const beng::EntityID mirrorId = this->findMirror(impl->playerNetworkEntity);
+            if (mirrorId != beng::invalidEntity)
+            {
+                beng::TransformComponent* mirrorTransform =
+                    impl->world.getScene().tryGetComponent<beng::TransformComponent>(mirrorId);
+                if (mirrorTransform != nullptr)
+                {
+                    impl->camera.setTarget(mirrorTransform->getWorldPosition());
+                    impl->camera.update();
+                    return;
+                }
+            }
+            // Зеркала игрока ещё нет (первый снапшот не пришёл) —
+            // камера остаётся на месте
+            impl->camera.update();
+            return;
+        }
+
+        // Офлайн-режим: WASD двигает цель камеры в плоскости земли
         // Горизонтальное направление взгляда (от камеры к цели, без Y):
         // движение WASD сдвигает цель камеры в плоскости земли, W — «вверх
         // экрана», D — «вправо экрана» (ось right = forward x up)
@@ -423,16 +554,6 @@ namespace gravelands
         // Движение без нормализации суммы: диагональ быстрее — приемлемо
         // для отладочного управления камерой
         impl->camera.moveTarget(movement * (cameraMoveSpeed * deltaTime));
-
-        // Зум: Add — приближение (дистанция уменьшается), Subtract — отдаление
-        if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Add))
-        {
-            impl->camera.zoom(-cameraZoomSpeed * deltaTime);
-        }
-        if (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::Subtract))
-        {
-            impl->camera.zoom(cameraZoomSpeed * deltaTime);
-        }
 
         impl->camera.update();
     }
@@ -525,8 +646,191 @@ namespace gravelands
         ImGui::Text("dancer model: %s",
             impl->world.getDancerEntity() != beng::invalidEntity ? "loaded" : "not loaded");
         ImGui::Text("camera distance: %.0f", static_cast<double>(impl->camera.getDistance()));
+        ImGui::Text("network: %s",
+            impl->networkClient.getState() == gravelands::NetworkClient::State::Connected
+                ? networkConnectedLabel : networkOfflineLabel);
 
         ImGui::End();
+    }
+
+    void ClientCore::updateNetworkState()
+    {
+        impl->networkClient.poll();
+
+        // Приветствие сессии: EntityID игрока на сервере
+        WelcomePacket welcome{ 0, 0 };
+        if (impl->networkClient.takeWelcome(welcome))
+        {
+            impl->playerNetworkEntity = welcome.playerEntityId;
+            __blib_log_info("network: welcome received (tick rate %u, player entity %llu)",
+                welcome.serverTickRate,
+                static_cast<unsigned long long>(welcome.playerEntityId));
+        }
+
+        // Снапшот: сдвиг буфера (B → A) и приём нового (→ B)
+        SnapshotEntry entries[maxNetworkUnits];
+        buint32 entryCount = 0;
+        buint32 tickNumber = 0;
+        if (impl->networkClient.takeSnapshot(tickNumber, entries, maxNetworkUnits, entryCount))
+        {
+            impl->snapshotAValid = impl->snapshotBValid;
+            impl->snapshotACount = impl->snapshotBCount;
+            impl->snapshotATime = impl->snapshotBTime;
+            for (buint32 i = 0; i < impl->snapshotBCount; ++i)
+            {
+                impl->snapshotA[i] = impl->snapshotB[i];
+            }
+
+            impl->snapshotBValid = true;
+            impl->snapshotBCount = entryCount;
+            impl->snapshotBTime = impl->time.getTotalTime();
+            for (buint32 i = 0; i < entryCount; ++i)
+            {
+                impl->snapshotB[i] = entries[i];
+            }
+
+            // Первый снапшот — сеть жива: локальная сфера-заглушка
+            // больше не нужна (юниты приходят зеркалами)
+            if (!impl->snapshotAValid)
+            {
+                impl->world.removeLocalPlayerEntity();
+            }
+        }
+
+        this->applyNetworkInterpolation();
+    }
+
+    void ClientCore::applyNetworkInterpolation()
+    {
+        if (!impl->snapshotBValid)
+        {
+            return;
+        }
+
+        // Фактор интерполяции между снапшотами A и B по локальному
+        // времени приёма: 0 = время A, 1 = время B; при отставании
+        // клампится в 1 (последнее известное состояние)
+        float factor = 0.0f;
+        if (impl->snapshotAValid && impl->snapshotBTime > impl->snapshotATime)
+        {
+            const float span = impl->snapshotBTime - impl->snapshotATime;
+            factor = (impl->time.getTotalTime() - impl->snapshotBTime) / span;
+            if (factor < 0.0f)
+            {
+                factor = 0.0f;
+            }
+            if (factor > 1.0f)
+            {
+                factor = 1.0f;
+            }
+        }
+
+        beng::Scene& scene = impl->world.getScene();
+
+        for (buint32 i = 0; i < impl->snapshotBCount; ++i)
+        {
+            const SnapshotEntry& entryB = impl->snapshotB[i];
+
+            // Интерполированная позиция: lerp между записями A и B
+            blib::math::Vector<float, 3> position(
+                entryB.positionX, entryB.positionY, entryB.positionZ);
+            if (impl->snapshotAValid && factor > 0.0f)
+            {
+                for (buint32 j = 0; j < impl->snapshotACount; ++j)
+                {
+                    if (impl->snapshotA[j].entityId == entryB.entityId)
+                    {
+                        const SnapshotEntry& entryA = impl->snapshotA[j];
+                        position.x = entryA.positionX + (entryB.positionX - entryA.positionX) * factor;
+                        position.y = entryA.positionY + (entryB.positionY - entryA.positionY) * factor;
+                        position.z = entryA.positionZ + (entryB.positionZ - entryA.positionZ) * factor;
+                        break;
+                    }
+                }
+            }
+
+            // Зеркало юнита: найти или создать, применить позицию
+            beng::EntityID mirrorId = this->findMirror(entryB.entityId);
+            if (mirrorId == beng::invalidEntity)
+            {
+                mirrorId = this->createMirror(entryB.entityId);
+            }
+            if (mirrorId == beng::invalidEntity)
+            {
+                continue;
+            }
+
+            beng::TransformComponent* mirrorTransform =
+                scene.tryGetComponent<beng::TransformComponent>(mirrorId);
+            if (mirrorTransform != nullptr)
+            {
+                mirrorTransform->setLocalPosition(position);
+            }
+        }
+    }
+
+    void ClientCore::sendMovementCommand()
+    {
+        // WASD-вектор: D/A — ось X, W/S — ось Z (W — «от камеры»,
+        // к центру мира при стартовом ракурсе)
+        PlayerCommand command;
+        command.moveX = static_cast<bint8>(
+            (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::D) ? 1 : 0) -
+            (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::A) ? 1 : 0));
+        command.moveZ = static_cast<bint8>(
+            (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::W) ? 1 : 0) -
+            (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::S) ? 1 : 0));
+
+        // Dedup: слать только при изменении вектора
+        if (!impl->lastSentCommandValid ||
+            command.moveX != impl->lastSentCommand.moveX ||
+            command.moveZ != impl->lastSentCommand.moveZ)
+        {
+            impl->networkClient.sendCommand(command);
+            impl->lastSentCommand = command;
+            impl->lastSentCommandValid = true;
+        }
+    }
+
+    beng::EntityID ClientCore::findMirror(buint64 serverEntityId)
+    {
+        for (buint32 i = 0; i < impl->mirrorCount; ++i)
+        {
+            if (impl->mirrors[i].serverEntityId == serverEntityId)
+            {
+                return impl->mirrors[i].clientEntityId;
+            }
+        }
+        return beng::invalidEntity;
+    }
+
+    beng::EntityID ClientCore::createMirror(buint64 serverEntityId)
+    {
+        if (impl->mirrorCount >= maxNetworkUnits)
+        {
+            __blib_log_warning("network: mirror limit reached (%u) — entity %llu not mirrored",
+                maxNetworkUnits, static_cast<unsigned long long>(serverEntityId));
+            return beng::invalidEntity;
+        }
+
+        // Сфера-плейсхолдер юнита (toon, как локальная сфера-персонаж)
+        blib::graphics::Sphere sphere;
+        sphere.createSpere(
+            playerVisualRadius, networkUnitSegments,
+            blib::graphics::Color(
+                networkUnitColorR, networkUnitColorG, networkUnitColorB, networkUnitColorA));
+
+        beng::Scene& scene = impl->world.getScene();
+        const beng::EntityID entity = scene.createEntity();
+        beng::MeshRenderComponent& meshComponent = scene.addComponent<beng::MeshRenderComponent>(
+            entity, sphere.takeMesh(), beng::RenderLayer::Opaque);
+        meshComponent.getMesh().material.shadingMode = blib::graphics::ShadingMode::Toon;
+
+        impl->mirrors[impl->mirrorCount].serverEntityId = serverEntityId;
+        impl->mirrors[impl->mirrorCount].clientEntityId = entity;
+        ++impl->mirrorCount;
+
+        return entity;
     }
 
     bool ClientCore::isRunning() const
@@ -542,17 +846,20 @@ namespace gravelands
         }
 
         // Вернуть оригинальную оконную процедуру до гашения ImGui
-        // (паттерн model_viewer)
-        HWND hwnd = __blib_render_window_context(impl->window.__getCtx())->hwnd;
-        if (s_engineWndProc != nullptr)
+        // (паттерн model_viewer); в PIE-режиме хука не было
+        if (impl->imguiEnabled)
         {
-            SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(s_engineWndProc));
-            s_engineWndProc = nullptr;
-        }
+            HWND hwnd = __blib_render_window_context(impl->window.__getCtx())->hwnd;
+            if (s_engineWndProc != nullptr)
+            {
+                SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(s_engineWndProc));
+                s_engineWndProc = nullptr;
+            }
 
-        ImGui_ImplOpenGL3_Shutdown();
-        ImGui_ImplWin32_Shutdown();
-        ImGui::DestroyContext();
+            ImGui_ImplOpenGL3_Shutdown();
+            ImGui_ImplWin32_Shutdown();
+            ImGui::DestroyContext();
+        }
 
         // Явный вызов деструктора + возврат памяти глобальному аллокатору.
         // Мир (сцена с мешами) разрушается внутри — раньше окна/таргета

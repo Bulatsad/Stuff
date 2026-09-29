@@ -41,6 +41,18 @@ blib_configure_module(blib-graphics blib_graphics_export)
 target_link_libraries(blib-graphics PUBLIC blib-core)
 target_link_libraries(blib-graphics PUBLIC Opengl32)
 
+# Assimp + zlib (prebuilt .lib из thirdparty/assimplib): material.obj и
+# загрузчики моделей используют Assimp. В shared-сборке blib-graphics.dll
+# обязана прилинковать их сама; в static — линкуют конечные exe (PUBLIC,
+# паттерн gravelands/model_viewer)
+target_link_directories(blib-graphics PUBLIC ${assimp_lib})
+target_link_libraries(blib-graphics PUBLIC
+    debug assimpd
+    debug zlibstaticd
+    optimized assimp
+    optimized zlibstatic
+)
+
 target_include_directories(blib-graphics PUBLIC ${openglapi})
 target_include_directories(blib-graphics PUBLIC ${assimp_include})
 target_include_directories(blib-graphics PRIVATE ${stb_include})

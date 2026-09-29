@@ -2,6 +2,17 @@
 
 #include <beng/editor/editorApplication.h>
 
+// Макрос экспорта фабрик плагина: dllexport при сборке gravelands.dll
+// (CMake задаёт GRAVELANDS_PLUGIN_EXPORTS), пустой при статической
+// линковке (этап 1 плагин-модели, см. ARCHITECTURE.md)
+#ifndef GRAVELANDS_PLUGIN_API
+#ifdef GRAVELANDS_PLUGIN_EXPORTS
+#define GRAVELANDS_PLUGIN_API __declspec(dllexport)
+#else
+#define GRAVELANDS_PLUGIN_API
+#endif
+#endif
+
 namespace gravelands
 {
     /**
@@ -27,6 +38,10 @@ namespace gravelands
     private:
         struct GravelandsEditorHostImpl;
         GravelandsEditorHostImpl* impl;
+
+        // Запуск/останов PIE-сессии (Play/Stop в верхней полосе)
+        void startPie();
+        void stopPie();
 
     protected:
         // Хуки EditorApplication (см. editorApplication.h):
@@ -66,13 +81,22 @@ namespace gravelands
 
     /**
      * Фабрика игрового модуля эдитора — единственная точка входа
-     * плагина: на DLL-этапе станет экспортируемым символом
-     * gravelands.dll (см. ARCHITECTURE.md, «Сложности плагин-модели»).
+     * плагина: на DLL-этапе это экспортируемый символ gravelands.dll
+     * (extern "C" — стабильное недекорированное имя для GetProcAddress;
+     * см. ARCHITECTURE.md, «Сложности плагин-модели»).
      *
-     * Память — через GlobalAllocator; вызывающий владеет хостом и
-     * обязан вызвать shutdown(), явный деструктор и вернуть память
-     * (паттерн «lib + тонкий exe», см. main/main.cpp эдитора).
+     * Память — через GlobalAllocator (shared blib — один на процесс);
+     * владелец гасит хост ПАРНОЙ функцией gravelandsDestroyEditorHost
+     * (она знает конкретный тип и возвращает память аллокатору) —
+     * самому вызывать деструктор нельзя: в DLL-режиме вызывающий не
+     * знает конкретного типа хоста.
      */
-    GravelandsEditorHost* gravelandsCreateEditorHost();
+    extern "C" GRAVELANDS_PLUGIN_API GravelandsEditorHost* gravelandsCreateEditorHost();
+
+    /**
+     * Парная фабрике функция уничтожения хоста: гасит и возвращает
+     * память GlobalAllocator'у (конкретный тип известен только плагину).
+     */
+    extern "C" GRAVELANDS_PLUGIN_API void gravelandsDestroyEditorHost(_In beng::editor::EditorApplication* host);
 
 } // namespace gravelands

@@ -194,11 +194,22 @@ namespace beng
             EditorApplication(const EditorApplication&) = delete;
             EditorApplication& operator=(const EditorApplication&) = delete;
 
+            // Дефолтные параметры окна единого эдитора (дефолты initialize)
+            static constexpr uint16_t editorDefaultWindowWidth = 1280;
+            static constexpr uint16_t editorDefaultWindowHeight = 720;
+            static constexpr const char* editorDefaultWindowTitle = "beng-editor";
+
             /**
              * Инициализация каркаса: окно, GL, ImGui, сцена, панели.
+             * Без аргументов — дефолтные параметры окна единого эдитора
+             * (нужно DLL-этапу: вызывающий не знает хоста и зовёт
+             * initialize() на базовом типе).
              * @return true при успехе
              */
-            bool initialize(_In uint16_t windowWidth, _In uint16_t windowHeight, _In const char* windowTitle);
+            bool initialize(
+                _In uint16_t windowWidth = editorDefaultWindowWidth,
+                _In uint16_t windowHeight = editorDefaultWindowHeight,
+                _In const char* windowTitle = editorDefaultWindowTitle);
 
             /**
              * Один кадр: ввод, симуляция, рендер сцены, UI, презентация.
@@ -263,6 +274,14 @@ namespace beng
          * Переключить режим gizmo-манипулятора.
          */
         void setGizmoMode(GizmoMode mode);
+
+        /**
+         * Включить/выключить РЕДАКТОРСКИЙ ввод (горячие клавиши W/E/R,
+         * Ctrl+Z/Ctrl+Shift+Z, Delete). Выключается на время PIE:
+         * глобальная клавиатура у клиентского окна общая — W/E/R эдитора
+         * конфликтовали бы с вводом игры. Клики/гizmo вьюпорта остаются.
+         */
+        void setEditorInputEnabled(bool enabled);
 
         /**
          * История команд эдитора (undo/redo): правки полей, gizmo,

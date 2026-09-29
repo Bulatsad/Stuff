@@ -2,6 +2,8 @@
 
 #include <gravelands/common/config.h>
 
+#include <beng/config.h>
+
 #include <blib/utilmacro.h>
 
 namespace gravelands
@@ -37,11 +39,16 @@ namespace gravelands
 
         /**
          * Инициализировать ядро: окно, рендер-таргет, камеру, мир
-         * (gravelands::World), ImGui. Вызывать один раз перед циклом.
-         * 
+         * (gravelands::World), сеть, ImGui. Вызывать один раз перед циклом.
+         *
+         * @param imguiEnabled Создавать ImGui-контекст/оверлей/консоль.
+         *        false — режим PIE: клиент хостится в процессе эдитора,
+         *        где ImGui-контекст уже есть (свой контекст клиенту
+         *        создавать нельзя — он сломал бы кадр эдитора);
+         *        оверлей/консоль клиента в этом режиме недоступны.
          * @return true при успехе (пока всегда, зарезервировано под будущие сбои)
          */
-        bool initialize();
+        bool initialize(bool imguiEnabled = true);
 
         /**
          * Один кадр: ввод, обновление, отрисовка.
@@ -62,7 +69,9 @@ namespace gravelands
     private:
         /**
          * Обновление изометрической камеры: WASD двигает цель по земле,
-         * Add/Subtract — зум. Вызывается из tick() каждый кадр.
+         * Add/Subtract — зум. В сетевом режиме (подключены к серверу)
+         * камера следует за зеркалом игрового юнита из снапшотов.
+         * Вызывается из tick() каждый кадр.
          */
         void updateCamera(float deltaTime);
 
@@ -71,6 +80,35 @@ namespace gravelands
          * и текущие параметры света (ImGui, без ввода). Из tick().
          */
         void drawOverlay();
+
+        /**
+         * Опрос сети + применение снапшотов (интерполяция зеркал
+         * юнитов). Из tick().
+         */
+        void updateNetworkState();
+
+        /**
+         * Применение интерполяции к зеркалам юнитов (между двумя
+         * последними снапшотами). Из updateNetworkState().
+         */
+        void applyNetworkInterpolation();
+
+        /**
+         * Отправка команды игрока (WASD-вектор) при изменении.
+         * Из tick() (только при подключённом сервере).
+         */
+        void sendMovementCommand();
+
+        /**
+         * Поиск зеркала серверного юнита (invalidEntity — нет).
+         */
+        beng::EntityID findMirror(buint64 serverEntityId);
+
+        /**
+         * Создание зеркала серверного юнита (сфера-плейсхолдер) в
+         * клиентской сцене. invalidEntity — лимит зеркал исчерпан.
+         */
+        beng::EntityID createMirror(buint64 serverEntityId);
 
     private:
         // Pimpl: скрывает графические объекты blib (окно/таргет/камера)

@@ -4,13 +4,34 @@
 #include <blib/network/tcpSocket.h>
 #include <blib/network/impl/win/winNetworkUtil.h>
 
+namespace
+{
+    // Трансляция wsa-кода в enum-ошибку модуля (контекстная часть —
+    // в вызывающем: connect/send/recv добавляют свою специфику)
+    blib::network::NetworkError blibFromWsaError(int wsaError)
+    {
+        switch (wsaError)
+        {
+        case WSAEWOULDBLOCK:
+            return blib::network::NetworkError::WouldBlock;
+        case WSAECONNRESET:
+        case WSAENOTCONN:
+        case WSAECONNABORTED:
+        case WSAESHUTDOWN:
+            return blib::network::NetworkError::Closed;
+        default:
+            return blib::network::NetworkError::Unknown;
+        }
+    }
+}
+
 blib::network::TcpSocket::TcpSocket()
 {
 }
 
 blib::network::TcpSocket::TcpSocket(AddressType type)
 {
-    this->socket.create(type, SocketType::Stram, SocketProtocol::TCP);
+    this->socket.create(type, SocketType::Stream, SocketProtocol::TCP);
     this->setBlocking(true);
 }
 
@@ -27,94 +48,134 @@ blib::network::SocketStatus blib::network::TcpSocket::bind(Address& addr)
 blib::network::SocketStatus blib::network::TcpSocket::connect(Address& addr)
 {
     AddressType type = addr.getType();
-    int result = !NO_ERROR;
-
-    switch (type)
+    if (type != blib::network::AddressType::IPv4)
     {
-    case blib::network::AddressType::IPv4:
-    {
-        result = ::connect(*__blib_cast_socket_handler(this->socket.__getHandler()),
-            __blib_cast_address_handler(addr.__getHandler()),
-            sizeof(platform_socket_internet_address_handler_t)
-        );
-        break;
-    }
-    case blib::network::AddressType::IPv6:
-        break;
-    case blib::network::AddressType::AppleTalk:
-        break;
-    case blib::network::AddressType::NetBios:
-        break;
-    case blib::network::AddressType::IRDA:
-        break;
-    case blib::network::AddressType::Bluetooth:
-        break;
-    case blib::network::AddressType::UNDEFINED:
-        break;
-    case blib::network::AddressType::END_OF_ENUM:
-        break;
-    default:
-        break;
-    }
-
-    if (result != SOCKET_ERROR)
-        return SocketStatus::OK;
-    //auto a = WSAGetLastError();
-    return SocketStatus::Error;
-}
-
-blib::network::SocketStatus blib::network::TcpSocket::send(const void* data, int size)
-{
-    if (!data || (size == 0))
-    {
+        this->socket.__setLastError(NetworkError::Unknown);
         return SocketStatus::Error;
     }
 
-    int result = 0;
-    for (int sent = 0; sent < size; sent += result)
+    int result = ::connect(*__blib_cast_socket_handler(this->socket.__getHandler()),
+        __blib_cast_address_handler(addr.__getHandler()),
+        sizeof(platform_socket_internet_address_handler_t)
+    );
+
+    if (result != SOCKET_ERROR)
     {
-        result = ::send(*__blib_cast_socket_handler(this->socket.__getHandler()),
-            reinterpret_cast<const char*>(data) + sent,
-            static_cast<int>(size - sent),
+        return SocketStatus::OK;
+    }
+
+    const int wsaError = WSAGetLastError();
+    if (wsaError == WSAEWOULDBLOCK)
+    {
+        // Неблокирующий режим: соединение устанавливается асинхронно —
+        // вызывающий повторяет connect позже
+        this->socket.__setLastError(NetworkError::WouldBlock);
+        return SocketStatus::WouldBlock;
+    }
+    if (wsaError == WSAEISCONN)
+    {
+        // Уже подключены (повторный connect после WouldBlock)
+        return SocketStatus::OK;
+    }
+
+    this->socket.__setLastError(blibFromWsaError(wsaError) == NetworkError::Closed
+        ? NetworkError::Closed : NetworkError::ConnectFailed);
+    return SocketStatus::Error;
+}
+
+blib::network::SocketStatus blib::network::TcpSocket::send(const void* data, int size, int* sentOut)
+{
+    if (!data || size <= 0)
+    {
+        this->socket.__setLastError(NetworkError::Unknown);
+        return SocketStatus::Error;
+    }
+
+    int totalSent = 0;
+    while (totalSent < size)
+    {
+        int result = ::send(*__blib_cast_socket_handler(this->socket.__getHandler()),
+            reinterpret_cast<const char*>(data) + totalSent,
+            static_cast<int>(size - totalSent),
             0
         );
 
         if (result == SOCKET_ERROR)
         {
-            //auto a = WSAGetLastError();
-            return SocketStatus::Partial;
+            const int wsaError = WSAGetLastError();
+            this->socket.__setLastError(blibFromWsaError(wsaError) == NetworkError::Unknown
+                ? NetworkError::SendFailed : blibFromWsaError(wsaError));
+            if (sentOut)
+            {
+                *sentOut = totalSent;
+            }
+            if (wsaError == WSAEWOULDBLOCK)
+            {
+                return SocketStatus::WouldBlock;
+            }
+            return SocketStatus::Error;
         }
+
+        if (result == 0)
+        {
+            // Нулевая отправка — соединение не продвигается
+            this->socket.__setLastError(NetworkError::SendFailed);
+            if (sentOut)
+            {
+                *sentOut = totalSent;
+            }
+            return SocketStatus::Error;
+        }
+
+        totalSent += result;
     }
 
+    if (sentOut)
+    {
+        *sentOut = totalSent;
+    }
     return SocketStatus::OK;
 }
 
 blib::network::SocketStatus blib::network::TcpSocket::recv(void* data, int& size)
 {
-    int result = ::recv(*__blib_cast_socket_handler(this->socket.__getHandler()), reinterpret_cast<char*>(data), size, 0);
-
-    if (result == SOCKET_ERROR)
+    if (!data || size <= 0)
     {
-        auto a = WSAGetLastError();
+        size = 0;
+        this->socket.__setLastError(NetworkError::Unknown);
         return SocketStatus::Error;
     }
 
-    if (result == NO_ERROR)
+    int result = ::recv(*__blib_cast_socket_handler(this->socket.__getHandler()),
+        reinterpret_cast<char*>(data), size, 0);
+
+    if (result == SOCKET_ERROR)
     {
+        size = 0;
+        const int wsaError = WSAGetLastError();
+        this->socket.__setLastError(blibFromWsaError(wsaError) == NetworkError::Unknown
+            ? NetworkError::RecvFailed : blibFromWsaError(wsaError));
+        if (wsaError == WSAEWOULDBLOCK)
+        {
+            return SocketStatus::WouldBlock;
+        }
+        return SocketStatus::Error;
+    }
+
+    if (result == 0)
+    {
+        size = 0;
+        this->socket.__setLastError(NetworkError::Closed);
         return SocketStatus::Disconnected;
     }
 
-    if (result == size)
-    {
-        return SocketStatus::OK;
-    }
-
-    return SocketStatus::Partial;
+    // Фактический размер принятых данных (частичный приём — НЕ ошибка:
+    // TCP — поток, сообщения собирает вызывающий)
+    size = result;
+    return SocketStatus::OK;
 }
 
 blib::network::Socket* blib::network::TcpSocket::getSocket()
 {
     return &(this->socket);
 }
-
-

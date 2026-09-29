@@ -3,25 +3,58 @@
 #include <blib/core/console/console.h>
 #include <blib/network/socket.h>
 #include <blib/network/impl/win/winNetworkUtil.h>
+#include <blib/system/memory/globalAllocator.h>
+
+namespace
+{
+    // Флаг инициализации winsock (InitBlibSocket идемпотентна)
+    bool s_socketSystemInitialized = false;
+}
 
 blib::network::Socket::Socket()
 {
     this->ctx = nullptr;
+    this->lastError = NetworkError::None;
 }
 
 blib::network::SocketStatus blib::network::Socket::create(const AddressType af, const SocketType type, const SocketProtocol protocol)
 {
-    this->ctx = new platform_socket_handler_t;
+    // Самодостаточность: конструкторы TcpSocket/TcpListener с типом
+    // создают сокет ДО явного InitBlibSocket у вызывающего —
+    // инициализируем систему здесь (InitBlibSocket идемпотентна)
+    if (!InitBlibSocket())
+    {
+        this->lastError = NetworkError::NotInitialized;
+        return SocketStatus::Error;
+    }
+
+    // Хендл — через GlobalAllocator (правило проекта: без new/delete)
+    this->ctx = blib::memory::GlobalAllocator::instance().allocate(sizeof(platform_socket_handler_t));
+    if (this->ctx == nullptr)
+    {
+        this->lastError = NetworkError::CreateFailed;
+        return SocketStatus::Error;
+    }
+
     *__blib_cast_socket_handler(this->ctx) = INVALID_SOCKET;
     *__blib_cast_socket_handler(this->ctx) = ::socket(blibToWinApi(af), blibToWinApi(type), blibToWinApi(protocol));
     if (*__blib_cast_socket_handler(this->ctx) != INVALID_SOCKET)
+    {
         return SocketStatus::OK;
+    }
+
+    this->lastError = NetworkError::CreateFailed;
     return SocketStatus::Error;
 }
 
 blib::network::SocketStatus blib::network::Socket::create(void* ctx)
 {
-    this->ctx = new platform_socket_handler_t;
+    this->ctx = blib::memory::GlobalAllocator::instance().allocate(sizeof(platform_socket_handler_t));
+    if (this->ctx == nullptr)
+    {
+        this->lastError = NetworkError::CreateFailed;
+        return SocketStatus::Error;
+    }
     memcpy(this->ctx, ctx, sizeof(platform_socket_handler_t));
     return SocketStatus::OK;
 }
@@ -30,13 +63,17 @@ bool blib::network::Socket::setBlocking(bool isBlocking)
 {
     u_long arg = isBlocking ? 0 : 1;
     int res = ioctlsocket(*__blib_cast_socket_handler(this->ctx), FIONBIO, &arg);
-    return !!res;
+    if (res == NO_ERROR)
+    {
+        return true;
+    }
+    this->lastError = NetworkError::Unknown;
+    return false;
 }
 
 blib::network::SocketStatus blib::network::Socket::bind(Address& addr)
 {
     AddressType addrtype = addr.getType();
-    //this->socket.create(addrtype, SocketType::Dgram, SocketProtocol::UDP);
 
     int result = !NO_ERROR;
     switch (addrtype)
@@ -49,41 +86,41 @@ blib::network::SocketStatus blib::network::Socket::bind(Address& addr)
         );
         break;
     }
-    case blib::network::AddressType::IPv6:
-        break;
-    case blib::network::AddressType::AppleTalk:
-        break;
-    case blib::network::AddressType::NetBios:
-        break;
-    case blib::network::AddressType::IRDA:
-        break;
-    case blib::network::AddressType::Bluetooth:
-        break;
-    case blib::network::AddressType::UNDEFINED:
-        break;
-    case blib::network::AddressType::END_OF_ENUM:
-        break;
     default:
         break;
     }
 
     if (result != SOCKET_ERROR)
+    {
         return SocketStatus::OK;
-    //auto a = WSAGetLastError();
+    }
+    this->lastError = NetworkError::BindFailed;
     return SocketStatus::Error;
 }
 
 blib::network::SocketStatus blib::network::Socket::close()
 {
+    if (this->ctx == nullptr)
+    {
+        return SocketStatus::OK;
+    }
+
     int result = ::closesocket(*__blib_cast_socket_handler(this->ctx));
     if (result == NO_ERROR)
+    {
         return SocketStatus::OK;
+    }
+    this->lastError = NetworkError::Unknown;
     return SocketStatus::Error;
 }
 
 void blib::network::Socket::destroy()
 {
-    delete this->ctx;
+    if (this->ctx != nullptr)
+    {
+        blib::memory::GlobalAllocator::instance().deallocate(this->ctx, sizeof(platform_socket_handler_t));
+        this->ctx = nullptr;
+    }
 }
 
 blib::network::Socket::~Socket()
@@ -97,14 +134,21 @@ void* blib::network::Socket::__getHandler()
     return this->ctx;
 }
 
-#undef __blib_this_context
-
-void blib::network::InitBlibSocket()
+bool blib::network::InitBlibSocket()
 {
-    WSADATA wsaData;
-    int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (iResult != NO_ERROR)
+    if (s_socketSystemInitialized)
     {
-        __blib_log_error("WSAStartup failed with error: %d", iResult);
+        return true;
     }
+
+    WSADATA wsaData;
+    const int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (result != NO_ERROR)
+    {
+        __blib_log_error("WSAStartup failed with error: %d", result);
+        return false;
+    }
+
+    s_socketSystemInitialized = true;
+    return true;
 }

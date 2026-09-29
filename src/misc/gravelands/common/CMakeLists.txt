@@ -1,18 +1,25 @@
 # gravelands-common — общие определения игры Gravelands:
-# константы конфигурации, позже — общие компоненты ECS, пакеты
-# протокола и формулы. Линкуется и клиентом, и сервером.
-#
-# Пока модуль header-only — собирается как INTERFACE-библиотека
-# (не создаёт пустой .lib). Когда появятся первые .cpp — переключить
-# на STATIC, не меняя имени таргета.
+# константы конфигурации, бинарный сетевой протокол (protocol.h),
+# общие компоненты ECS (UnitComponent — первый игровой компонент).
+# Линкуется клиентом, сервером и плагином эдитора.
 
-add_library(gravelands-common INTERFACE)
+file (GLOB common_header_src "*.h")
+file (GLOB common_impl_src "*.cpp")
+
+# Хидеры включены в таргет явно — чтобы быть видимыми в Solution Explorer
+GroupSoureces("${HeaderGroupPrefix}/common" "${common_header_src}")
+GroupSoureces("${SourceGroupPrefix}/common" "${common_impl_src}")
+
+add_library(gravelands-common STATIC
+    ${common_header_src}
+    ${common_impl_src}
+)
 
 set_target_properties(gravelands-common PROPERTIES FOLDER "gravelands/common" LINKER_LANGUAGE CXX)
 
 # Инклюд-корень game-слоя: src/misc — все инклюды игры имеют вид <gravelands/...>
-target_include_directories(gravelands-common INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+target_include_directories(gravelands-common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 
-# blib-core даёт корень <blib/...> и конфигурационные дефайны (PUBLIC).
-# beng-core добавится сюда, когда появятся компоненты (наследуют beng::IComponent).
-target_link_libraries(gravelands-common INTERFACE blib-core)
+# blib-core — корень <blib/...> и конфигурационные дефайны (PUBLIC);
+# beng-core — компоненты (UnitComponent наследует beng::IComponent)
+target_link_libraries(gravelands-common PUBLIC blib-core beng-core)

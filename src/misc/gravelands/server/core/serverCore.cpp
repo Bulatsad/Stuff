@@ -1,5 +1,7 @@
 #include <gravelands/server/core/serverCore.h>
 
+#include <gravelands/common/unitComponent.h>
+
 #include <beng/components/transform.h>
 
 #include <blib/core/console/console.h>
@@ -10,26 +12,45 @@ namespace gravelands
         : accumulator(0.0f)
         , tickCounter(0)
         , lastHeartbeatSecond(0)
+        , playerEntity(beng::invalidEntity)
         , running(false)
     {
     }
 
-    bool ServerCore::initialize()
+    bool ServerCore::initialize(buint32 port)
     {
         // TransformComponent регистрируется сценой автоматически
-        // (инвариант: каждая сущность рождается с Transform); остальные
-        // движковые типы — по мере появления компонентов сервера
+        // (инвариант: каждая сущность рождается с Transform);
+        // игровой компонент — регистрируем явно
+        scene.registerComponentType<UnitComponent>();
 
-        // Системы выполняются в порядке приоритета (ISystem::getPriority)
+        // Системы выполняются в порядке приоритета (ISystem::getPriority):
+        // TransformSystem (-100) → MovementSystem (0)
         scene.addSystem(&transformSystem);
+        scene.addSystem(&movementSystem);
+
+        // Авторитетный юнит игрока (управляется по сети)
+        playerEntity = scene.createEntity();
+        UnitComponent& unit = scene.addComponent<UnitComponent>(playerEntity);
+        unit.setIsPlayer(true);
+        beng::TransformComponent& transform =
+            scene.getComponent<beng::TransformComponent>(playerEntity);
+        transform.setLocalPosition(blib::math::Vector<float, 3>(playerStartX, 0.0f, playerStartZ));
+
+        // Сеть: слушатель на loopback-порту
+        if (!networkServer.initialize(port))
+        {
+            __blib_log_error("%s server core: network initialization failed", gameTitle);
+            return false;
+        }
 
         // Сброс точки отсчёта dt (первый tick даст корректное значение)
         time.tick();
 
         running = true;
 
-        __blib_log_info("%s server core initialized (simulation tick rate: %u Hz, fixed delta: %.4f s)",
-            gameTitle, serverTickRate, serverFixedDelta);
+        __blib_log_info("%s server core initialized (simulation tick rate: %u Hz, fixed delta: %.4f s, port: %u)",
+            gameTitle, serverTickRate, serverFixedDelta, port);
 
         return true;
     }
@@ -41,6 +62,15 @@ namespace gravelands
             return;
         }
 
+        // Опрос сети: подключения + команды игрока
+        networkServer.poll();
+
+        // Новый клиент — приветствие сессии (тикрейт + EntityID игрока)
+        if (networkServer.takeClientConnectedEvent())
+        {
+            networkServer.sendWelcome(serverTickRate, playerEntity);
+        }
+
         // Реальный dt текущего кадра (секунды)
         time.tick();
         accumulator += time.getDeltaTime();
@@ -49,10 +79,25 @@ namespace gravelands
         // в аккумуляторе и догоняется следующими кадрами
         while (accumulator >= serverFixedDelta)
         {
+            // Команды игрока применяются к его юниту ДО шага симуляции
+            PlayerCommand command{ 0, 0 };
+            if (networkServer.takePendingCommand(command))
+            {
+                UnitComponent* unit = scene.tryGetComponent<UnitComponent>(playerEntity);
+                if (unit != nullptr)
+                {
+                    unit->setMoveX(command.moveX);
+                    unit->setMoveZ(command.moveZ);
+                }
+            }
+
             scene.update(serverFixedDelta);
             accumulator -= serverFixedDelta;
 
             ++tickCounter;
+
+            // Снапшот авторитетного состояния — после каждого тика
+            broadcastSnapshot();
 
             // Heartbeat раз в секунду (debug-уровень, вырезается в release).
             // Сравниваем секунды, а не tick % rate: иначе при нуле тиков
@@ -71,6 +116,50 @@ namespace gravelands
         }
     }
 
+    void ServerCore::broadcastSnapshot()
+    {
+        if (!networkServer.hasClient())
+        {
+            return; // слать некому
+        }
+
+        // Сбор позиций юнитов (Transform + UnitComponent)
+        SnapshotEntry entries[maxSnapshotUnits];
+        buint32 entryCount = 0;
+
+        const buint32 entityCount = scene.getEntityCount();
+        for (buint32 i = 0; i < entityCount && entryCount < maxSnapshotUnits; ++i)
+        {
+            const beng::EntityID id = scene.getEntityId(i);
+            if (id == beng::invalidEntity)
+            {
+                continue;
+            }
+
+            UnitComponent* unit = scene.tryGetComponent<UnitComponent>(id);
+            if (unit == nullptr)
+            {
+                continue; // не юнит — в снапшот не попадает
+            }
+
+            beng::TransformComponent* transform =
+                scene.tryGetComponent<beng::TransformComponent>(id);
+            if (transform == nullptr)
+            {
+                continue;
+            }
+
+            const blib::math::Vector<float, 3> position = transform->getLocalPosition();
+            entries[entryCount].entityId = id;
+            entries[entryCount].positionX = position.x;
+            entries[entryCount].positionY = position.y;
+            entries[entryCount].positionZ = position.z;
+            ++entryCount;
+        }
+
+        networkServer.sendSnapshot(static_cast<buint32>(tickCounter), entries, entryCount);
+    }
+
     void ServerCore::shutdown()
     {
         if (!running)
@@ -79,6 +168,7 @@ namespace gravelands
         }
 
         running = false;
+        networkServer.shutdown();
 
         __blib_log_info("%s server core shut down after %llu ticks",
             gameTitle, static_cast<unsigned long long>(tickCounter));

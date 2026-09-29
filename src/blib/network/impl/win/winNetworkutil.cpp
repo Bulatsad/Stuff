@@ -7,7 +7,7 @@ int blibToWinApi(const blib::network::SocketType type)
 {
 	switch (type)
 	{
-	case blib::network::SocketType::Stram:
+	case blib::network::SocketType::Stream:
 		return SOCK_STREAM;
 	case blib::network::SocketType::Dgram:
 		return SOCK_DGRAM;

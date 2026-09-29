@@ -193,17 +193,28 @@ core-библиотеку — см. раздел про эдитор.
 игры, игра подключается к нему как плагин. Никаких эдиторов на игру нет.
 
 ```
-beng-editor.exe (единственный эдитор, аналог UnrealEditor.exe; есть —
-                 с миром Gravelands через плагин, этап 1)
-   ├── EditorApplication (beng-editor-core: окно, вьюпорт, панели, раскладка,
-   │     сцена с движковыми типами; хуки хоста on*() — есть)
-   ├── плагин игры (gravelands-plugin): GravelandsEditorHost + фабрика
-   │     gravelandsCreateEditorHost() — единственная точка входа; этап 1 —
-   │     статический линк (CMake gravelands_plugin_type=STATIC), этап 2 —
-   │     та же фабрика становится экспортом gravelands.dll
+beng-editor.exe (единственный эдитор, аналог UnrealEditor.exe — готов,
+                 оба режима доставки плагина)
+   ├── EditorApplication (beng-editor-core.dll: окно, вьюпорт, панели, раскладка,
+   │     сцена с движковыми типами, gizmo, undo/redo; хуки хоста on*())
+   ├── плагин игры (gravelands-plugin): GravelandsEditorHost + extern "C"-фабрики
+   │     gravelandsCreateEditorHost/gravelandsDestroyEditorHost — единственная
+   │     точка входа; этап 1 — статический линк (gravelands_plugin_type=STATIC),
+   │     этап 2 — gravelands.dll через LoadLibrary/GetProcAddress (SHARED) —
+   │     exe игру не знает
    └── Play mode: хостит gravelands-client-core in-process + gravelands-server-core in-process
         (связь между ними — loopback TCP, сетевой код-путь остаётся настоящим)
 ```
+
+- **Shared-сборка (сделано, 2026-09-28):** blib и beng собираются как DLL
+  (`blib_build_type=blib_build_dynamic`, `beng_build_type=beng_build_dynamic`) —
+  один `GlobalAllocator`/`Console`/реестры на процесс. Экспорт: модуль — `dllexport`
+  (`blib_*_export`/`beng_export`, PRIVATE в CMake) + `WINDOWS_EXPORT_ALL_SYMBOLS`
+  (template-инстанции, неразмеченные символы); потребители — без `dllimport`
+  (inline-члены классов не существуют в DLL — импортов нет; линкер резолвит
+  напрямую через импорт-таблицу), статические данные — `__blib_data_api`/
+  `__beng_data_api` (dllimport). Все exe/DLL — в общий `bin/` (Windows ищет
+  DLL рядом с exe). Статическая сборка — дефолт и режим отладки.
 
 - **`EditorApplication` (сделано, 2026-09-28)** — игра-агностичный каркас:
   окно/FBO вьюпорта/орбитальная камера, ImGui (контекст, WndProc-хук, кадр),
@@ -241,8 +252,8 @@ beng-editor.exe (единственный эдитор, аналог UnrealEdito
 
 1. **Дублирование глобального состояния.** Статический blib/beng-core в двух
    модулях = два `GlobalAllocator`, две `Console`, два реестра типов.
-   Решение: **blib и beng-core собираются как shared DLL**
-   (CMake уже умеет `blib_build_type=blib_build_dynamic`).
+   **Сделано (2026-09-28):** blib и beng собираются как shared DLL
+   (`blib_build_type`/`beng_build_type` = `*_build_dynamic`) — см. выше.
 2. **Реестр типов — только явная регистрация.** Никаких static-local ID
    и `typeid()` через границу DLL. Игра экспортирует `registerGameTypes(...)`.
    **Сделано:** глобального реестра нет — типы регистрируются явно на
@@ -252,11 +263,16 @@ beng-editor.exe (единственный эдитор, аналог UnrealEdito
    Осталось: `registerGameTypes` для эдитора (имена + рефлексия).
 3. **Стабильный интерфейс эдитор ↔ игра** (`IGameModule`): регистрация типов,
    хуки сериализации, жизненный цикл PIE. **Задел сделан:** хук-интерфейс
-   `EditorApplication::on*()` + фабрика плагина `gravelandsCreateEditorHost()`
-   (gravelands-plugin); на DLL-этапе фабрика станет экспортом gravelands.dll,
-   а хук-интерфейс вырастет в `IGameModule`.
-4. **Экспорт символов:** `__blib_api`/`__beng_api` становятся настоящими
-   `dllexport/dllimport`, всё публичное API помечается.
+   `EditorApplication::on*()` + extern "C"-фабрики плагина
+   (`gravelandsCreateEditorHost`/`gravelandsDestroyEditorHost` — единственные
+   экспортируемые символы gravelands.dll, эдитор берёт их через
+   GetProcAddress). Полноценный `IGameModule` вырастет на этапе PIE
+   (жизненный цикл симуляции, команды play/stop).
+4. **Экспорт символов: сделан (2026-09-28).** `__blib_api`-семейство и
+   `__beng_api` — настоящие `dllexport` при сборке модуля; потребители —
+   без декораций (auto-import линкера), данные — через data-макросы.
+   `WINDOWS_EXPORT_ALL_SYMBOLS` покрывает template-инстанции и пропущенные
+   классы. Публичное API дополнительно размечать по мере надобности.
 5. **Версионированный формат сцен** и стабильные имена типов — сцена должна
    переживать рефакторинги.
 6. **Владение памятью через границу** — решается единым `GlobalAllocator`
@@ -268,8 +284,11 @@ beng-editor.exe (единственный эдитор, аналог UnrealEdito
 **Поэтапное внедрение:** пункты 1, 2, 5 закладываются сразу (shared core,
 явная регистрация, версионированный формат). **Этап 1 (статический линк) —
 сделан (2026-09-28):** плагин игры линкуется в эдитор через CMake-опцию
-`gravelands_plugin_type` (STATIC — дефолт/отладка, SHARED — DLL-этап); код
-плагина один и тот же, меняется только способ доставки.
+`gravelands_plugin_type` (STATIC — дефолт/отладка, SHARED — DLL-этап).
+**Этап 2 (DLL) — сделан (2026-09-28):** shared blib/beng, gravelands.dll
+с единственной точкой входа (extern "C"-фабрики), загрузчик в
+`beng-editor.exe` (LoadLibrary/GetProcAddress, гашение парной фабрикой,
+FreeLibrary). Код плагина один и тот же — меняется только способ доставки.
 
 ---
 
@@ -322,10 +341,14 @@ src/
 1. **beng-core: Application + тикрейт + интерфейсы модулей.** Рефлексия
    компонентов и явная регистрация типов. Shared-сборка blib/beng-core.
 2. **beng-server + gravelands-server-core**: TCP-сервер, снапшоты, WorldManager;
-   простейшая симуляция (движение юнитов, сессия игрока).
+   простейшая симуляция (движение юнитов, сессия игрока). **Сделано
+   (2026-09-28):** `NetworkServer` (TCP, команды/снапшоты, MVP — один
+   клиент), `MovementSystem`, юнит игрока; WorldManager — TODO.
 3. **beng-client + gravelands-client-core**: RenderModule/InputModule/AudioModule,
    рендер-ECS (спрайтовая изометрия на базе isometricTileset);
-   подключение клиента, интерполяция. *(ResourceManager сделан раньше
+   подключение клиента, интерполяция. **Сделано (2026-09-28):**
+   `NetworkClient` (снапшоты + интерполяция зеркал юнитов, офлайн-фолбэк);
+   AudioModule — TODO. *(ResourceManager сделан раньше
    плана — в blib-core: кеш ISaveLoadable с dedup и refcount, см.
    RESOURCE_MANAGER.md.)*
 4. **Геймплей-петля диаблоида**: бой, лут, скиллы (gravelands-common/server),
@@ -335,8 +358,10 @@ src/
    **сделан**; Inspector через рефлексию + Hierarchy + selection-сервис +
    gizmo-манипулятор (W/E/R) + выбор кликом + undo/redo — **сделано**;
    плагин игры (этап 1 — статический линк через фабрику, **сделан**;
-   этап 2 — DLL); докинг, наконечники/плоскости gizmo, PIE (in-process
-   хостинг, loopback TCP).
+   этап 2 — DLL, **сделан**); **PIE — сделан (2026-09-28)**: `PieSession`
+   (in-process хостинг сервера + клиента, loopback TCP — настоящий
+   сетевой путь), Play/Stop в эдиторе; докинг, наконечники/плоскости
+   gizmo — TODO.
 6. **Опционально**: UDP-канал, hot-reload плагина. *(3D-меши с изокамерой —
    сделано раньше плана: `MeshRenderComponent` + слои `RenderLayer`, единый
    ECS-рендер; контент-плейсхолдеры из obj_spider — опционально.)*
@@ -386,6 +411,20 @@ src/
   Ctrl+Z / Ctrl+Shift+Z / Delete), type-erased add/removeComponent в Scene,
   кнопки панелей + история; плагин очищает историю на scene_load
   (`World::setSceneResetCallback`).
+- **DLL-этап плагина (2026-09-28):** shared-сборка blib/beng
+  (dllexport + WINDOWS_EXPORT_ALL_SYMBOLS, data-макросы, общий bin/),
+  gravelands.dll с extern "C"-фабриками (create/destroy), загрузчик в
+  beng-editor.exe; обе конфигурации (STATIC/SHARED) собираются и проходят
+  тесты. Правки для shared: `RWLocker` помечен `__blib_system_api`,
+  blib-graphics линкует Assimp сам, export-дефайны blib — PRIVATE.
+- **Сетевой цикл + PIE (2026-09-28):** дочинен blib-network (NetworkError,
+  WouldBlock-контракт, Address — value-тип, тест-группа `network`);
+  бинарный протокол gravelands (Command/Snapshot/Welcome + MessageFramer,
+  тест-группа `protocol`); `UnitComponent`; сервер — команды→тики→снапшоты
+  (`NetworkServer`/`MovementSystem`); клиент — интерполяция зеркал юнитов
+  (`NetworkClient`, офлайн-фолбэк); PIE — `PieSession` + Play/Stop в
+  `beng-editor.exe` (клиент в PIE без своего ImGui-контекста,
+  `EditorApplication::setEditorInputEnabled`).
 
 **Осталось (по roadmap):**
 

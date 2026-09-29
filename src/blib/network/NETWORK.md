@@ -1,8 +1,8 @@
 # NETWORK — blib-network
 
-> Слой: `blib`. TCP/UDP сокеты (winsock). **Статус: Windows-only, недоделан — в проде не использовать.**
+> Слой: `blib`. TCP/UDP сокеты (winsock). **Статус: Windows-only; TCP-часть доведена до рабочего состояния (2026-09-28), UDP — недоделан (в проде не использовать).**
 > Шпаргалка по устройству. **Обновлять при изменениях кода модуля** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-21
+> Сверено: 2026-09-28
 
 ---
 
@@ -10,8 +10,8 @@
 
 - Тонкая обёртка над winsock: адреса, сокеты, TCP-клиент/листенер, UDP.
 - **Реализация только Windows** (`impl/win/`); на не-Windows модуль не собирается (`FATAL_ERROR` в корневом CMake).
-- Собственных потоков нет — всё синхронное, блокирующее (select/polling/таймаутов нет).
-- Модуль **недоделан**: часть операций не выполняет реальную работу, ошибки Winsock не транслируются. Каталог багов — отдельная задача (см. TODO).
+- Собственных потоков нет — всё синхронное; неблокирующий режим (`setBlocking(false)`) + опрос вызывающим (паттерн PIE: сервер/клиент опрашивают сокеты в своём tick).
+- **TCP-часть доведена (2026-09-28):** NetworkError, корректные send/recv, WouldBlock-контракт, Address — value-тип (deep copy, деструктор, htons). UDP остаётся недоделанным (см. TODO).
 
 ---
 
@@ -20,71 +20,62 @@
 | Что нужно | Где |
 |-----------|-----|
 | Адрес | `address.h`, `impl/win/address.cpp` |
-| Базовый сокет, статусы, инициализация | `socket.h`, `impl/win/socket.cpp` |
+| Базовый сокет, статусы, ошибки, инициализация | `socket.h`, `impl/win/socket.cpp` |
 | TCP-клиент | `tcpSocket.h`, `impl/win/tcpSocket.cpp` |
 | TCP-сервер | `tcpListener.h`, `impl/win/tcpListener.cpp` |
 | UDP | `udpSocket.h`, `impl/win/udpSocket.cpp` |
 | Маппинг enum ↔ WinAPI | `impl/win/winNetworkutil.h/.cpp` |
+| Тесты | `blib/test/src/impl/testNetwork.cpp` (группа `network`, loopback) |
 | CMake | `CMakeLists.txt` |
 
-Потребитель: `src/vochat` (линкует `blib-network` PUBLIC).
+Потребители: `src/vochat` (закомментированные примеры), `gravelands` (сервер/клиент, PIE).
 
 ---
 
 ## API
 
-- **`Address`**: `fromIPv4(str, ok)`, `setPort(int)`, `getType()`, `__getHandler()`; статические `AnyIPv4`, `NoneIPv4`, `LocalhostIPv4`, `BroadcastIPv4`. Владеет платформенным `ctx` (`new`).
-- **`Socket`** (базовый, некопируемый): `create(AddressType, SocketType, SocketProtocol)`, `setBlocking(bool)`, `bind(Address&)`, `close()`, `destroy()`.
-- **`TcpSocket`**: `connect(Address&)`, `send(const void*, int)`, `recv(void*, int&)`.
-- **`TcpListener`**: `listen(int backlog = 16)`, `accept(TcpSocket&)`.
-- **`UdpSocket`**: `send(Address&, const void*, int)`, `recv(Address&, void*, int&)`.
-- **`InitBlibSocket()`** — глобальная функция инициализации winsock (`WSAStartup`); вызывать до создания сокетов.
-- **Статусы:** `SocketStatus {OK, Partial, Disconnected, Error}`. Отдельного `NetworkError` нет; коды `WSAGetLastError()` не сохраняются.
-- **Enum-типы:** `AddressType` (IPv4/IPv6/…), `SocketType` (`Stram` — опечатка вместо `Stream`, `Dgram`, …), `SocketProtocol` (значения enum не равны `IPPROTO_*`, маппинг по имени).
+- **`NetworkError`** (`socket.h`): enum-код модуля (`None = 0, Unknown, NotInitialized, CreateFailed, BindFailed, ListenFailed, ConnectFailed, SendFailed, RecvFailed, WouldBlock, Closed`) — детализирующая причина последнего отказа; читается через `getLastError()` у `Socket`/`TcpSocket`/`TcpListener`.
+- **`SocketStatus`**: `{OK, Partial, Disconnected, WouldBlock, Error}`. `WouldBlock` — неблокирующая операция не готова: повторить позже (НЕ ошибка). `Partial` — отправлена часть данных (прогресс — через `sentOut`).
+- **`Address`**: value-тип (deep copy, move, деструктор); `fromIPv4(str, ok)` (ошибка → пустой адрес + ok=false), `setPort(int)` — с переводом в сетевой порядок байт; статические `AnyIPv4/NoneIPv4/LocalhostIPv4/BroadcastIPv4`.
+- **`Socket`**: `create(...)`, `setBlocking(bool)` (возвращает УСПЕХ — семантика исправлена), `bind`, `close`, `destroy`, `getLastError`; хендл — через `GlobalAllocator` (без new/delete).
+- **`TcpSocket`**: `connect(Address&)` — в неблокирующем режиме WouldBlock = «в процессе» (повторять; WSAEISCONN → OK); `send(data, size, sentOut)` — цикл до полной отправки, при WouldBlock прогресс в `sentOut` (вызывающий продолжает с того же места!); `recv(data, size)` — `size` in/out: фактически принятые байты (частичный приём — НЕ ошибка, TCP — поток).
+- **`TcpListener`**: `listen(backlog = 16)`, `accept(TcpSocket&)` — WouldBlock = «подключений нет» (неблокирующий режим).
+- **`InitBlibSocket()`** — `bool`, идемпотентна; вызывать до создания сокетов. `WSACleanup` не вызывается (процесс живёт долго).
 
 ---
 
 ## Поток данных
 
-**TCP-клиент:** `InitBlibSocket()` → `TcpSocket(type)` (создаёт `SOCK_STREAM`/`IPPROTO_TCP`, сразу blocking) → `Address::fromIPv4` + `setPort` → `connect` → `send` (цикл до полной отправки) / `recv`.
+**TCP-клиент (неблокирующий):** `InitBlibSocket()` → `TcpSocket(IPv4)` → `setBlocking(false)` → `Address::fromIPv4` + `setPort` → цикл `connect` (WouldBlock → повтор) → `send` (проверять WouldBlock + `sentOut`) / `recv` (WouldBlock — данных нет).
 
-**TCP-сервер:** `TcpListener(type)` → `bind` → `listen(backlog)` → `accept(TcpSocket&)` (адрес клиента отбрасывается).
+**TCP-сервер:** `TcpListener(IPv4)` → `setBlocking(false)` → `bind` → `listen` → цикл `accept` (WouldBlock — нет подключений).
 
-**UDP:** `UdpSocket(type)` (`SOCK_DGRAM`/`IPPROTO_UDP`, blocking) → `bind` → `sendto`/`recvfrom` (адрес отправителя копируется только для IPv4).
-
-**Режим:** все конструкторы по умолчанию blocking; `setBlocking` использует `ioctlsocket(FIONBIO)`. Non-blocking-ошибки (`WSAEWOULDBLOCK`) специально не обрабатываются.
+**Режим:** конструкторы по умолчанию blocking; `setBlocking` — `ioctlsocket(FIONBIO)`.
 
 ---
 
 ## Инварианты
 
-- **Владение:** `Socket::ctx` — `new`/`delete` платформенного хендла; `Address::ctx` — `new`, но **деструктора у `Address` нет** (утечка на каждое создание; копирование поверхностное — копии делят один `ctx`).
-- **Thread-safety отсутствует** — сокеты рассчитаны на один поток; синхронизации внутри нет.
-- `WSAStartup` вызывается только явным `InitBlibSocket()`; автоматической инициализации при создании сокета нет; `WSACleanup` в проекте не вызывается.
-- `Socket` некопируем/неперемещаем; `TcpSocket`/`UdpSocket` владеют `Socket` по значению; `TcpListener::accept` заполняет переданный сокет через `create(void*)`.
-- Лимитов/констант нет; `backlog` по умолчанию 16; `setPort(int)` без валидации; `send/recv` принимают `int`.
+- **Владение:** `Socket::ctx`/`Address::ctx` — память через `GlobalAllocator`; `Address` — value-тип (глубокая копия, корректный деструктор); `Socket` некопируем/неперемещаем.
+- **Контракт send при WouldBlock:** вызывающий обязан продолжать отправку с той же точки (`data + sentOut`) — иначе поток байт повредится.
+- **Thread-safety отсутствует** — сокеты рассчитаны на один поток.
+- `WSAStartup` — только явным `InitBlibSocket()` (идемпотентна).
 
 ---
 
 ## Подводные камни
 
-- Модуль недоделан: операции для семейств, отличных от IPv4, могут возвращать `OK`, ничего не сделав; ошибки не сохраняются — не использовать в проде.
-- `setBlocking` возвращает инвертированную «успешность» (`ioctlsocket` возвращает 0 при успехе).
-- Деструктор `Socket` безусловно вызывает `close()` — у сокета по умолчанию `ctx == nullptr`.
-- `send` при ошибке может вернуть `Partial` и зациклиться на нулевой отправке; `recv` не записывает фактическое число принятых байт.
-- `Address::setPort` не переводит порт в сетевой порядок байт; `fromIPv4` при ошибке не возвращает заранее (вызывающий должен проверять `ok`).
-- Размер `Address::ctx` рассчитан на `sockaddr` (IPv4); для IPv6 буфера может не хватить.
-- Реальный пример использования — закомментированные `main()` в `vochat/src/main.cpp`; тестов у модуля нет.
+- **UDP недоделан**: `recv` не возвращает размер/адрес корректно, ошибки не транслируются — не использовать в проде.
+- IPv6/прочие семейства: bind/connect реализованы только для IPv4 (прочие — Error).
+- `send` в неблокирующем режиме при заполненных буферах — WouldBlock с частичным прогрессом (см. контракт выше).
 
 ---
 
 ## TODO
 
-- [ ] Довести модуль до рабочего состояния: реальные bind/connect для всех семейств, трансляция ошибок (enum `NetworkError` + `WSAGetLastError`), порядок байт, деструкторы/владение.
-- [ ] Обсудить каталог известных багов модуля (отдельная задача).
-- [ ] `WSACleanup` и защита от повторного `InitBlibSocket`.
-- [ ] Исправить опечатки публичного API (`Stram`, `szie`).
-- [ ] Тесты (сейчас нет).
+- [ ] UDP: довести до уровня TCP (NetworkError, размер/адрес отправителя, тесты).
+- [ ] IPv6-поддержка (Address-буфер уже рассчитан; bind/connect — заглушки).
+- [ ] Потоковые обёртки/select для многоклиентских серверов (пока — polling).
 
 ---
 
@@ -94,3 +85,4 @@
 - `../core/CORE.md` — streams/console (зависимости).
 - `../system/SYSTEM.md` — аллокаторы, потоки.
 - `AGENTS.md` — правила проекта.
+- `GRAVELANDS.md` — потребитель (сетевой цикл игры, PIE).

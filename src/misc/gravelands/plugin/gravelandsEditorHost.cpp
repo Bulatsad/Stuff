@@ -1,5 +1,6 @@
 #include <gravelands/plugin/gravelandsEditorHost.h>
 #include <gravelands/common/config.h>
+#include <gravelands/plugin/pieSession.h>
 #include <gravelands/world/world.h>
 
 #include <beng/components/transform.h>
@@ -38,6 +39,12 @@ namespace gravelands
 
         // Флаги верхней полосы: без изменения размера
         constexpr ImGuiWindowFlags topBarFlags = ImGuiWindowFlags_NoResize;
+
+        // Кнопки PIE
+        constexpr const char* playButtonLabel = "Play";
+        constexpr const char* stopButtonLabel = "Stop";
+        constexpr const char* pieRunningLabel = "PIE: running";
+        constexpr const char* pieStoppedLabel = "PIE: stopped";
 
         // Ray-picking (выбор кликом во вьюпорте): максимальная
         // дистанция луча (дальше — «мимо»), радиус сферы-фолбэка для
@@ -193,10 +200,10 @@ namespace gravelands
         }
     }
 
-    // Внутренности хоста: мир Gravelands. Каркас (окно, FBO, камера,
-    // ImGui, сцена эдитора, сценные панели Hierarchy/Inspector, gizmo)
-    // живёт в базовом EditorApplication. Полное определение скрыто в
-    // .cpp (pimpl) — заголовок не тянет графические типы в потребителей.
+    // Внутренности хоста: мир Gravelands + PIE-сессия. Каркас (окно,
+    // FBO, камера, ImGui, сцена эдитора, сценные панели Hierarchy/Inspector,
+    // gizmo) живёт в базовом EditorApplication. Полное определение скрыто
+    // в .cpp (pimpl) — заголовок не тянет графические типы в потребителей.
     struct GravelandsEditorHost::GravelandsEditorHostImpl
     {
         // Мир: привязывается к сцене каркаса (та же сцена, что правит
@@ -205,8 +212,19 @@ namespace gravelands
         // живом контексте
         gravelands::World world;
 
+        // Play In Editor: in-process хостинг сервера + клиента
+        // (loopback TCP), клиент — отдельное окно
+        gravelands::PieSession pieSession;
+
+        // Play отложен до начала следующего кадра: клиентское окно
+        // (второй GL-контекст) нельзя создавать в середине ImGui-кадра —
+        // иначе остаток кадра эдитора рисует в чужом контексте
+        bool pieStartPending;
+
         GravelandsEditorHostImpl()
             : world()
+            , pieSession()
+            , pieStartPending(false)
         {
         }
     };
@@ -257,6 +275,22 @@ namespace gravelands
         // Отладочное управление светом (стрелки/[ ]/PageUp/PageDown):
         // мир крутит компоненты света своей сцены до отрисовки
         this->impl->world.updateLight(deltaTime);
+
+        // Отложенный Play: клиентское окно (второй GL-контекст)
+        // создаётся в НАЧАЛЕ кадра, а не в середине ImGui-кадра
+        if (this->impl->pieStartPending)
+        {
+            this->impl->pieStartPending = false;
+            this->startPie();
+        }
+
+        // PIE: кадр игровой сессии (сервер + клиент) внутри кадра эдитора.
+        // Клиент делает свой контекст текущим в window.update();
+        // каркас вернёт контекст эдитора сразу после этого хука
+        if (this->impl->pieSession.isRunning())
+        {
+            this->impl->pieSession.tick();
+        }
     }
 
     void GravelandsEditorHost::onViewportClick(
@@ -364,14 +398,68 @@ namespace gravelands
     void GravelandsEditorHost::onUi()
     {
         // Верхняя полоса эдитора (позицию/размер уже выставил каркас):
-        // имя игры + счётчик сущностей редактируемой сцены
+        // имя игры + счётчик сущностей редактируемой сцены + кнопки PIE
         if (ImGui::Begin(topBarTitle, nullptr, topBarFlags))
         {
             ImGui::Text("%s | entities: %u | F5 hotreload | ` console",
                 gameTitle,
                 static_cast<unsigned int>(this->getScene().getEntityCount()));
+
+            ImGui::SameLine();
+            if (this->impl->pieSession.isRunning() || this->impl->pieStartPending)
+            {
+                ImGui::TextUnformatted(pieRunningLabel);
+                ImGui::SameLine();
+                if (ImGui::Button(stopButtonLabel))
+                {
+                    // Stop синхронно допустим: контекст эдитора в этот
+                    // момент текущий, клиентский — не текущий
+                    this->impl->pieStartPending = false;
+                    this->stopPie();
+                }
+            }
+            else
+            {
+                ImGui::TextUnformatted(pieStoppedLabel);
+                ImGui::SameLine();
+                if (ImGui::Button(playButtonLabel))
+                {
+                    // Отложенный запуск: выполнится в начале следующего
+                    // кадра (onSceneWillUpdate) — см. pieStartPending
+                    this->impl->pieStartPending = true;
+                }
+            }
         }
         ImGui::End();
+    }
+
+    void GravelandsEditorHost::startPie()
+    {
+        if (this->impl->pieSession.isRunning())
+        {
+            return;
+        }
+
+        if (!this->impl->pieSession.start(serverDefaultPort))
+        {
+            __blib_log_error("PIE: failed to start session");
+            return;
+        }
+
+        // Ввод игры и горячие клавиши эдитора конфликтуют на общей
+        // клавиатуре (W/E/R и т.д.) — редакторский ввод выключается
+        this->setEditorInputEnabled(false);
+    }
+
+    void GravelandsEditorHost::stopPie()
+    {
+        if (!this->impl->pieSession.isRunning())
+        {
+            return;
+        }
+
+        this->impl->pieSession.stop();
+        this->setEditorInputEnabled(true);
     }
 
     GravelandsEditorHost::GravelandsEditorHost()
@@ -406,6 +494,10 @@ namespace gravelands
             return;
         }
 
+        // PIE-сессия гасится первой (клиентское окно/GL-контекст),
+        // затем мир, затем каркас
+        this->stopPie();
+
         // Мир разрушаем ДО каркаса: меши обязаны умереть раньше
         // ImGui/GL-контекста каркаса
         this->impl->~GravelandsEditorHostImpl();
@@ -418,14 +510,29 @@ namespace gravelands
 
     GravelandsEditorHost* gravelandsCreateEditorHost()
     {
-        // Фабрика — единственная точка входа плагина (на DLL-этапе
-        // станет экспортируемым символом gravelands.dll). Память —
-        // GlobalAllocator; владелец гасит и возвращает память сам
+        // Фабрика — единственная точка входа плагина (на DLL-этапе —
+        // экспортируемый символ gravelands.dll). Память — GlobalAllocator;
+        // владелец гасит парной gravelandsDestroyEditorHost
         auto& globalAllocator = blib::memory::GlobalAllocator::instance();
         GravelandsEditorHost* host = static_cast<GravelandsEditorHost*>(
             globalAllocator.allocate(sizeof(GravelandsEditorHost)));
         new (host) GravelandsEditorHost();
         return host;
+    }
+
+    void gravelandsDestroyEditorHost(_In beng::editor::EditorApplication* host)
+    {
+        // Парная фабрике: конкретный тип известен только плагину —
+        // явный деструктор + возврат памяти GlobalAllocator'у
+        // (в DLL-режиме вызывающий не может сделать это сам)
+        if (host == nullptr)
+        {
+            return;
+        }
+
+        GravelandsEditorHost* typed = static_cast<GravelandsEditorHost*>(host);
+        typed->~GravelandsEditorHost();
+        blib::memory::GlobalAllocator::instance().deallocate(typed, sizeof(GravelandsEditorHost));
     }
 
 } // namespace gravelands

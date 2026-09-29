@@ -1,17 +1,39 @@
 #pragma once
 
+#include <blib/blibint.h>
+
 #include <blib/network/address.h>
 
 namespace blib
 {
     namespace network
     {
+        /**
+         * NetworkError — ошибки сетевых операций (enum-код модуля,
+         * паттерн ошибок проекта: None = 0 — успех). Хранится сокетом
+         * (getLastError) — детализирующая причина последнего отказа.
+         */
+        enum class NetworkError : buint32
+        {
+            None = 0,
+            Unknown,          // нераспознанная причина (диагностики нет)
+            NotInitialized,   // winsock не инициализирован (InitBlibSocket не вызван/провалился)
+            CreateFailed,     // socket() вернул INVALID_SOCKET
+            BindFailed,
+            ListenFailed,
+            ConnectFailed,
+            SendFailed,
+            RecvFailed,
+            WouldBlock,       // неблокирующий сокет: операция не готова (WSAEWOULDBLOCK)
+            Closed            // соединение закрыто/сброшено
+        };
+
         enum class SocketStatus
         {
             OK,
-            Partial, //Socket sent only part of data
+            Partial,     // отправлена только часть данных (см. sentOut в send)
             Disconnected,
-
+            WouldBlock,  // неблокирующий сокет: операция не готова — повторить позже
             Error,
 
             END_OF_ENUM
@@ -19,8 +41,8 @@ namespace blib
 
         enum class SocketType
         {
-            Stram,
-            Dgram,
+            Stream,      // TCP
+            Dgram,       // UDP
             Raw,
             RDM,
             SeqPacket,
@@ -41,7 +63,13 @@ namespace blib
             END_OF_ENUM
         };
 
-        void InitBlibSocket();
+        /**
+         * Инициализация сетевой подсистемы (WSAStartup). Идемпотентна:
+         * повторный вызов — no-op с true. Вызывать до создания сокетов.
+         *
+         * @return false — инициализация провалилась (сеть недоступна)
+         */
+        bool InitBlibSocket();
 
         class Socket
         {
@@ -50,6 +78,10 @@ namespace blib
             SocketStatus create(const AddressType af, const SocketType type, const SocketProtocol protocol);
             SocketStatus create(void* ctx);
 
+            /**
+             * Режим блокировки. @return true — успех (семантика исправлена:
+             * раньше возвращался инвертированный результат ioctlsocket)
+             */
             bool setBlocking(bool isBlocking);
 
             SocketStatus bind(Address& addr);
@@ -58,12 +90,16 @@ namespace blib
             void destroy();
             ~Socket();
 
-            //SocketStatus connetc(Address& addr); //TODO: make const arg
-            //SocketStatus bind(Address& addr); //TODO: make const arg
-            //Socket accept(Address& addr);
-            //SocketStatus listen(int backlog = 200);
-            //SocketStatus send(const void* , size_t size);
-            //SocketStatus receive(void*, size_t size, size_t& received);
+            /**
+             * Причина последнего отказа операции (enum-ошибка модуля).
+             */
+            NetworkError getLastError() const { return lastError; }
+
+            /**
+             * INTERNAL: записать причину отказа (используется impl/win
+             * после неудачной операции). Не вызывать извне.
+             */
+            void __setLastError(NetworkError error) { this->lastError = error; }
 
             Socket(const Socket&) = delete;
             Socket(Socket&&) = delete;
@@ -71,6 +107,7 @@ namespace blib
             void* __getHandler();
         private:
             void* ctx;
+            NetworkError lastError;
         };
  
     }

@@ -878,6 +878,22 @@ namespace gravelands
         return impl->sphereEntity;
     }
 
+    void World::removeLocalPlayerEntity()
+    {
+        // Локальный «персонаж»-сфера — заглушка офлайн-режима: в сетевой
+        // игре зеркала юнитов приходят из снапшотов (см. GRAVELANDS.md)
+        if (impl->sphereEntity != beng::invalidEntity)
+        {
+            impl->scene->destroyEntity(impl->sphereEntity);
+            impl->sphereEntity = beng::invalidEntity;
+        }
+        if (impl->sphereShadowEntity != beng::invalidEntity)
+        {
+            impl->scene->destroyEntity(impl->sphereShadowEntity);
+            impl->sphereShadowEntity = beng::invalidEntity;
+        }
+    }
+
     beng::EntityID World::getDancerEntity() const
     {
         return impl->dancerEntity;

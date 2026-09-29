@@ -20,11 +20,14 @@ namespace blib
             Color();
             Color(buint8 red, buint8 green, buint8 blue, buint8 alpha);
             
-            static const Color Black; 
-            static const Color BlackAlpha;
-            static const Color White;
-            static const Color Red;
-            static const Color Transparent;
+            // Static data members НЕ наследуют атрибут класса (MSVC):
+            // отдельный макрос данных — __blib_data_api (dllimport у
+            // потребителей, пусто в сборке blib-graphics)
+            static const __blib_data_api Color Black;
+            static const __blib_data_api Color BlackAlpha;
+            static const __blib_data_api Color White;
+            static const __blib_data_api Color Red;
+            static const __blib_data_api Color Transparent;
 
             static buint8 bytesPerPixel() { return 4; }
         };

@@ -75,6 +75,10 @@ function(blib_add_module target_name)
         add_library(${target_name} STATIC ${ARGN})
     elseif(blib_build_type STREQUAL "blib_build_dynamic")
         add_library(${target_name} SHARED ${ARGN})
+        # Авто-экспорт всех символов DLL (MSVC): покрывает template-инстанции
+        # и публичные классы, не помеченные API-макросами (объявления у
+        # потребителей по-прежнему dllimport через config.h)
+        set_target_properties(${target_name} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
     else()
         message(FATAL_ERROR "Undefined build type")
     endif()
@@ -85,6 +89,9 @@ endfunction()
 # Общая конфигурация модульного таргета: дефайны конфигурации (PUBLIC —
 # они нужны и потребителям, т.к. blib/config.h читает их в каждом TU),
 # inline-режим, export-макрос модуля и корень инклюдов <blib/...>.
+# export-дефайн — PRIVATE: экспортирует ТОЛЬКО сам модуль; потребители
+# остаются на dllimport (PUBLIC сломал бы импорт: потребители blib-graphics
+# считали бы себя экспортёрами его символов)
 function(blib_configure_module target_name export_define)
     target_compile_definitions(${target_name} PUBLIC
         ____blib_configuration_platform_undefined=${____blib_configuration_platform_undefined}
@@ -97,9 +104,9 @@ function(blib_configure_module target_name export_define)
         ____blib_configuration_library_type_static=${____blib_configuration_library_type_static}
         ____blib_configuration_library_type_shared=${____blib_configuration_library_type_shared}
         ____blib_configuration_library_type_value=${____blib_configuration_library_type_value}
-
-        ${export_define}
     )
+
+    target_compile_definitions(${target_name} PRIVATE ${export_define})
 
     if(blib_inline_mode STREQUAL "__blib_inline_always")
         target_compile_definitions(${target_name} PRIVATE __blib_inline_always)

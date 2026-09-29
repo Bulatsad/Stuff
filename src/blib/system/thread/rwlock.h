@@ -24,7 +24,9 @@ typedef pthread_rwlock_t locker_t;
 
 namespace thread
 {
-    class RWLocker
+    // __blib_system_api — экспорт в shared-сборке blib-system
+    // (blib_build_dynamic): потребители (blib-core и выше) импортируют
+    class __blib_system_api RWLocker
     {
     private:
         locker_t rwsyncer;

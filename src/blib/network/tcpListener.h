@@ -22,7 +22,17 @@ namespace blib
 
             SocketStatus bind(Address& addr);
             SocketStatus listen(int backlog = 16);
+
+            /**
+             * Принять входящее подключение. В неблокирующем режиме
+             * WouldBlock = «подключений нет» — вызывающий повторяет позже.
+             */
             SocketStatus accept(TcpSocket& accepted);
+
+            /**
+             * Причина последнего отказа (см. Socket::getLastError).
+             */
+            NetworkError getLastError() const { return this->socket.getLastError(); }
         };
     }
 }

@@ -3,9 +3,37 @@
 #include <blib/blibint.h>
 #include <blib/config.h>
 
-// Экспорт символов для shared library
-// Пока beng собирается как static library — макрос пустой
+// Экспорт символов для shared library.
+// По умолчанию макрос пустой (static-сборка). В shared-сборке Windows
+// dllimport у потребителей НЕ используем (многие beng-классы имеют
+// inline/шаблонные члены — их импортов в DLL нет): экспортирует только
+// сам модуль (beng_export → dllexport), потребители ссылаются напрямую,
+// линкер резолвит через импорт-таблицу (паттерн blib — см. blib/config.h).
 #define __beng_api
+
+#ifdef __blib_compile_platform_windows
+#if ____blib_configuration_library_type_value == ____blib_configuration_library_type_shared
+
+#ifdef beng_export
+#undef __beng_api
+#define __beng_api __declspec(dllexport)
+#endif // beng_export
+
+// Static data members: dllimport у потребителей, пусто в сборке модуля
+// (паттерн __blib_data_api — см. blib/config.h)
+#ifdef beng_export
+#define __beng_data_api
+#else
+#define __beng_data_api __declspec(dllimport)
+#endif // beng_export
+
+#endif // shared
+#endif // __blib_compile_platform_windows
+
+// Вне shared-сборки Windows данные не декорируются
+#ifndef __beng_data_api
+#define __beng_data_api
+#endif
 
 namespace beng
 {

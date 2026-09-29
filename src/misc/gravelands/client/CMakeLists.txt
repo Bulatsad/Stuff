@@ -20,8 +20,9 @@ set_target_properties(gravelands-client-core PROPERTIES FOLDER "gravelands/clien
 
 # gravelands-common даёт <gravelands/...> и blib-core;
 # gravelands-world — мир (сцена + контент); beng-core — Time;
-# beng-client — рендер-ECS (через мир); blib-graphics — окно/рендер/камера
-target_link_libraries(gravelands-client-core PUBLIC gravelands-common gravelands-world beng-core beng-client blib-graphics)
+# beng-client — рендер-ECS (через мир); blib-graphics — окно/рендер/камера;
+# blib-network — сетевой клиент (снапшоты/команды)
+target_link_libraries(gravelands-client-core PUBLIC gravelands-common gravelands-world beng-core beng-client blib-graphics blib-network)
 
 # Assimp + zlib (prebuilt .lib из thirdparty/assimplib) — нужны blib-graphics
 # (material.obj) при использовании Mesh/Material

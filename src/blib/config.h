@@ -49,21 +49,13 @@
 #ifdef __blib_compile_platform_windows
 #if ____blib_configuration_library_type_value == ____blib_configuration_library_type_shared
 
-// В shared-сборке по умолчанию импортируем символы всех модулей,
-// а текущий компилируемый модуль (его CMake задаёт blib_*_export)
-// экспортирует свои.
-#undef __blib_system_api
-#undef __blib_core_api
-#undef __blib_graphics_api
-#undef __blib_sound_api
-#undef __blib_network_api
-
-#define __blib_system_api __declspec(dllimport)
-#define __blib_core_api __declspec(dllimport)
-#define __blib_graphics_api __declspec(dllimport)
-#define __blib_sound_api __declspec(dllimport)
-#define __blib_network_api __declspec(dllimport)
-
+// В shared-сборке Windows НЕ используем dllimport у потребителей:
+// многие классы blib имеют inline-члены (vtable/деструкторы в хедерах),
+// и dllimport-объявления искали бы их импорты, которых в DLL нет.
+// Вместо этого экспортирует ТОЛЬКО сам модуль (blib_*_export → dllexport),
+// а потребители ссылаются напрямую — линкер MSVC резолвит их через
+// импорт-таблицу (auto-import функций и данных из экспортированной DLL;
+// всё публичное покрыто WINDOWS_EXPORT_ALL_SYMBOLS).
 #ifdef blib_system_export
 #undef __blib_system_api
 #define __blib_system_api __declspec(dllexport)
@@ -89,8 +81,25 @@
 #define __blib_network_api __declspec(dllexport)
 #endif // blib_network_export
 
+// Static data members dll-класса НЕ наследуют атрибут класса (MSVC),
+// а линкер без dllimport данные не импортирует. Поэтому для ДАННЫХ
+// отдельный макрос: dllimport у потребителей (импорт-таблица содержит
+// __imp_ от авто-экспорта), пусто при сборке самого модуля (класс с
+// dllexport уже экспортирует данные; повторный dllexport на члене — C2487).
+#if defined(blib_system_export) || defined(blib_core_export) || defined(blib_graphics_export) \
+    || defined(blib_sound_export) || defined(blib_network_export)
+#define __blib_data_api
+#else
+#define __blib_data_api __declspec(dllimport)
+#endif // внутри модуля blib
+
 #endif // shared
 #endif // __blib_compile_platform_windows
+
+// Вне shared-сборки Windows данные не декорируются
+#ifndef __blib_data_api
+#define __blib_data_api
+#endif
 
 #ifndef __blib_unsafe
 #define __blib_unsafe

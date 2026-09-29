@@ -92,7 +92,9 @@ BLIB_TEST_CASE("reflection: TransformComponent descriptor fields")
     const beng::ComponentTypeDescriptor& descriptor =
         beng::TransformComponent::componentReflection();
 
-    BLIB_TEST_CHECK(descriptor.getTypeName() == beng::TransformComponent::componentTypeName);
+    // Сравнение по СОДЕРЖИМОМУ: литералы разных модулей (exe/DLL в
+    // shared-сборке) имеют разные адреса
+    BLIB_TEST_CHECK(std::strcmp(descriptor.getTypeName(), beng::TransformComponent::componentTypeName) == 0);
     BLIB_TEST_CHECK(descriptor.getFieldCount() == 3);
 
     const beng::IComponentField* positionField = descriptor.getField(0);

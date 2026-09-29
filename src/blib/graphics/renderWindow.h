@@ -42,6 +42,16 @@ namespace blib
 
             void enableIsometricTileGreed();
 
+            /**
+             * Сделать GL-контекст этого окна текущим для потока.
+             * Кэшируется по wglGetCurrentContext: вызов драйвера
+             * (wglMakeCurrent) происходит ТОЛЬКО при реальной смене
+             * окна — в однооконных приложениях это no-op после первого
+             * кадра. Нужен multi-window режиму (PIE: эдитор + клиентское
+             * окно в одном процессе) — см. GRAPHICS.md, «Владение GL».
+             */
+            void makeCurrent();
+
             void update();
             bool isOpen();
             void display(IRenderTarget& rt, bint16 xStart = 0, bint16 yStart = 0);

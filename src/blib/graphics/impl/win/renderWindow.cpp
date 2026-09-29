@@ -149,8 +149,24 @@ void blib::graphics::RenderWindow::enableIsometricTileGreed()
 
 }
 
+void blib::graphics::RenderWindow::makeCurrent()
+{
+    // Кэш текущего контекста: wglMakeCurrent — дорогой драйверный
+    // вызов (миллисекунды), wglGetCurrentContext — дёшев. Переключаем
+    // контекст только при реальной смене окна (multi-window: PIE)
+    if (wglGetCurrentContext() != __blib_render_window_this_context(this)->context)
+    {
+        wglMakeCurrent(__blib_render_window_this_context(this)->hdc,
+            __blib_render_window_this_context(this)->context);
+    }
+}
+
 void blib::graphics::RenderWindow::update()
 {
+    // Это окно владеет кадром: его контекст становится текущим
+    // (в multi-window режиме — см. makeCurrent; в однооконном — no-op)
+    this->makeCurrent();
+
     // Прокручиваем ВСЕ накопленные сообщения (а не одно за кадр):
     // при работе с ImGui очередь WM_MOUSEMOVE/KEYDOWN растёт быстрее,
     // чем качается один PeekMessage — ввод начинал отставать
@@ -213,7 +229,9 @@ void blib::graphics::RenderWindow::swapBuffers()
 {
     // Обмен буферов без блита FBO: вызывающий сам отрисовал всё
     // в back-буфер (например, сцену через display() раньше, а UI —
-    // поверх неё ImGui-бэкендом)
+    // поверх неё ImGui-бэкендом). Контекст этого окна — текущий
+    // (multi-window режим — см. makeCurrent)
+    this->makeCurrent();
     SwapBuffers(__blib_render_window_this_context(this)->hdc);
 }
 

@@ -36,6 +36,20 @@ if(BUILD_TESTS)
 	enable_testing()
 endif()
 
+# Типы сборки blib/beng объявляются и в их CMakeLists (CACHE — повторная
+# установка не перезаписывает пользовательское значение). Здесь они нужны
+# ДО подключения подкаталогов: CMAKE_RUNTIME_OUTPUT_DIRECTORY фиксируется
+# в свойстве каждого таргета в момент его создания
+set(blib_build_type blib_build_static CACHE STRING "blib library build type")
+set(beng_build_type beng_build_static CACHE STRING "beng library build type")
+
+# Shared-сборка (blib/beng — DLL): все exe и DLL кладутся в общий
+# bin-каталог — Windows ищет DLL рядом с exe, а в дефолтной раскладке
+# модулей (blib/system/Debug, beng/Debug, ...) exe их не нашли бы
+if(blib_build_type STREQUAL "blib_build_dynamic")
+	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
+
 add_subdirectory(${blib_dir})
 
 # beng-core — ECS-ядро движка (Bulat Engine); от графики не зависит
@@ -62,13 +76,20 @@ endif()
 # misc/gravelands — игра Gravelands (диаблоид): библиотеки + тонкие exe
 add_subdirectory(misc/gravelands)
 
-# Единый эдитор с плагином игры (этап 1 плагин-модели: статический
-# линк; см. ARCHITECTURE.md, «Эдитор»). Переключатель на DLL —
-# gravelands_plugin_type=SHARED (этап 2). Дефайн включает ветку
-# фабрики в main.cpp эдитора
+# Единый эдитор с плагином игры (плагин-модель, см. ARCHITECTURE.md,
+# «Эдитор»). Режим доставки — gravelands_plugin_type:
+#   STATIC (этап 1): плагин линкуется в beng-editor.exe — удобная
+#     отладка; exe зовёт фабрику напрямую (дефайн ..._STATIC);
+#   SHARED (этап 2): gravelands.dll грузится эдитором через
+#     LoadLibrary/GetProcAddress (дефайн ..._DLL) — exe игру не знает.
+# Код плагина один и тот же — меняется только способ доставки.
 if(TARGET beng-editor AND TARGET gravelands-plugin)
-	target_link_libraries(beng-editor PRIVATE gravelands-plugin)
-	target_compile_definitions(beng-editor PRIVATE BENG_EDITOR_GRAVELANDS_STATIC)
+	if(gravelands_plugin_type STREQUAL "SHARED")
+		target_compile_definitions(beng-editor PRIVATE BENG_EDITOR_GRAVELANDS_DLL)
+	else()
+		target_link_libraries(beng-editor PRIVATE gravelands-plugin)
+		target_compile_definitions(beng-editor PRIVATE BENG_EDITOR_GRAVELANDS_STATIC)
+	endif()
 endif()
 
 # Тесты движка (BUILD_TESTS) — по образцу blib/test

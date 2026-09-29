@@ -11,7 +11,7 @@ blib::network::TcpListener::TcpListener()
 
 blib::network::TcpListener::TcpListener(AddressType type)
 {
-    this->socket.create(type, SocketType::Stram, SocketProtocol::TCP);
+    this->socket.create(type, SocketType::Stream, SocketProtocol::TCP);
     setBlocking(true);
 }
 
@@ -29,24 +29,33 @@ blib::network::SocketStatus blib::network::TcpListener::listen(int backlog)
 {
     int result = ::listen(*__blib_cast_socket_handler(this->socket.__getHandler()), backlog);
     if (result == NO_ERROR)
+    {
         return SocketStatus::OK;
+    }
 
-    auto a = WSAGetLastError();
+    this->socket.__setLastError(NetworkError::ListenFailed);
     return SocketStatus::Error;
 }
 
-blib::network::SocketStatus blib::network::TcpListener::accept(blib::network::TcpSocket&accepted)
+blib::network::SocketStatus blib::network::TcpListener::accept(blib::network::TcpSocket& accepted)
 {
     platform_socket_address_handler_t addr;
     int addrlen = sizeof(platform_socket_internet_address_handler_t);
     platform_socket_handler_t socket = ::accept(*__blib_cast_socket_handler(this->socket.__getHandler()),
-        &addr, 
+        &addr,
         &addrlen
     );
 
     if (socket == INVALID_SOCKET)
     {
-        //auto a = WSAGetLastError();
+        const int wsaError = WSAGetLastError();
+        if (wsaError == WSAEWOULDBLOCK)
+        {
+            // Неблокирующий режим: входящих подключений нет
+            this->socket.__setLastError(NetworkError::WouldBlock);
+            return SocketStatus::WouldBlock;
+        }
+        this->socket.__setLastError(NetworkError::Unknown);
         return SocketStatus::Error;
     }
 

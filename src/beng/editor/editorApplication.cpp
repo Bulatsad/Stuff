@@ -240,6 +240,10 @@ namespace beng
             // В этом кадре начался драг за стрелку — клик не пикает
             bool gizmoDragBeganThisFrame;
 
+            // Редакторский ввод включён (выключается на время PIE —
+            // см. setEditorInputEnabled)
+            bool editorInputEnabled;
+
             // Панели хоста: регистрируются через registerPanel
             // (указатели — каркас панелями не владеет, см. IPanel)
             struct RegisteredPanel
@@ -284,6 +288,7 @@ namespace beng
                 , gizmoDrag{ false, gizmoNoAxis, invalidEntity, TransformSnapshot() }
                 , gizmoHotAxis(gizmoNoAxis)
                 , gizmoDragBeganThisFrame(false)
+                , editorInputEnabled(true)
                 , panelListAllocator()
                 , panels(blib::memory::StdAllocatorAdapter<RegisteredPanel>(&this->panelListAllocator))
                 , windowTitle(title)
@@ -499,8 +504,10 @@ namespace beng
             }
 
             // Горячие клавиши эдитора — только при закрытой консоли
-            // (печать в консоли не должна «протекать» в правки)
-            if (!this->impl->showConsole)
+            // (печать в консоли не должна «протекать» в правки) и при
+            // включённом редакторском вводе (PIE выключает: W/E/R
+            // конфликтуют с вводом игры в клиентском окне)
+            if (!this->impl->showConsole && this->impl->editorInputEnabled)
             {
                 // W/E/R — режимы gizmo (как в Unity/Unreal)
                 if (blib::graphics::Keyboard::isKeyJustPressed(gizmoTranslateKey))
@@ -571,6 +578,13 @@ namespace beng
 
             // Симуляция + рендер сцены в FBO (RenderSystem внутри update)
             this->onSceneWillUpdate(deltaTime);
+
+            // Хост мог тикнуть ВЛОЖЕННОЕ окно с другим GL-контекстом
+            // (PIE: клиентское окно игры в onSceneWillUpdate) — вернуть
+            // контекст эдитора до отрисовки (multi-window контракт, см.
+            // GRAPHICS.md «Владение GL»)
+            this->impl->window.makeCurrent();
+
             this->impl->renderTarget.clear(blib::graphics::Color::Black);
             this->impl->scene.update(deltaTime);
 
@@ -809,6 +823,15 @@ namespace beng
                 return;
             }
             this->impl->gizmoMode = mode;
+        }
+
+        void EditorApplication::setEditorInputEnabled(bool enabled)
+        {
+            if (__blib_unlikely(this->impl == nullptr))
+            {
+                return;
+            }
+            this->impl->editorInputEnabled = enabled;
         }
 
         CommandHistory& EditorApplication::getCommandHistory()

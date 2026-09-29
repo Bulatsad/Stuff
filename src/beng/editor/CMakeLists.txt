@@ -17,13 +17,15 @@ GroupSoureces("${HeaderGroupPrefix}/editor/panels" "${panel_header_src}")
 GroupSoureces("${SourceGroupPrefix}/editor/panels" "${panel_impl_src}")
 GroupSoureces("${SourceGroupPrefix}/editor/main" "${CMAKE_CURRENT_SOURCE_DIR}/main/main.cpp")
 
-add_library(beng-editor-core STATIC
+beng_add_module(beng-editor-core
     ${CMAKE_CURRENT_SOURCE_DIR}/editorApplication.h
     ${CMAKE_CURRENT_SOURCE_DIR}/editorApplication.cpp
 
     ${panel_header_src}
     ${panel_impl_src}
 )
+
+beng_configure_module(beng-editor-core beng_export)
 
 set_target_properties(beng-editor-core PROPERTIES FOLDER "beng" LINKER_LANGUAGE CXX)
 
