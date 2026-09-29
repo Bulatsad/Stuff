@@ -1,6 +1,7 @@
 #pragma once
 
 #include <beng/config.h>
+#include <beng/editor/editorIcons.h>
 #include <beng/editor/panels/iPanel.h>
 
 #include <blib/utilmacro.h>
@@ -24,7 +25,9 @@ namespace beng
          *   «Эдитор»);
          * - Поля рисуются по FieldValue::Kind (числа, флаги, вектора);
          *   изменение применяется полем (IComponentField::setValue);
-         * - Компоненты без рефлексии показываются только по имени типа.
+         * - Компоненты без рефлексии показываются только по имени типа;
+         * - Иконки заголовков компонентов — по маппингу editorIcons.h
+         *   (неизвестные игровые типы — без иконки).
          *
          * Данные: не владеет ни сценой, ни выбором — указатели
          * выставляются вызывающим; nullptr = заглушка. Выбор читается
@@ -41,6 +44,8 @@ namespace beng
             // добавление компонентов пишутся в undo/redo (nullptr —
             // правки без истории)
             CommandHistory* commandHistory;
+            // Иконочный шрифт каркаса (nullptr — иконок нет)
+            ImFont* iconFont;
 
             // Отрисовка одного поля выбранного компонента (по kind);
             // изменение применяется полю и пишется в историю команд
@@ -69,6 +74,12 @@ namespace beng
              * nullptr — правки без истории.
              */
             void setCommandHistory(_In_opt CommandHistory* history);
+
+            /**
+             * Привязать иконочный шрифт каркаса (nullptr — иконки
+             * не рисуются).
+             */
+            void setIconFont(_In_opt ImFont* font);
 
             void draw() __blib_override;
             const char* getName() const __blib_override { return "Inspector"; }

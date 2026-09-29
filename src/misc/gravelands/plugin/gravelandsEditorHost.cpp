@@ -7,6 +7,7 @@
 #include <beng/client/components/meshRenderComponent.h>
 #include <beng/client/components/skinnedMeshComponent.h>
 #include <beng/core/scene.h>
+#include <beng/editor/editorIcons.h>
 
 #include <blib/core/console/console.h>
 #include <blib/graphics/keyboard.h>
@@ -37,14 +38,20 @@ namespace gravelands
         // каркасом — позицию/размер выставляет EditorApplication)
         constexpr const char* topBarTitle = "Gravelands";
 
-        // Флаги верхней полосы: без изменения размера
-        constexpr ImGuiWindowFlags topBarFlags = ImGuiWindowFlags_NoResize;
+        // Флаги верхней полосы: без шапки и скроллбара (полоса целиком —
+        // контент; шапка-заголовок и скроллбар съедали её высоту), без
+        // изменения размера
+        constexpr ImGuiWindowFlags topBarFlags =
+            ImGuiWindowFlags_NoTitleBar |
+            ImGuiWindowFlags_NoResize |
+            ImGuiWindowFlags_NoScrollbar;
 
-        // Кнопки PIE
+        // Кнопки PIE (иконки-квадраты: подписи — тултипы кнопок)
         constexpr const char* playButtonLabel = "Play";
         constexpr const char* stopButtonLabel = "Stop";
         constexpr const char* pieRunningLabel = "PIE: running";
         constexpr const char* pieStoppedLabel = "PIE: stopped";
+        constexpr float pieButtonIconSize = 16.0f;
 
         // Ray-picking (выбор кликом во вьюпорте): максимальная
         // дистанция луча (дальше — «мимо»), радиус сферы-фолбэка для
@@ -437,7 +444,9 @@ namespace gravelands
             {
                 ImGui::TextUnformatted(pieRunningLabel);
                 ImGui::SameLine();
-                if (ImGui::Button(stopButtonLabel))
+                if (beng::editor::iconButton(
+                    this->getIconFont(), beng::editor::icons::stop, false,
+                    pieButtonIconSize, stopButtonLabel))
                 {
                     // Stop синхронно допустим: контекст эдитора в этот
                     // момент текущий, клиентский — не текущий
@@ -449,7 +458,9 @@ namespace gravelands
             {
                 ImGui::TextUnformatted(pieStoppedLabel);
                 ImGui::SameLine();
-                if (ImGui::Button(playButtonLabel))
+                if (beng::editor::iconButton(
+                    this->getIconFont(), beng::editor::icons::play, false,
+                    pieButtonIconSize, playButtonLabel))
                 {
                     // Отложенный запуск: выполнится в начале следующего
                     // кадра (onSceneWillUpdate) — см. pieStartPending

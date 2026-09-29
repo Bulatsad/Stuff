@@ -593,8 +593,13 @@ namespace modelviewer
 
     void ViewerCore::drawModelBar()
     {
-        // Позицию/размер полосы уже выставил каркас перед onUi
-        if (ImGui::Begin(modelBarTitle, nullptr, ImGuiWindowFlags_NoResize))
+        // Позицию/размер полосы уже выставил каркас перед onUi.
+        // Без шапки и скроллбара — полоса целиком контент (шапка и
+        // скроллбар съедали высоту бара, см. BENG.md)
+        if (ImGui::Begin(modelBarTitle, nullptr,
+            ImGuiWindowFlags_NoTitleBar |
+            ImGuiWindowFlags_NoResize |
+            ImGuiWindowFlags_NoScrollbar))
         {
             ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - modelBarButtonsWidth);
             const bool enterPressed = ImGui::InputText(

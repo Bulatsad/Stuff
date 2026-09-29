@@ -20,6 +20,10 @@ namespace blib
     }
 }
 
+// Шрифты ImGui: геттеры возвращают указатели (полное определение —
+// у потребителей, включающих <imgui/imgui.h>)
+struct ImFont;
+
 namespace beng
 {
     class Scene;
@@ -63,8 +67,9 @@ namespace beng
          * - ECS-сцену с движковыми типами beng-client и системами
          *   (Transform → Animation → Render);
          * - ImGui: контекст, WndProc-хук, кадр, панели вьюпорта и
-         *   консоли, меню-бар (File/Edit/Help), Unity-подобная тема и
-         *   перезагружаемый UI-шрифт, горячие клавиши (тильда, Escape);
+         *   консоли, меню-бар (File/Edit/Help), Unity-подобная тема,
+         *   UI-шрифты (иконки MDPI + моно JetBrains Mono), горячие
+         *   клавиши (тильда, Escape);
          * - раскладку панелей по зонам (registerPanel).
          *
          * Игра/инструмент (хост) наследует EditorApplication и
@@ -92,6 +97,12 @@ namespace beng
         // Рисуется в конце UI-кадра (tick) — попап About ложится
         // поверх всех панелей и консоли
         void drawMainMenuBar();
+
+        // Перезагрузка UI-шрифтов ImGui: UI-шрифт + иконочный (отдельный
+        // ImFont, Material Design Icons) + моно (JetBrains Mono, консоль).
+        // ttfPath — пользовательский UI-шрифт; nullptr/"" — дефолтный
+        // (Segoe UI → встроенный). true — запрошенный TTF загружен
+        bool reloadEditorFonts(_In_opt const char* ttfPath);
 
         // Hit-тест манипулятора: курсор над осью/окружностью gizmo
         // выбранной сущности? outAxis: 0=X, 1=Y, 2=Z
@@ -323,6 +334,17 @@ namespace beng
              * Окно приложения (Win32-хуки, диалоги файлов и т.п.).
              */
             blib::graphics::RenderWindow& getWindow();
+
+            /**
+             * UI-шрифты ImGui, загруженные каркасом (см. editorIcons.h):
+             * иконочный (Material Design Icons — отдельный шрифт, глифы
+             * рисуются PushFont'ом с нужным размером) и моно (JetBrains
+             * Mono — консоль). nullptr — файл шрифта рядом с exe не
+             * найден: хелперы иконок молча ничего не рисуют, консоль
+             * использует дефолтный шрифт ImGui.
+             */
+            ImFont* getIconFont() const;
+            ImFont* getMonoFont() const;
         };
 
     } // namespace editor

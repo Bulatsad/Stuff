@@ -3,8 +3,11 @@
 #include <beng/config.h>
 #include <beng/editor/panels/iPanel.h>
 
+#include <blib/blibint.h>
 #include <blib/graphics/orbitCamera.h>
 #include <blib/graphics/rendertarget.h>
+
+#include <imgui/imgui.h>
 
 #include <functional>
 
@@ -12,6 +15,10 @@ namespace beng
 {
     namespace editor
     {
+        // Режим gizmo-манипулятора (значения — editorApplication.h):
+        // панель хранит указатель на поле каркаса для тулбара
+        enum class GizmoMode : buint8;
+
         /**
          * ViewportPanel — 3D-вьюпорт эдитора.
          *
@@ -24,6 +31,10 @@ namespace beng
          *     ЛКМ-драг  — вращение вокруг цели;
          *     СКМ-драг  — панорама;
          *     колёсико  — зум.
+         * - Рисует тулбар инструментов поверх изображения (иконки
+         *   W/E/R — переключение режима gizmo; активный режим подсвечен
+         *   акцентом). Клик/зум по тулбару не уходят камере и
+         *   picking'у (прямоугольник тулбара измеряется каждый кадр).
          *
          * Окно вьюпорта зафиксировано (NoMove/NoResize/NoCollapse):
          * перетаскивание заголовка не должно двигать панель — иначе
@@ -35,13 +46,28 @@ namespace beng
          * изображении (клик на заголовке/другом окне не считается):
          * флаг захвата ставится IsItemClicked, снимается IsMouseReleased.
          *
-         * Данные: не владеет ни таргетом, ни камерой.
+         * Данные: не владеет ни таргетом, ни камерой, ни режимом gizmo.
          */
         class __beng_api ViewportPanel : public beng::editor::IPanel
         {
         private:
             blib::graphics::IRenderTarget* renderTarget;
             blib::graphics::OrbitCamera* camera;
+
+            // Тулбар инструментов: иконочный шрифт (каркас; nullptr —
+            // тулбар не рисуется) и поле режима gizmo каркаса
+            // (nullptr — тулбар не рисуется). Прямоугольник тулбара в
+            // экранных координатах (измерен в прошлом кадре; invalid —
+            // тулбара не было)
+            ImFont* iconFont;
+            GizmoMode* gizmoModeRef;
+            ImVec2 toolbarMin;
+            ImVec2 toolbarMax;
+            bool toolbarRectValid;
+
+            // Курсор над тулбаром в текущем кадре: клик/зум не уходят
+            // камере и ray-picking'у
+            bool toolbarHovered;
 
             // Флаги захвата драга, начатого на изображении вьюпорта
             bool rotating;
@@ -82,6 +108,10 @@ namespace beng
             // Обработка мышиного ввода камеры
             void handleCameraInput();
 
+            // Тулбар инструментов поверх изображения (иконки W/E/R):
+            // позиция — верхний левый угол изображения
+            void drawToolbar(_In_ const ImVec2& imagePos);
+
         public:
             ViewportPanel();
 
@@ -91,6 +121,19 @@ namespace beng
              */
             void setRenderTarget(_In_opt blib::graphics::IRenderTarget* target);
             void setCamera(_In_opt blib::graphics::OrbitCamera* cam);
+
+            /**
+             * Привязать иконочный шрифт каркаса (нужен тулбару;
+             * nullptr — тулбар не рисуется).
+             */
+            void setIconFont(_In_opt ImFont* font);
+
+            /**
+             * Привязать поле режима gizmo каркаса: кнопки тулбара
+             * пишут режим прямо в него (как selection пишет иерархия).
+             * nullptr — тулбар не рисуется.
+             */
+            void setGizmoModeRef(_In_opt GizmoMode* mode);
 
             /**
              * Размер доступной области вьюпорта в последнем кадре

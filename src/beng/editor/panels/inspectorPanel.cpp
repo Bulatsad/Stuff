@@ -39,7 +39,13 @@ namespace beng
             : scene(nullptr)
             , selectionSource(nullptr)
             , commandHistory(nullptr)
+            , iconFont(nullptr)
         {
+        }
+
+        void InspectorPanel::setIconFont(_In_opt ImFont* font)
+        {
+            this->iconFont = font;
         }
 
         void InspectorPanel::setScene(_In_opt Scene* scene)
@@ -155,6 +161,12 @@ namespace beng
                 return;
             }
 
+            // Заголовок: иконка сущности + EntityID
+            if (this->iconFont != nullptr)
+            {
+                drawIcon(this->iconFont, icons::entity, 0.0f, icons::defaultText);
+                ImGui::SameLine();
+            }
             ImGui::Text("%s%llu", entityLabelPrefix, static_cast<unsigned long long>(selectedEntity));
             ImGui::Separator();
 
@@ -177,7 +189,15 @@ namespace beng
                 }
 
                 // Секция компонента: заголовок = стабильное имя типа;
-                // поля — только если у типа есть рефлексия
+                // поля — только если у типа есть рефлексия. Иконка — по
+                // маппингу editorIcons.h (игровые типы — без иконки)
+                const ComponentIcon headerIcon = iconForComponentType(typeName);
+                if (this->iconFont != nullptr && headerIcon.code != nullptr)
+                {
+                    drawIcon(this->iconFont, headerIcon.code, 0.0f, headerIcon.color);
+                    ImGui::SameLine();
+                }
+
                 const ComponentTypeDescriptor* descriptor = this->scene->tryGetComponentReflection(typeId);
                 if (descriptor == nullptr || descriptor->getFieldCount() == 0)
                 {

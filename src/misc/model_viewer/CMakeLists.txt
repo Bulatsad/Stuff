@@ -45,3 +45,6 @@ target_link_libraries(model_viewer-core PUBLIC
 add_executable(model_viewer main/main.cpp)
 target_link_libraries(model_viewer PRIVATE model_viewer-core)
 set_target_properties(model_viewer PROPERTIES FOLDER "misc/model_viewer")
+
+# UI-шрифты (иконки/моно) — рядом с exe (см. CopyUiFonts в корневом CMake)
+CopyUiFonts(model_viewer)

@@ -35,7 +35,58 @@ namespace beng
             , selectionRef(nullptr)
             , localSelection(invalidEntity)
             , commandHistory(nullptr)
+            , iconFont(nullptr)
         {
+        }
+
+        void SceneHierarchyPanel::setIconFont(_In_opt ImFont* font)
+        {
+            this->iconFont = font;
+        }
+
+        void SceneHierarchyPanel::selectEntity(EntityID entityId)
+        {
+            // Источник выбора эдитора: пишем в хранилище каркаса
+            // (или локально в автономном режиме)
+            if (this->selectionRef != nullptr)
+            {
+                *this->selectionRef = entityId;
+            }
+            else
+            {
+                this->localSelection = entityId;
+            }
+        }
+
+        ComponentIcon SceneHierarchyPanel::resolveEntityIcon(EntityID entityId) const
+        {
+            // Приоритетный компонент сущности: перебираем типы сцены,
+            // берём иконку с максимальным приоритетом (type-erased —
+            // конкретные типы панель не знает). Пусто/только Transform —
+            // куб-фолбэк обычной сущности
+            ComponentIcon best{ nullptr, icons::defaultText, 0 };
+            const buint32 typeCount = this->scene->getComponentTypeCount();
+            for (buint32 t = 0; t < typeCount; ++t)
+            {
+                const ComponentType typeId = static_cast<ComponentType>(t);
+                if (!this->scene->hasComponent(entityId, typeId))
+                {
+                    continue;
+                }
+
+                const ComponentIcon icon =
+                    iconForComponentType(this->scene->getComponentTypeName(typeId));
+                if (icon.priority > best.priority)
+                {
+                    best = icon;
+                }
+            }
+
+            if (best.code == nullptr)
+            {
+                best.code = icons::entity;
+            }
+            return best;
         }
 
         void SceneHierarchyPanel::setScene(_In_opt Scene* scene)
@@ -156,21 +207,27 @@ namespace beng
                     flags |= ImGuiTreeNodeFlags_Selected;
                 }
 
+                // Иконка сущности (по приоритетному компоненту) перед
+                // узлом дерева; клик по иконке тоже выбирает сущность.
+                // Без загруженного шрифта иконка не рисуется — и выбор
+                // остаётся только за узлом (SameLine не нужен)
+                const ComponentIcon entityIcon = this->resolveEntityIcon(id);
+                if (this->iconFont != nullptr)
+                {
+                    drawIcon(this->iconFont, entityIcon.code, 0.0f, entityIcon.color);
+                    if (ImGui::IsItemClicked())
+                    {
+                        this->selectEntity(id);
+                    }
+                    ImGui::SameLine();
+                }
+
                 const bool nodeOpen = ImGui::TreeNodeEx(
                     "##entity", flags, "%s%llu", entityLabelPrefix,
                     static_cast<unsigned long long>(id));
                 if (ImGui::IsItemClicked())
                 {
-                    // Источник выбора эдитора: пишем в хранилище
-                    // каркаса (или локально в автономном режиме)
-                    if (this->selectionRef != nullptr)
-                    {
-                        *this->selectionRef = id;
-                    }
-                    else
-                    {
-                        this->localSelection = id;
-                    }
+                    this->selectEntity(id);
                 }
 
                 if (nodeOpen)

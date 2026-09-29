@@ -27,7 +27,18 @@ namespace beng
         private:
             blib::graphics::console::ConsoleWindow consoleWindow;
 
+            // Моно-шрифт вывода/ввода (JetBrains Mono; грузит каркас —
+            // nullptr: дефолтный шрифт ImGui)
+            ImFont* monoFont;
+
         public:
+            ConsolePanel();
+
+            /**
+             * Привязать моно-шрифт консоли (каркас, nullptr допустим).
+             */
+            void setMonoFont(_In_opt ImFont* font);
+
             void draw() override;
 
             /**

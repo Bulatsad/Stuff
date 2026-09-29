@@ -11,6 +11,7 @@
 #include <beng/components/transform.h>
 #include <beng/core/scene.h>
 #include <beng/core/time.h>
+#include <beng/editor/editorIcons.h>
 #include <beng/editor/panels/consolePanel.h>
 #include <beng/editor/panels/inspectorPanel.h>
 #include <beng/editor/panels/sceneHierarchyPanel.h>
@@ -210,10 +211,12 @@ namespace beng
             constexpr ImVec4 themeTransparent(0.00f, 0.00f, 0.00f, 0.00f);
 
             // Акцент Unity-синего: выделение, чекбоксы, активные элементы
-            constexpr ImVec4 themeAccent(0.13f, 0.59f, 0.95f, 1.00f);
-            constexpr ImVec4 themeAccentDark(0.13f, 0.47f, 0.75f, 1.00f);
-            constexpr ImVec4 themeSelectionBg(0.13f, 0.47f, 0.75f, 0.55f);
-            constexpr ImVec4 themeSeparatorHovered(0.13f, 0.59f, 0.95f, 0.78f);
+            // (единый источник — editorIcons.h: тем же акцентом
+            // подсвечиваются активные иконки-кнопки)
+            constexpr ImVec4 themeAccent = icons::accent;
+            constexpr ImVec4 themeAccentDark = icons::accentActive;
+            constexpr ImVec4 themeSelectionBg(icons::accent.x, icons::accent.y, icons::accent.z, 0.55f);
+            constexpr ImVec4 themeSeparatorHovered(icons::accent.x, icons::accent.y, icons::accent.z, 0.78f);
 
             // ---------------------------------------------------------------
             // UI-шрифт: размер, системный дефолт, диалог выбора файла
@@ -227,6 +230,15 @@ namespace beng
             constexpr const char fontFileFilter[] =
                 "TrueType fonts (*.ttf)\0*.ttf\0All files (*.*)\0*.*\0";
             constexpr const char* loadFontDialogTitle = "Select UI Font";
+
+            // Вендорные шрифты рядом с exe (CopyUiFonts в корневом CMake):
+            // иконочный MDPI (merge в UI-шрифт) и моно консоли
+            constexpr const char* iconFontRelativePath = "fonts/materialdesignicons-webfont.ttf";
+            constexpr const char* monoFontRelativePath = "fonts/JetBrainsMono-Regular.ttf";
+            constexpr float monoFontSizePx = 14.0f;
+
+            // Буфер пути к модулю exe (GetModuleFileNameA)
+            constexpr buint32 maxModulePathLength = 1024;
 
             // ---------------------------------------------------------------
             // Меню-бар каркаса (File/Edit/Help) + диалог About
@@ -351,56 +363,34 @@ namespace beng
                 style.Colors[ImGuiCol_NavHighlight] = themeAccent;
             }
 
-            // Перезагрузка UI-шрифта ImGui: ttfPath — путь к TTF-файлу;
-            // nullptr/"" — дефолтный шрифт (системный Segoe UI, иначе
-            // встроенный ProggyClean). Атлас пересобирается целиком:
-            // бэкенд ImGui 1.92 с ImGuiBackendFlags_RendererHasTextures
-            // пересоздаёт GL-текстуру сам (на следующем NewFrame).
-            // true — запрошенный TTF загружен; false — подставлен дефолт
-            bool reloadEditorFont(_In_opt const char* ttfPath)
+            // Полный путь к вендорному UI-шрифту: каталог exe +
+            // relativePath (шрифты кладёт туда CopyUiFonts из корневого
+            // CMake). Пустая строка — путь не собран (шрифт не найден;
+            // загрузчик свалится в fallback)
+            void resolveEditorFontPath(
+                _In_ const char* relativePath, _Out char* outPath, buint32 outSize)
             {
-                ImGuiIO& io = ImGui::GetIO();
-                ImFontAtlas* atlas = io.Fonts;
+                outPath[0] = '\0';
 
-                const bool customRequested = (ttfPath != nullptr && ttfPath[0] != '\0');
-                bool loadedRequested = false;
-
-                atlas->Clear();
-
-                ImFont* font = nullptr;
-                if (customRequested)
+                const DWORD length = GetModuleFileNameA(nullptr, outPath, outSize);
+                if (__blib_unlikely(length == 0 || length >= outSize))
                 {
-                    font = atlas->AddFontFromFileTTF(
-                        ttfPath, editorFontSizePx, nullptr, atlas->GetGlyphRangesCyrillic());
-                    loadedRequested = (font != nullptr);
-                    if (font == nullptr)
+                    outPath[0] = '\0';
+                    return;
+                }
+
+                // Отрезаем имя exe, оставляя завершающий разделитель
+                for (DWORD i = length; i > 0; --i)
+                {
+                    if (outPath[i - 1] == '\\' || outPath[i - 1] == '/')
                     {
-                        __blib_log_warning("EditorApplication: cannot load UI font '%s'", ttfPath);
+                        outPath[i] = '\0';
+                        strncat_s(outPath, outSize, relativePath, _TRUNCATE);
+                        return;
                     }
                 }
 
-#ifdef _WIN32
-                if (font == nullptr)
-                {
-                    font = atlas->AddFontFromFileTTF(
-                        defaultEditorFontPath, editorFontSizePx, nullptr, atlas->GetGlyphRangesCyrillic());
-                    if (font == nullptr)
-                    {
-                        __blib_log_warning("EditorApplication: default UI font not found (%s)", defaultEditorFontPath);
-                    }
-                }
-#endif
-
-                if (font == nullptr)
-                {
-                    font = atlas->AddFontDefault();
-                }
-
-                io.FontDefault = font;
-                // Build() вызывать нельзя: ImGui 1.92 с бэкендом
-                // RendererHasTextures строит атлас сам (assert в
-                // imgui_draw.cpp), текстуру пересоздаёт на NewFrame
-                return loadedRequested;
+                outPath[0] = '\0';
             }
         }
 
@@ -501,6 +491,14 @@ namespace beng
             // Сессионная настройка: не персистится (io.IniFilename = nullptr)
             char uiFontPath[uiFontPathBufferSize];
 
+            // UI-шрифты ImGui, загруженные каркасом (reloadEditorFonts):
+            // uiFont — текстовый (владелец атласа), iconFont — тот же
+            // ImFont с merge-глифами иконок, monoFont — отдельный шрифт
+            // консоли. nullptr — соответствующий файл не найден
+            ImFont* uiFont;
+            ImFont* iconFont;
+            ImFont* monoFont;
+
             // Отложенный ресайз FBO под размер вьюпорт-панели (0 = нет):
             // размер измеряется в ImGui-кадре, а сцена рендерится раньше —
             // применяем в начале следующего кадра
@@ -534,6 +532,9 @@ namespace beng
                 , showConsole(false)
                 , showAboutPopup(false)
                 , uiFontPath{}
+                , uiFont(nullptr)
+                , iconFont(nullptr)
+                , monoFont(nullptr)
                 , pendingViewportWidth(0)
                 , pendingViewportHeight(0)
             {
@@ -644,6 +645,9 @@ namespace beng
             // Панели каркаса
             this->impl->viewportPanel.setRenderTarget(&this->impl->renderTarget);
             this->impl->viewportPanel.setCamera(&this->impl->camera);
+            // Тулбар вьюпорта пишет режим gizmo прямо в поле каркаса
+            // (как selection пишет иерархия)
+            this->impl->viewportPanel.setGizmoModeRef(&this->impl->gizmoMode);
 
             // Сценные панели единого эдитора (Hierarchy + Inspector):
             // каркас регистрирует их сам — они игра-агностичны (работают
@@ -683,9 +687,10 @@ namespace beng
             io.IniFilename = nullptr;
 
             // Тема эдитора (Unity-подобная палитра, скругления,
-            // плотность) + UI-шрифт (Segoe UI, встроенный — fallback)
+            // плотность) + UI-шрифты: Segoe UI (fallback — встроенный),
+            // иконки MDPI (merge), JetBrains Mono (консоль)
             applyEditorTheme();
-            reloadEditorFont(nullptr);
+            this->reloadEditorFonts(nullptr);
 
             HWND hwnd = __blib_render_window_context(this->impl->window.__getCtx())->hwnd;
             ImGui_ImplWin32_Init(hwnd);
@@ -996,7 +1001,7 @@ namespace beng
                         ofn.lpstrTitle = loadFontDialogTitle;
                         ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
 
-                        if (GetOpenFileNameA(&ofn) && reloadEditorFont(pathBuffer))
+                        if (GetOpenFileNameA(&ofn) && this->reloadEditorFonts(pathBuffer))
                         {
                             strncpy_s(this->impl->uiFontPath, pathBuffer, _TRUNCATE);
                             __blib_log_info("UI font loaded: %s", pathBuffer);
@@ -1005,7 +1010,7 @@ namespace beng
                     if (ImGui::MenuItem(menuEditResetFont))
                     {
                         this->impl->uiFontPath[0] = '\0';
-                        reloadEditorFont(nullptr);
+                        this->reloadEditorFonts(nullptr);
                         __blib_log_info("UI font reset to default");
                     }
                     ImGui::EndMenu();
@@ -1041,6 +1046,122 @@ namespace beng
                 }
                 ImGui::EndPopup();
             }
+        }
+
+        bool EditorApplication::reloadEditorFonts(_In_opt const char* ttfPath)
+        {
+            ImGuiIO& io = ImGui::GetIO();
+            ImFontAtlas* atlas = io.Fonts;
+
+            const bool customRequested = (ttfPath != nullptr && ttfPath[0] != '\0');
+            bool loadedRequested = false;
+
+            atlas->Clear();
+            this->impl->uiFont = nullptr;
+            this->impl->iconFont = nullptr;
+            this->impl->monoFont = nullptr;
+
+            // (1) UI-шрифт: запрошенный TTF → системный Segoe UI →
+            // встроенный ProggyClean
+            if (customRequested)
+            {
+                this->impl->uiFont = atlas->AddFontFromFileTTF(
+                    ttfPath, editorFontSizePx, nullptr, atlas->GetGlyphRangesCyrillic());
+                loadedRequested = (this->impl->uiFont != nullptr);
+                if (this->impl->uiFont == nullptr)
+                {
+                    __blib_log_warning("EditorApplication: cannot load UI font '%s'", ttfPath);
+                }
+            }
+
+#ifdef _WIN32
+            if (this->impl->uiFont == nullptr)
+            {
+                this->impl->uiFont = atlas->AddFontFromFileTTF(
+                    defaultEditorFontPath, editorFontSizePx, nullptr, atlas->GetGlyphRangesCyrillic());
+                if (this->impl->uiFont == nullptr)
+                {
+                    __blib_log_warning("EditorApplication: default UI font not found (%s)", defaultEditorFontPath);
+                }
+            }
+#endif
+
+            if (this->impl->uiFont == nullptr)
+            {
+                this->impl->uiFont = atlas->AddFontDefault();
+            }
+
+            // (2) Иконочный шрифт — ОТДЕЛЬНЫЙ ImFont (НЕ merge): у MDPI
+            // свои метрики baseline, merge в UI-шрифт смещает глифы к
+            // нижней кромке элементов (проверено). Рисуется PushFont'ом
+            // с нужным размером (drawIcon/iconButton, editorIcons.h);
+            // в атлас — только используемые коды (builder по константам).
+            // Коды MDPI лежат за BMP — см. IMGUI_USE_WCHAR32 в
+            // blib/graphics/CMakeLists.txt
+            {
+                char iconFontPath[maxModulePathLength];
+                resolveEditorFontPath(iconFontRelativePath, iconFontPath, maxModulePathLength);
+                if (iconFontPath[0] != '\0')
+                {
+                    ImFontGlyphRangesBuilder iconRangeBuilder;
+                    iconRangeBuilder.AddText(icons::play);
+                    iconRangeBuilder.AddText(icons::stop);
+                    iconRangeBuilder.AddText(icons::translate);
+                    iconRangeBuilder.AddText(icons::rotate);
+                    iconRangeBuilder.AddText(icons::scale);
+                    iconRangeBuilder.AddText(icons::entity);
+                    iconRangeBuilder.AddText(icons::skinnedMesh);
+                    iconRangeBuilder.AddText(icons::mesh);
+                    iconRangeBuilder.AddText(icons::directionalLight);
+                    iconRangeBuilder.AddText(icons::ambientLight);
+                    iconRangeBuilder.AddText(icons::blobShadow);
+                    iconRangeBuilder.AddText(icons::animator);
+                    iconRangeBuilder.AddText(icons::transform);
+                    iconRangeBuilder.AddText(icons::info);
+
+                    ImVector<ImWchar> iconRanges;
+                    iconRangeBuilder.BuildRanges(&iconRanges);
+
+                    this->impl->iconFont = atlas->AddFontFromFileTTF(
+                        iconFontPath, editorFontSizePx, nullptr, iconRanges.Data);
+                    if (this->impl->iconFont == nullptr)
+                    {
+                        __blib_log_warning(
+                            "EditorApplication: icon font not found (%s), icons disabled", iconFontPath);
+                    }
+                }
+            }
+
+            // (3) Моно-шрифт консоли — отдельный ImFont (PushFont)
+            {
+                char monoFontPath[maxModulePathLength];
+                resolveEditorFontPath(monoFontRelativePath, monoFontPath, maxModulePathLength);
+                if (monoFontPath[0] != '\0')
+                {
+                    this->impl->monoFont = atlas->AddFontFromFileTTF(
+                        monoFontPath, monoFontSizePx, nullptr, atlas->GetGlyphRangesCyrillic());
+                    if (this->impl->monoFont == nullptr)
+                    {
+                        __blib_log_warning(
+                            "EditorApplication: mono font not found (%s), console uses default", monoFontPath);
+                    }
+                }
+            }
+
+            // io.FontDefault — UI-шрифт (не иконочный/моно)
+            io.FontDefault = this->impl->uiFont;
+
+            // Раздать указатели панелям: консоль — моно, панели —
+            // иконочный (nullptr безопасен: хелперы молча не рисуют)
+            this->impl->consolePanel.setMonoFont(this->impl->monoFont);
+            this->impl->viewportPanel.setIconFont(this->impl->iconFont);
+            this->impl->sceneHierarchyPanel.setIconFont(this->impl->iconFont);
+            this->impl->inspectorPanel.setIconFont(this->impl->iconFont);
+
+            // Build() вызывать нельзя: ImGui 1.92 с бэкендом
+            // RendererHasTextures строит атлас сам (assert в
+            // imgui_draw.cpp), текстуру пересоздаёт на NewFrame
+            return loadedRequested;
         }
 
         bool EditorApplication::isRunning() const
@@ -1582,6 +1703,18 @@ namespace beng
         blib::graphics::RenderWindow& EditorApplication::getWindow()
         {
             return this->impl->window;
+        }
+
+        ImFont* EditorApplication::getIconFont() const
+        {
+            // Может зваться и до initialize (impl == nullptr) — тогда
+            // иконок нет
+            return (this->impl != nullptr) ? this->impl->iconFont : nullptr;
+        }
+
+        ImFont* EditorApplication::getMonoFont() const
+        {
+            return (this->impl != nullptr) ? this->impl->monoFont : nullptr;
         }
 
     } // namespace editor

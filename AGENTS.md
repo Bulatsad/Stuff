@@ -30,6 +30,7 @@
 - **Assimp** (prebuilt .lib) — `thirdparty/assimplib/`
 - **zlib** (bundled с Assimp)
 - **stb** (stb_image, stb_truetype и др.) — `thirdparty/stb/`
+- **UI-шрифты** — `thirdparty/fonts/`: Material Design Icons (`materialdesignicons-webfont.ttf`; иконки эдитора, Apache 2.0 — Templarian/MaterialDesign-Webfont) и JetBrains Mono (`JetBrainsMono-Regular.ttf`; консоль, OFL — JetBrains/JetBrainsMono); тексты лицензий рядом. Копируются к exe (CopyUiFonts); подключаются с `IMGUI_USE_WCHAR32` (см. BENG.md «КОСТЫЛЬ…»)
 
 ## 📖 Модульная документация
 

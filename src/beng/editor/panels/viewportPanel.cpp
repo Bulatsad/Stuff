@@ -1,5 +1,8 @@
 #include <beng/editor/panels/viewportPanel.h>
 
+#include <beng/editor/editorApplication.h>
+#include <beng/editor/editorIcons.h>
+
 #include <imgui/imgui.h>
 
 namespace beng
@@ -16,11 +19,26 @@ namespace beng
             constexpr float rotateSensitivityDegreesPerPixel = 0.3f;
             constexpr float panScalePerPixel = 0.0015f;
             constexpr float zoomScalePerWheelNotch = 0.1f;
+
+            // Тулбар инструментов (иконки W/E/R поверх изображения)
+            constexpr float toolbarIconSizePx = 18.0f;
+            constexpr float toolbarMargin = 10.0f;
+            constexpr float toolbarBackgroundAlpha = 0.55f;
+            constexpr float toolbarRounding = 6.0f;
+            constexpr const char* moveTooltip = "Move (W)";
+            constexpr const char* rotateTooltip = "Rotate (E)";
+            constexpr const char* scaleTooltip = "Scale (R)";
         }
 
         ViewportPanel::ViewportPanel()
             : renderTarget(nullptr)
             , camera(nullptr)
+            , iconFont(nullptr)
+            , gizmoModeRef(nullptr)
+            , toolbarMin(0.0f, 0.0f)
+            , toolbarMax(0.0f, 0.0f)
+            , toolbarRectValid(false)
+            , toolbarHovered(false)
             , rotating(false)
             , panning(false)
             , lastViewportWidth(0.0f)
@@ -33,6 +51,16 @@ namespace beng
             , cursorNdcY(0.0f)
             , cameraRotationEnabled(true)
         {
+        }
+
+        void ViewportPanel::setIconFont(_In_opt ImFont* font)
+        {
+            this->iconFont = font;
+        }
+
+        void ViewportPanel::setGizmoModeRef(_In_opt GizmoMode* mode)
+        {
+            this->gizmoModeRef = mode;
         }
 
         void ViewportPanel::setRenderTarget(_In_opt blib::graphics::IRenderTarget* target)
@@ -195,10 +223,16 @@ namespace beng
                 ImVec2(0.0f, 1.0f),
                 ImVec2(1.0f, 0.0f));
 
+            // Курсор над тулбаром (прямоугольник измерен в прошлом
+            // кадре): клик/зум по кнопкам не должны уходить камере
+            // и ray-picking'у
+            this->toolbarHovered = this->toolbarRectValid &&
+                ImGui::IsMouseHoveringRect(this->toolbarMin, this->toolbarMax);
+
             // Клик по изображению (не драг): фиксируем NDC курсора
             // внутри изображения для ray-picking каркаса (см.
             // takeViewportClick). Драг по-прежнему вращает камеру
-            if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !this->toolbarHovered)
             {
                 this->clickedThisFrame = true;
                 const ImVec2 mousePos = ImGui::GetMousePos();
@@ -227,14 +261,79 @@ namespace beng
                 this->panning = false;
             }
 
-            // Ввод камеры — только пока курсор над изображением
+            // Ввод камеры — только пока курсор над изображением и НЕ
+            // над тулбаром (клик по кнопкам инструментов не крутит
+            // камеру; драг, начатый на изображении, продолжается и над
+            // тулбаром — флаги захвата снимаются только отпусканием)
             this->cursorOverViewport = ImGui::IsItemHovered();
-            if (this->cursorOverViewport)
+            if (this->cursorOverViewport && !this->toolbarHovered)
             {
                 this->handleCameraInput();
             }
 
+            // Тулбар инструментов — поверх изображения (после ввода:
+            // кнопки не влияют на состояние камеры этого кадра)
+            this->drawToolbar(imagePos);
+
             ImGui::End();
+        }
+
+        void ViewportPanel::drawToolbar(_In_ const ImVec2& imagePos)
+        {
+            this->toolbarRectValid = false;
+
+            if (__blib_unlikely(this->iconFont == nullptr || this->gizmoModeRef == nullptr))
+            {
+                return;
+            }
+
+            const ImGuiStyle& style = ImGui::GetStyle();
+
+            // Габариты подложки: три квадратные кнопки с отступами
+            const buint32 buttonCount = 3;
+            const float buttonSide = toolbarIconSizePx + style.FramePadding.y * 2.0f;
+            const float barWidth =
+                static_cast<float>(buttonCount) * buttonSide +
+                (static_cast<float>(buttonCount) + 1.0f) * style.ItemSpacing.x;
+            const float barHeight = buttonSide + style.ItemSpacing.y * 2.0f;
+
+            const ImVec2 barMin(imagePos.x + toolbarMargin, imagePos.y + toolbarMargin);
+            const ImVec2 barMax(barMin.x + barWidth, barMin.y + barHeight);
+
+            // Полупрозрачная тёмная подложка — кнопки читаются на любом
+            // кадре сцены (как у референсных эдиторов)
+            ImU32 backgroundColor = ImGui::GetColorU32(ImGuiCol_WindowBg);
+            backgroundColor = (backgroundColor & 0x00FFFFFF) |
+                (static_cast<ImU32>(toolbarBackgroundAlpha * 255.0f) << 24);
+            ImGui::GetWindowDrawList()->AddRectFilled(
+                barMin, barMax, backgroundColor, toolbarRounding);
+
+            ImGui::SetCursorScreenPos(ImVec2(
+                barMin.x + style.ItemSpacing.x,
+                barMin.y + style.ItemSpacing.y));
+
+            if (iconButton(this->iconFont, icons::translate,
+                *this->gizmoModeRef == GizmoMode::Translate, toolbarIconSizePx, moveTooltip))
+            {
+                *this->gizmoModeRef = GizmoMode::Translate;
+            }
+            ImGui::SameLine();
+            if (iconButton(this->iconFont, icons::rotate,
+                *this->gizmoModeRef == GizmoMode::Rotate, toolbarIconSizePx, rotateTooltip))
+            {
+                *this->gizmoModeRef = GizmoMode::Rotate;
+            }
+            ImGui::SameLine();
+            if (iconButton(this->iconFont, icons::scale,
+                *this->gizmoModeRef == GizmoMode::Scale, toolbarIconSizePx, scaleTooltip))
+            {
+                *this->gizmoModeRef = GizmoMode::Scale;
+            }
+
+            // Прямоугольник для блокировок следующего кадра
+            this->toolbarMin = barMin;
+            this->toolbarMax = barMax;
+            this->toolbarRectValid = true;
         }
 
     } // namespace editor

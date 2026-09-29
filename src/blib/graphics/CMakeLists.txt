@@ -60,6 +60,14 @@ target_include_directories(blib-graphics PRIVATE ${stb_include})
 #dear imgui
 target_include_directories(blib-graphics PUBLIC ${imgui_dir})
 
+# dear imgui: 32-битный ImWchar — КОСТЫЛЬ (см. BENG.md «Шрифты и иконки»):
+# иконочный шрифт Material Design Icons использует коды за пределами BMP
+# (0xF0000+), 16-битный ImWchar их не адресует. Правка вендорного
+# imconfig.h запрещена правилами проекта — включаем макрос из CMake.
+# imgui.cpp компилируется только в blib-graphics; PUBLIC расходится всем
+# потребителям — ABI ImWchar обязан совпадать во всех TU процесса
+target_compile_definitions(blib-graphics PUBLIC IMGUI_USE_WCHAR32)
+
 if(COMPILE_ASSIMP_COMPATIBLE)
     target_compile_definitions(blib-graphics PUBLIC COMPILE_ASSIMP_COMPATIBLE)
 endif()

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <beng/config.h>
+#include <beng/editor/editorIcons.h>
 #include <beng/editor/panels/iPanel.h>
 
 #include <blib/utilmacro.h>
@@ -18,6 +19,8 @@ namespace beng
          * Назначение:
          * - Показывает список сущностей сцены (EntityID) с вложенным
          *   списком их компонентов (по стабильным именам типов);
+         * - Иконка сущности — по приоритетному компоненту (маппинг
+         *   editorIcons.h; неизвестные игровые типы — куб-фолбэк);
          * - Клик по сущности выбирает её — источник выбора эдитора
          *   (selection живёт в каркасе EditorApplication: панель пишет
          *   в его поле через setSelectionRef);
@@ -43,6 +46,15 @@ namespace beng
             // История команд (каркас): кнопки Create/Delete пишут
             // создание/удаление сущностей (nullptr — кнопки скрыты)
             CommandHistory* commandHistory;
+            // Иконочный шрифт каркаса (nullptr — иконок нет)
+            ImFont* iconFont;
+
+            // Иконка сущности по приоритетному компоненту (type-erased:
+            // перебор компонентов + маппинг имён editorIcons.h)
+            ComponentIcon resolveEntityIcon(EntityID entityId) const;
+
+            // Записать выбор (в хранилище каркаса или локально)
+            void selectEntity(EntityID entityId);
 
         public:
             SceneHierarchyPanel();
@@ -66,6 +78,12 @@ namespace beng
              * nullptr — кнопки скрыты.
              */
             void setCommandHistory(_In_opt CommandHistory* history);
+
+            /**
+             * Привязать иконочный шрифт каркаса (nullptr — иконки
+             * не рисуются).
+             */
+            void setIconFont(_In_opt ImFont* font);
 
             /**
              * Выбранная сущность (invalidEntity — ничего не выбрано).

@@ -30,6 +30,19 @@ set(imgui_dir ${thirdparty_dir}/imgui)
 set(stb_dir ${thirdparty_dir}/stb)
 set(stb_include ${stb_dir})
 
+# UI-шрифты (иконки MDPI + моно JetBrains Mono): вендорные TTF + тексты
+# лицензий. Копируются рядом с exe, которые их грузят (см. CopyUiFonts)
+set(fonts_dir ${thirdparty_dir}/fonts)
+
+# Копирование каталога UI-шрифтов к exe (движок ищет их относительно
+# исполняемого файла — см. editorApplication.cpp, resolveEditorFontPath)
+function(CopyUiFonts target_)
+	add_custom_command(TARGET ${target_} POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_directory
+			"${fonts_dir}" "$<TARGET_FILE_DIR:${target_}>/fonts"
+		COMMENT "Copying UI fonts next to ${target_}")
+endfunction()
+
 option(BUILD_TESTS "Build tests" OFF)
 
 if(BUILD_TESTS)
