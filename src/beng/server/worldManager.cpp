@@ -27,6 +27,14 @@ namespace beng
             // Сброс данных с сохранением реестра типов (Scene::reset),
             // затем хук игры строит контент
             this->scene->reset();
+
+            // Серверные (реплицируемые) сущности — с высокой базы ID:
+            // клиент воспроизводит их в зеркале через createEntityWithId
+            // (контракт id ≥ nextEntityId), а сцена клиента занята
+            // локальным контентом с низкими ID — пространства не
+            // пересекаются (см. serverEntityIdBase в scene.h)
+            this->scene->setNextEntityId(serverEntityIdBase);
+
             this->game->onWorldBuild(*this->scene);
         }
 

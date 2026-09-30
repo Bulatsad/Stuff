@@ -132,6 +132,14 @@ blib::network::SocketStatus blib::network::Socket::close()
     }
 
     int result = ::closesocket(*__blib_cast_socket_handler(this->ctx));
+
+    // Хендл инвалидируем ВСЕГДА, даже при ошибке closesocket: ОС
+    // переиспользует значения SOCKET — повторный close() на закрытом
+    // сокете закрыл бы ЧУЖОЙ сокет, которому достался тот же номер
+    // (классика: клиент закрыл «свой» хендл → слушатель сервера,
+    // созданный позже с тем же значением, падает с WSAENOTSOCK)
+    *__blib_cast_socket_handler(this->ctx) = INVALID_SOCKET;
+
     if (result == NO_ERROR)
     {
         return SocketStatus::OK;

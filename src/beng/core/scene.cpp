@@ -65,6 +65,17 @@ namespace beng
         return id;
     }
 
+    void Scene::setNextEntityId(EntityID nextId)
+    {
+        // Только вперёд: понизить границу нельзя (ниже неё ID уже
+        // выданы — коллизии). Повторный вызов с меньшим/равным
+        // значением — no-op (перезапуск сервера: база уже поднята)
+        if (nextId > nextEntityId)
+        {
+            nextEntityId = nextId;
+        }
+    }
+
     EntityID Scene::createEntityWithId(EntityID id)
     {
         // ID 0 зарезервирован под invalidEntity — сущность с ним

@@ -25,6 +25,16 @@
 
 namespace beng
 {
+    // База ID серверных (реплицируемых) сущностей: авторитетная сцена
+    // сервера начинает выдачу EntityID с этой границы (см.
+    // setNextEntityId/WorldManager::buildWorld) — низкий диапазон
+    // остаётся клиентским локальным презентационным контентом (тайлы,
+    // свет и т.п.), чьи ID зеркало репликации не трогает: клиент
+    // воспроизводит СЕРВЕРНЫЕ ID через createEntityWithId (контракт
+    // id ≥ nextEntityId — см. replicationClientState.h), поэтому два
+    // пространства обязаны не пересекаться
+    constexpr EntityID serverEntityIdBase = 1000000;
+
     /**
      * Scene - контейнер всех Entity, компонентов и систем.
      * 
@@ -163,6 +173,22 @@ namespace beng
          * @return Созданный id или invalidEntity при коллизии
          */
         EntityID createEntityWithId(EntityID id);
+
+        /**
+         * Поднять нижнюю границу выдачи EntityID (только ВПЕРЁД:
+         * значения меньше текущего nextEntityId игнорируются).
+         *
+         * Назначение — разделение ID-пространств в сетевой игре:
+         * серверные (реплицируемые) сущности живут с базы
+         * serverEntityIdBase — их ID клиент воспроизводит в зеркале
+         * через createEntityWithId (контракт: id ≥ nextEntityId), а
+         * сцена клиента уже занята локальным презентационным
+         * контентом с низкими ID. Сервер поднимает базу ДО создания
+         * своего контента (см. WorldManager::buildWorld).
+         *
+         * @param nextId Новая нижняя граница (меньше текущей — no-op)
+         */
+        void setNextEntityId(EntityID nextId);
 
         /**
          * Удалить Entity и все её компоненты.

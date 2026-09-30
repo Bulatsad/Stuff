@@ -1,37 +1,40 @@
 #pragma once
 
-#include <gravelands/common/config.h>
-#include <gravelands/common/protocol.h>
+#include <gravelands/client/core/gravelandsClientGame.h>
+#include <gravelands/server/core/gravelandsServerGame.h>
 
-#include <beng/config.h>
+#include <beng/client/clientApplication.h>
 
-#include <blib/core/math/vector.h>
-#include <blib/utilmacro.h>
+#include <blib/blibint.h>
 
 namespace gravelands
 {
     /**
-     * ClientCore — клиентское ядро Gravelands.
-     * 
-     * Назначение:
-     * - Владеет окном, рендер-таргетом, изокамерой и презентацией
-     *   (пост-пасс, ImGui-оверлей, консоль);
-     * - Мир (ECS-сцена: тайлы, сфера, деревья, танцор, свет) живёт в
-     *   общем `gravelands::World` (gravelands-world) — тот же мир
-     *   правит эдитор (см. ARCHITECTURE.md, «Эдитор»);
-     * - Один кадр = ввод + обновление камеры/света + симуляция мира
-     *   + отрисовка (переменный dt);
-     * 
+     * ClientCore — клиентское ядро Gravelands: тонкая обёртка над
+     * движковым beng::client::ClientApplication + игровой стороной
+     * GravelandsClientGame.
+     *
+     * Оболочка (окно, рендер-таргет, изокамера, пост-пасс, ImGui,
+     * сеть, интерполяция зеркал) — движок (см. CLIENT.md); игра даёт
+     * мир, ввод, оверлей, визуал зеркал, prediction.
+     *
+     * Local-server mode (одиночная игра, см. GRAVELANDS.md): при
+     * инициализации ядро пробует поднять in-process сервер
+     * (ClientApplication::startLocalServer + GravelandsServerGame);
+     * порт занят (внешний/PIE-сервер уже слушает) — сервер молча
+     * пропускается, клиент подключится к внешнему. Сетевой путь в
+     * обоих случаях — настоящий loopback TCP.
+     *
      * Паттерн «lib + тонкий exe»: ClientCore даёт frame-API
      * (initialize/tick/shutdown) и НЕ владеет главным циклом —
-     * цикл крутит тонкий exe (main.cpp). Этим же API эдитор сможет
-     * хостить игру in-process (Play mode).
+     * цикл крутит тонкий exe (main.cpp). Этим же API эдитор хостит
+     * игру in-process (Play mode).
      */
     class ClientCore
     {
     public:
-        ClientCore();
-        ~ClientCore();
+        ClientCore() = default;
+        ~ClientCore() = default;
 
         // Ядро некопируемо и неперемещаемо (владеет графическими ресурсами)
         ClientCore(const ClientCore&) = delete;
@@ -41,7 +44,8 @@ namespace gravelands
 
         /**
          * Инициализировать ядро: окно, рендер-таргет, камеру, мир
-         * (gravelands::World), сеть, ImGui. Вызывать один раз перед циклом.
+         * (gravelands::World), сеть, ImGui + попытку local-server.
+         * Вызывать один раз перед циклом.
          *
          * @param imguiEnabled Создавать ImGui-контекст/оверлей/консоль
          *        + собственное ОС-окно. false — режим PIE (headless):
@@ -79,90 +83,11 @@ namespace gravelands
         bool isRunning() const;
 
     private:
-        /**
-         * Обновление изометрической камеры: WASD двигает цель по земле,
-         * Add/Subtract — зум. В сетевом режиме (подключены к серверу)
-         * камера следует за зеркалом игрового юнита из снапшотов.
-         * Вызывается из tick() каждый кадр.
-         */
-        void updateCamera(float deltaTime);
-
-        /**
-         * Полупрозрачный оверлей в углу: подсказка по клавишам
-         * и текущие параметры света (ImGui, без ввода). Из tick().
-         */
-        void drawOverlay();
-
-        /**
-         * Опрос сети + применение снапшотов (интерполяция зеркал
-         * юнитов). Из tick().
-         */
-        void updateNetworkState();
-
-        /**
-         * Применение интерполяции к зеркалам юнитов (кольцевой буфер
-         * снапшотов, фиксированная задержка рендера в тиках сервера).
-         * Из updateNetworkState().
-         */
-        void applyNetworkInterpolation();
-
-        /**
-         * Найти (или создать) зеркало серверного юнита и применить
-         * позицию. Общий код обеих ветвей интерполяции.
-         */
-        void applyMirrorPosition(buint64 serverEntityId,
-            _In const blib::math::Vector<float, 3>& position);
-
-        /**
-         * Реконсиляция client-side prediction игрока: сверка
-         * предсказанной позиции с позицией игрока в новейшем снапшоте.
-         * Доверяем предсказанию (сервер воспроизводит те же команды
-         * с лагом); снап — только при расхождении больше
-         * predictionSnapDistance. Из updateNetworkState().
-         */
-        void reconcilePlayerPrediction(
-            _In const SnapshotEntry* entries, buint32 entryCount);
-
-        /**
-         * Интеграция локального ввода в предсказанную позицию игрока
-         * (формула 1:1 с MovementSystem сервера) и применение её к
-         * зеркалу игрока. Движение начинается мгновенно, независимо
-         * от сети и кадрового времени. Из tick().
-         */
-        void updatePlayerPrediction(float deltaTime);
-
-        /**
-         * Отправка команды игрока (WASD-вектор) при изменении.
-         * Из tick() (только при подключённом сервере).
-         */
-        void sendMovementCommand();
-
-        /**
-         * Поиск зеркала серверного юнита (invalidEntity — нет).
-         */
-        beng::EntityID findMirror(buint64 serverEntityId);
-
-        /**
-         * Синхронизация камеры с активной камерой сцены (beng.Camera):
-         * FOV/near/far — из компонента, ракурс/позиция — из трансформа
-         * сущности («старт игры с активной камеры»). Активной камеры
-         * нет — камера остаётся на дефолтах клиента, наружу выходят
-         * дефолтные near/far. Из initialize() (после контента мира).
-         */
-        void syncCameraFromScene(_Out float& outNearDistance, _Out float& outFarDistance);
-
-        /**
-         * Создание зеркала серверного юнита (сфера-плейсхолдер) в
-         * клиентской сцене. invalidEntity — лимит зеркал исчерпан.
-         */
-        beng::EntityID createMirror(buint64 serverEntityId);
-
-    private:
-        // Pimpl: скрывает графические объекты blib (окно/таргет/камера)
-        // от заголовка. Память выделяется через GlobalAllocator
-        // (проектное правило: никаких new/delete и smart pointers).
-        struct ClientCoreImpl;
-        ClientCoreImpl* impl;
+        // Игры раньше ядра в списке членов — разрушаются ПОСЛЕ него
+        // (ClientApplication держит указатели на IClientGame/IServerGame)
+        GravelandsClientGame game;
+        GravelandsServerGame localServerGame;
+        beng::client::ClientApplication application;
     };
 
 } // namespace gravelands

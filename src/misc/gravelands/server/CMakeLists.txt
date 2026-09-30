@@ -17,9 +17,10 @@ add_library(gravelands-server-core STATIC
 )
 set_target_properties(gravelands-server-core PROPERTIES FOLDER "gravelands/server" LINKER_LANGUAGE CXX)
 
-# gravelands-common даёт <gravelands/...> (протокол/UnitComponent);
-# beng-core — ECS; blib-network — сокеты (NetworkServer)
-target_link_libraries(gravelands-server-core PUBLIC gravelands-common beng-core blib-network)
+# gravelands-common даёт <gravelands/...> (протокол команд/UnitComponent);
+# beng-server — движковое серверное ядро (ServerApplication, сетевой
+# слой, репликация; blib-network тянется транзитивно)
+target_link_libraries(gravelands-server-core PUBLIC gravelands-common beng-core beng-server)
 
 # Тонкий exe: владеет главным циклом
 add_executable(gravelands-server main/main.cpp)

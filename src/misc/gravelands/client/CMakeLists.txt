@@ -19,10 +19,12 @@ add_library(gravelands-client-core STATIC
 set_target_properties(gravelands-client-core PROPERTIES FOLDER "gravelands/client" LINKER_LANGUAGE CXX)
 
 # gravelands-common даёт <gravelands/...> и blib-core;
-# gravelands-world — мир (сцена + контент); beng-core — Time;
-# beng-client — рендер-ECS (через мир); blib-graphics — окно/рендер/камера;
-# blib-network — сетевой клиент (снапшоты/команды)
-target_link_libraries(gravelands-client-core PUBLIC gravelands-common gravelands-world beng-core beng-client blib-graphics blib-network)
+# gravelands-world — мир (сцена + контент); beng-client — оболочка
+# клиента (ClientApplication; сеть тянется транзитивно через
+# beng-server); blib-graphics — сферы/материалы/клавиатура игры;
+# gravelands-server-core — игровая сторона сервера (GravelandsServerGame)
+# для local-server mode (клиент умеет хостить сервер in-process)
+target_link_libraries(gravelands-client-core PUBLIC gravelands-common gravelands-world beng-core beng-client blib-graphics gravelands-server-core)
 
 # Assimp + zlib (prebuilt .lib из thirdparty/assimplib) — нужны blib-graphics
 # (material.obj) при использовании Mesh/Material
