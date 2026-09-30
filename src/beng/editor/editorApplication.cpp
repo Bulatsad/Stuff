@@ -105,6 +105,14 @@ namespace beng
             constexpr const char* clearCommandName = "clear";
             constexpr const char* clearCommandHelp = "clears the console output";
 
+            // Центральная область: контейнер таб-бара (вкладка «Scene»
+            // с вьюпортом каркаса + вкладки хоста ICenterTabView).
+            // Id-строки с ## — служебные (без видимого текста)
+            constexpr const char* centerTabsWindowId = "##EditorCentral";
+            constexpr const char* centerTabBarId = "##EditorCentralTabs";
+            constexpr const char* sceneTabLabel = "Scene";
+            constexpr buint32 sceneCenterTabId = 0;
+
             // Gizmo-манипулятор: длина осей/радиус окружностей (мир. ед.)
             constexpr float gizmoAxisLength = 25.0f;
 
@@ -475,6 +483,25 @@ namespace beng
             blib::memory::Allocator panelListAllocator;
             std::vector<RegisteredPanel, blib::memory::StdAllocatorAdapter<RegisteredPanel>> panels;
 
+            // Вкладки ЦЕНТРАЛЬНОЙ области (таб-бар Scene | Game | ...):
+            // вкладка 0 — «Scene» (вьюпорт каркаса), зарегистрированные
+            // через registerCenterTab — id 1..N. Указатели — каркас
+            // вкладками не владеет (контракт ICenterTabView)
+            struct RegisteredCenterTab
+            {
+                ICenterTabView* tab;
+                buint32 id;
+            };
+            blib::memory::Allocator centerTabListAllocator;
+            std::vector<RegisteredCenterTab, blib::memory::StdAllocatorAdapter<RegisteredCenterTab>> centerTabs;
+
+            // Активная вкладка центральной области (0 — «Scene») и флаг
+            // программной смены: setActiveCenterTab помечает вкладку
+            // SetSelected в ближайшем кадре, клик пользователя
+            // отслеживается по факту (BeginTabItem)
+            buint32 activeCenterTab;
+            bool centerTabSwitchRequested;
+
             // Заголовок окна (НЕ владеет строкой: вызывающий обязан
             // держать её живой всё время жизни приложения — на
             // практике это constexpr-литерал)
@@ -528,6 +555,10 @@ namespace beng
                 , editorInputEnabled(true)
                 , panelListAllocator()
                 , panels(blib::memory::StdAllocatorAdapter<RegisteredPanel>(&this->panelListAllocator))
+                , centerTabListAllocator()
+                , centerTabs(blib::memory::StdAllocatorAdapter<RegisteredCenterTab>(&this->centerTabListAllocator))
+                , activeCenterTab(sceneCenterTabId)
+                , centerTabSwitchRequested(false)
                 , windowTitle(title)
                 , showConsole(false)
                 , showAboutPopup(false)
@@ -829,10 +860,10 @@ namespace beng
             // Симуляция + рендер сцены в FBO (RenderSystem внутри update)
             this->onSceneWillUpdate(deltaTime);
 
-            // Хост мог тикнуть ВЛОЖЕННОЕ окно с другим GL-контекстом
-            // (PIE: клиентское окно игры в onSceneWillUpdate) — вернуть
-            // контекст эдитора до отрисовки (multi-window контракт, см.
-            // GRAPHICS.md «Владение GL»)
+            // Хост мог отрисовать что-то в собственном окне/контексте
+            // в onSceneWillUpdate (multi-window контракт — вернуть
+            // контекст эдитора; PIE-клиент headless — тот же контекст,
+            // вызов вырождается в no-op; см. GRAPHICS.md «Владение GL»)
             this->impl->window.makeCurrent();
 
             this->impl->renderTarget.clear(blib::graphics::Color::Black);
@@ -898,14 +929,27 @@ namespace beng
                 this->onUi();
                 ImGui::PopStyleVar();
 
-                // Центр: вьюпорт
+                // Центр: контейнер вкладок области (вкладка «Scene» с
+                // вьюпортом каркаса + вкладки хоста — Game и т.п.).
+                // Видимость вьюпорта ставится внутри (beginFrame/
+                // drawContents) — гейт gizmo/picking'а ниже
                 ImGui::SetNextWindowPos(ImVec2(leftPanelWidth, topStripOffset), ImGuiCond_FirstUseEver);
                 ImGui::SetNextWindowSize(ImVec2(windowW - leftPanelWidth - rightPanelWidth, windowH - topStripOffset), ImGuiCond_FirstUseEver);
-                this->impl->viewportPanel.draw();
+                this->drawCenterTabs();
 
                 // Gizmo-манипулятор: драг за стрелку/окружность (режим
-                // W/E/R) — после панели, пока io.MouseDelta свежий
-                this->updateGizmoManipulator();
+                // W/E/R) — после вкладки «Scene», пока io.MouseDelta
+                // свежий. На вкладке «Game» вьюпорт не видим: gizmo не
+                // работает, подсветка осей не живёт по устаревшему курсору
+                if (this->impl->viewportPanel.isContentsDrawn())
+                {
+                    this->updateGizmoManipulator();
+                }
+                else
+                {
+                    this->impl->gizmoHotAxis = gizmoNoAxis;
+                    this->impl->gizmoDragBeganThisFrame = false;
+                }
 
                 // Клик ЛКМ по вьюпорту (не драг и не по стрелке gizmo) —
                 // ray-picking: каркас строит луч из камеры через точку
@@ -1048,6 +1092,62 @@ namespace beng
             }
         }
 
+        void EditorApplication::drawCenterTabs()
+        {
+            // Контейнер центральной области: шапку заменяет таб-бар
+            // (NoTitleBar), позиция/размер — раскладка каркаса
+            ImGui::Begin(centerTabsWindowId, nullptr,
+                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar |
+                ImGuiWindowFlags_NoScrollbar |
+                ImGuiWindowFlags_NoScrollWithMouse);
+
+            // Сброс видимости вьюпорта: drawContents() поставит флаг,
+            // если вкладка «Scene» активна в этом кадре
+            this->impl->viewportPanel.beginFrame();
+
+            if (ImGui::BeginTabBar(centerTabBarId))
+            {
+                // Программная смена активной вкладки (setActiveCenterTab):
+                // помечаем выбранную вкладку SetSelected ДО применения
+                // клика пользователя; идемпотентно, если уже активна
+                const bool switchRequested = this->impl->centerTabSwitchRequested;
+                const buint32 requestedTab = this->impl->activeCenterTab;
+
+                const ImGuiTabItemFlags sceneTabFlags =
+                    (switchRequested && requestedTab == sceneCenterTabId)
+                        ? ImGuiTabItemFlags_SetSelected : 0;
+                if (ImGui::BeginTabItem(sceneTabLabel, nullptr, sceneTabFlags))
+                {
+                    this->impl->activeCenterTab = sceneCenterTabId;
+                    this->impl->viewportPanel.drawContents();
+                    ImGui::EndTabItem();
+                }
+
+                for (const EditorApplicationImpl::RegisteredCenterTab& registered : this->impl->centerTabs)
+                {
+                    const ImGuiTabItemFlags tabFlags =
+                        (switchRequested && requestedTab == registered.id)
+                            ? ImGuiTabItemFlags_SetSelected : 0;
+                    if (ImGui::BeginTabItem(registered.tab->getTabName(), nullptr, tabFlags))
+                    {
+                        // Клик пользователя тоже приходит сюда: BeginTabItem
+                        // возвращает true для активной вкладки
+                        this->impl->activeCenterTab = registered.id;
+                        registered.tab->drawContents();
+                        ImGui::EndTabItem();
+                    }
+                }
+
+                // Запрос программной смены израсходован (или уже не
+                // нужен — вкладка стала активной кликом)
+                this->impl->centerTabSwitchRequested = false;
+                ImGui::EndTabBar();
+            }
+
+            ImGui::End();
+        }
+
         bool EditorApplication::reloadEditorFonts(_In_opt const char* ttfPath)
         {
             ImGuiIO& io = ImGui::GetIO();
@@ -1106,6 +1206,7 @@ namespace beng
                     ImFontGlyphRangesBuilder iconRangeBuilder;
                     iconRangeBuilder.AddText(icons::play);
                     iconRangeBuilder.AddText(icons::stop);
+                    iconRangeBuilder.AddText(icons::pause);
                     iconRangeBuilder.AddText(icons::translate);
                     iconRangeBuilder.AddText(icons::rotate);
                     iconRangeBuilder.AddText(icons::scale);
@@ -1208,6 +1309,36 @@ namespace beng
             }
 
             this->impl->panels.push_back(EditorApplicationImpl::RegisteredPanel{ panel, zone });
+        }
+
+        buint32 EditorApplication::registerCenterTab(_In ICenterTabView* tab)
+        {
+            if (__blib_unlikely(this->impl == nullptr || tab == nullptr))
+            {
+                __blib_log_warning("EditorApplication: registerCenterTab() outside of initialize() or null tab");
+                return buint32Max;
+            }
+
+            // id 0 зарезервирован за вкладкой «Scene» каркаса
+            const buint32 id = static_cast<buint32>(this->impl->centerTabs.size()) + 1;
+            this->impl->centerTabs.push_back(EditorApplicationImpl::RegisteredCenterTab{ tab, id });
+            return id;
+        }
+
+        void EditorApplication::setActiveCenterTab(buint32 tabId)
+        {
+            if (__blib_unlikely(this->impl == nullptr))
+            {
+                return;
+            }
+
+            this->impl->activeCenterTab = tabId;
+            this->impl->centerTabSwitchRequested = true;
+        }
+
+        buint32 EditorApplication::getActiveCenterTab() const
+        {
+            return (this->impl != nullptr) ? this->impl->activeCenterTab : sceneCenterTabId;
         }
 
         bool EditorApplication::setScenePanelsEnabled(bool enabled)

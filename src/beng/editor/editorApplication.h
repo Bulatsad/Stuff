@@ -66,10 +66,11 @@ namespace beng
          * - орбитальную камеру вьюпорта;
          * - ECS-сцену с движковыми типами beng-client и системами
          *   (Transform → Animation → Render);
-         * - ImGui: контекст, WndProc-хук, кадр, панели вьюпорта и
-         *   консоли, меню-бар (File/Edit/Help), Unity-подобная тема,
-         *   UI-шрифты (иконки MDPI + моно JetBrains Mono), горячие
-         *   клавиши (тильда, Escape);
+         * - ImGui: контекст, WndProc-хук, кадр, панели консоли,
+         *   центральные вкладки (Scene с вьюпортом + вкладки хоста
+         *   ICenterTabView), меню-бар (File/Edit/Help), Unity-подобная
+         *   тема, UI-шрифты (иконки MDPI + моно JetBrains Mono),
+         *   горячие клавиши (тильда, Escape);
          * - раскладку панелей по зонам (registerPanel).
          *
          * Игра/инструмент (хост) наследует EditorApplication и
@@ -97,6 +98,12 @@ namespace beng
         // Рисуется в конце UI-кадра (tick) — попап About ложится
         // поверх всех панелей и консоли
         void drawMainMenuBar();
+
+        // Центральная область: контейнер с таб-баром — вкладка «Scene»
+        // (вьюпорт каркаса) + вкладки хоста (ICenterTabView). Ставит
+        // флаг видимости вьюпорта (beginFrame/isContentsDrawn) — гейт
+        // gizmo-манипулятора и ray-picking'а
+        void drawCenterTabs();
 
         // Перезагрузка UI-шрифтов ImGui: UI-шрифт + иконочный (отдельный
         // ImFont, Material Design Icons) + моно (JetBrains Mono, консоль).
@@ -252,6 +259,34 @@ namespace beng
          * данными, каркас не владеет панелями).
          */
         void registerPanel(_In IPanel* panel, _In PanelZone zone);
+
+        /**
+         * Зарегистрировать вкладку ЦЕНТРАЛЬНОЙ области эдитора
+         * (таб-бар в центре, первая вкладка — «Scene» с вьюпортом):
+         * Game у Gravelands и т.п. Контейнер с таб-баром и раскладкой
+         * владеет каркас; вкладка рисует только контент
+         * (контракт ICenterTabView). Вызывать из onInitialize (до
+         * первого кадра). Вкладка обязана жить, пока зарегистрирована:
+         * каркас хранит только указатель.
+         *
+         * @return id вкладки (>= 1) для setActiveCenterTab;
+         *         невалидный id (buint32Max) при ошибке
+         */
+        buint32 registerCenterTab(_In ICenterTabView* tab);
+
+        /**
+         * Сделать активной вкладку центральной области по id
+         * (0 — «Scene» вьюпорта каркаса). Смена применится в
+         * ближайшем кадре (таб помечается SetSelected).
+         */
+        void setActiveCenterTab(buint32 tabId);
+
+        /**
+         * Id активной вкладки центральной области (0 — «Scene»).
+         * Обновляется по факту выбора (клик пользователя или
+         * программная смена в кадре).
+         */
+        buint32 getActiveCenterTab() const;
 
         /**
          * Включить/выключить СЦЕННЫЕ панели каркаса (Scene Hierarchy

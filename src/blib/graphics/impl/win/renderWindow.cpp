@@ -138,8 +138,20 @@ blib::graphics::RenderWindow::RenderWindow(uint16_t _width, uint16_t _height, co
     //this->rc.api.ogl.__blib_glLoadIdentity();   
 }
 
+blib::graphics::RenderWindow::RenderWindow()
+    : ctx(nullptr)
+{
+    // Headless: без ОС-окна и GL-контекста (PIE-клиент рендерит
+    // в FBO контекста эдитора — см. GRAPHICS.md, «Владение GL»)
+}
+
 blib::graphics::RenderWindow::~RenderWindow()
 {
+    if (__blib_unlikely(this->ctx == nullptr))
+    {
+        return;
+    }
+
     wglDeleteContext(__blib_render_window_this_context(this)->context);
     CloseWindow(__blib_render_window_this_context(this)->hwnd);
 }
@@ -151,6 +163,11 @@ void blib::graphics::RenderWindow::enableIsometricTileGreed()
 
 void blib::graphics::RenderWindow::makeCurrent()
 {
+    if (__blib_unlikely(this->ctx == nullptr))
+    {
+        return; // headless: контекста нет — текущим его не сделать
+    }
+
     // Кэш текущего контекста: wglMakeCurrent — дорогой драйверный
     // вызов (миллисекунды), wglGetCurrentContext — дёшев. Переключаем
     // контекст только при реальной смене окна (multi-window: PIE)
@@ -163,6 +180,11 @@ void blib::graphics::RenderWindow::makeCurrent()
 
 void blib::graphics::RenderWindow::update()
 {
+    if (__blib_unlikely(this->ctx == nullptr))
+    {
+        return; // headless: своих оконных сообщений нет
+    }
+
     // Это окно владеет кадром: его контекст становится текущим
     // (в multi-window режиме — см. makeCurrent; в однооконном — no-op)
     this->makeCurrent();
@@ -185,6 +207,11 @@ void blib::graphics::RenderWindow::update()
 
 bool blib::graphics::RenderWindow::isOpen()
 {
+    if (__blib_unlikely(this->ctx == nullptr))
+    {
+        return false; // headless: окна нет — «открытым» не бывает
+    }
+
     return __blib_render_window_this_context(this)->open;
 }
 
@@ -197,6 +224,11 @@ void blib::graphics::RenderWindow::display(IRenderTarget& rt, bint16 xStart, bin
 
 void blib::graphics::RenderWindow::blitToBackbuffer(IRenderTarget& rt, bint16 xStart, bint16 yStart)
 {
+    if (__blib_unlikely(this->ctx == nullptr))
+    {
+        return; // headless: back-буфера нет (презентация — Game-панель)
+    }
+
     //this->rc.api.ogl.__blib_glPopMatrix();
 
     auto& rtCtx = rt.getContext();
@@ -218,6 +250,11 @@ void blib::graphics::RenderWindow::blitToBackbuffer(IRenderTarget& rt, bint16 xS
 
 void blib::graphics::RenderWindow::close()
 {
+    if (__blib_unlikely(this->ctx == nullptr))
+    {
+        return; // headless: закрывать нечего
+    }
+
     //TODO
 
 
@@ -227,6 +264,11 @@ void blib::graphics::RenderWindow::close()
 
 void blib::graphics::RenderWindow::swapBuffers()
 {
+    if (__blib_unlikely(this->ctx == nullptr))
+    {
+        return; // headless: back-буфера нет — обменивать нечего
+    }
+
     // Обмен буферов без блита FBO: вызывающий сам отрисовал всё
     // в back-буфер (например, сцену через display() раньше, а UI —
     // поверх неё ImGui-бэкендом). Контекст этого окна — текущий

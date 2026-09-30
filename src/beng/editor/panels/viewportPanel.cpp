@@ -11,7 +11,7 @@ namespace beng
     {
         namespace
         {
-            constexpr const char* panelTitle = "Viewport";
+            constexpr const char* panelTitle = "Scene";
             constexpr const char* noTargetMessage = "No render target";
 
             // Чувствительности мышиного ввода (настраиваемые константы,
@@ -33,6 +33,7 @@ namespace beng
         ViewportPanel::ViewportPanel()
             : renderTarget(nullptr)
             , camera(nullptr)
+            , contentsDrawn(false)
             , iconFont(nullptr)
             , gizmoModeRef(nullptr)
             , toolbarMin(0.0f, 0.0f)
@@ -160,6 +161,13 @@ namespace beng
             this->camera->update();
         }
 
+        void ViewportPanel::beginFrame()
+        {
+            // Видимость контента определяется этим кадром: каркас
+            // зовёт beginFrame() перед центральными вкладками
+            this->contentsDrawn = false;
+        }
+
         void ViewportPanel::draw()
         {
             // Окно вьюпорта зафиксировано: позицию/размер задаёт
@@ -168,10 +176,20 @@ namespace beng
             ImGui::Begin(panelTitle, nullptr,
                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
 
+            this->drawContents();
+
+            ImGui::End();
+        }
+
+        void ViewportPanel::drawContents()
+        {
+            // Вкладка «Scene» активна в этом кадре: gizmo/picking каркаса
+            // работают только по видимому вьюпорту (см. isContentsDrawn)
+            this->contentsDrawn = true;
+
             if (__blib_unlikely(!this->renderTarget))
             {
                 ImGui::TextDisabled(noTargetMessage);
-                ImGui::End();
                 return;
             }
 
@@ -274,8 +292,6 @@ namespace beng
             // Тулбар инструментов — поверх изображения (после ввода:
             // кнопки не влияют на состояние камеры этого кадра)
             this->drawToolbar(imagePos);
-
-            ImGui::End();
         }
 
         void ViewportPanel::drawToolbar(_In_ const ImVec2& imagePos)

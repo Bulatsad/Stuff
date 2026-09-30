@@ -1,5 +1,6 @@
 #include <gravelands/plugin/gravelandsEditorHost.h>
 #include <gravelands/common/config.h>
+#include <gravelands/plugin/gamePanel.h>
 #include <gravelands/plugin/pieSession.h>
 #include <gravelands/world/world.h>
 
@@ -49,9 +50,19 @@ namespace gravelands
         // Кнопки PIE (иконки-квадраты: подписи — тултипы кнопок)
         constexpr const char* playButtonLabel = "Play";
         constexpr const char* stopButtonLabel = "Stop";
+        constexpr const char* pauseButtonLabel = "Pause";
+        constexpr const char* resumeButtonLabel = "Resume";
         constexpr const char* pieRunningLabel = "PIE: running";
+        constexpr const char* piePausedLabel = "PIE: paused";
         constexpr const char* pieStoppedLabel = "PIE: stopped";
         constexpr float pieButtonIconSize = 16.0f;
+
+        // Id вкладки «Scene» центральной области (вкладка каркаса;
+        // вкладки хоста — id от registerCenterTab, 1..)
+        constexpr buint32 sceneCenterTabId = 0;
+
+        // «Вкладка не зарегистрирована» (registerCenterTab не звали)
+        constexpr buint32 invalidCenterTabId = buint32Max;
 
         // Ray-picking (выбор кликом во вьюпорте): максимальная
         // дистанция луча (дальше — «мимо»), радиус сферы-фолбэка для
@@ -223,8 +234,15 @@ namespace gravelands
         gravelands::World world;
 
         // Play In Editor: in-process хостинг сервера + клиента
-        // (loopback TCP), клиент — отдельное окно
+        // (loopback TCP); клиент — headless (без окна), кадр игры
+        // показывается вкладкой «Game» центральной области
         gravelands::PieSession pieSession;
+
+        // Вкладка «Game» (ICenterTabView) — кадр PIE-клиента в таб-баре
+        // центральной области (Scene | Game, как в Unity). Id вкладки —
+        // из registerCenterTab (onInitialize)
+        gravelands::GamePanel gamePanel;
+        buint32 gameTabId;
 
         // Play отложен до начала следующего кадра: клиентское окно
         // (второй GL-контекст) нельзя создавать в середине ImGui-кадра —
@@ -240,6 +258,8 @@ namespace gravelands
         GravelandsEditorHostImpl()
             : world()
             , pieSession()
+            , gamePanel(&this->pieSession)
+            , gameTabId(invalidCenterTabId)
             , pieStartPending(false)
             , pieLogAccumulator(0.0f)
             , pieLogFrameCount(0)
@@ -273,6 +293,10 @@ namespace gravelands
         this->impl->world.setupWorld();
         this->impl->world.loadDancerModel();
 
+        // Вкладка «Game» центральной области (кадр PIE-клиента):
+        // id нужен Play/Stop для автопереключения вкладок Game/Scene
+        this->impl->gameTabId = this->registerCenterTab(&this->impl->gamePanel);
+
         // Сценные панели (Scene Hierarchy + Inspector через рефлексию)
         // регистрирует САМ каркас — хост их не создаёт (см.
         // EditorApplication::initialize). Selection — в каркасе:
@@ -302,9 +326,9 @@ namespace gravelands
             this->startPie();
         }
 
-        // PIE: кадр игровой сессии (сервер + клиент) внутри кадра эдитора.
-        // Клиент делает свой контекст текущим в window.update();
-        // каркас вернёт контекст эдитора сразу после этого хука
+        // PIE: кадр игровой сессии (сервер + клиент) внутри кадра
+        // эдитора. Клиент headless: рендерит в свой FBO в том же
+        // GL-контексте — кадр сразу готов для Game-вкладки
         if (this->impl->pieSession.isRunning())
         {
             // Замер кадрового времени PIE: сеть кадрово-зависима
@@ -442,14 +466,32 @@ namespace gravelands
             ImGui::SameLine();
             if (this->impl->pieSession.isRunning() || this->impl->pieStartPending)
             {
-                ImGui::TextUnformatted(pieRunningLabel);
+                // Статус: на паузе — «paused» (мир замер, кадр в Game)
+                const bool paused = this->impl->pieSession.isPaused();
+                ImGui::TextUnformatted(paused ? piePausedLabel : pieRunningLabel);
                 ImGui::SameLine();
+
+                // Пауза — только у запущенной сессии (при отложенном
+                // старте клиента ещё нет); кнопка подсвечена, пока
+                // сессия на паузе (как в Unity)
+                if (this->impl->pieSession.isRunning())
+                {
+                    if (beng::editor::iconButton(
+                        this->getIconFont(), beng::editor::icons::pause, paused,
+                        pieButtonIconSize,
+                        paused ? resumeButtonLabel : pauseButtonLabel))
+                    {
+                        this->impl->pieSession.setPaused(!paused);
+                    }
+                    ImGui::SameLine();
+                }
+
                 if (beng::editor::iconButton(
                     this->getIconFont(), beng::editor::icons::stop, false,
                     pieButtonIconSize, stopButtonLabel))
                 {
                     // Stop синхронно допустим: контекст эдитора в этот
-                    // момент текущий, клиентский — не текущий
+                    // момент текущий, клиентских ресурсов не под рукой
                     this->impl->pieStartPending = false;
                     this->stopPie();
                 }
@@ -471,6 +513,21 @@ namespace gravelands
         ImGui::End();
     }
 
+    bool GravelandsEditorHost::onEscapePressed()
+    {
+        // PIE идёт — Escape останавливает его (как в Unity); кадр
+        // остаётся в Game-панели, вкладка возвращается на Scene.
+        // Сессия не запущена — нажатие не наше: каркас закроет
+        // приложение
+        if (this->impl->pieSession.isRunning())
+        {
+            this->stopPie();
+            return true;
+        }
+
+        return false;
+    }
+
     void GravelandsEditorHost::startPie()
     {
         if (this->impl->pieSession.isRunning())
@@ -487,6 +544,12 @@ namespace gravelands
         // Ввод игры и горячие клавиши эдитора конфликтуют на общей
         // клавиатуре (W/E/R и т.д.) — редакторский ввод выключается
         this->setEditorInputEnabled(false);
+
+        // Автопереключение на вкладку Game (как Unity при Play)
+        if (this->impl->gameTabId != invalidCenterTabId)
+        {
+            this->setActiveCenterTab(this->impl->gameTabId);
+        }
     }
 
     void GravelandsEditorHost::stopPie()
@@ -498,6 +561,9 @@ namespace gravelands
 
         this->impl->pieSession.stop();
         this->setEditorInputEnabled(true);
+
+        // Возврат на вкладку Scene (как Unity после Stop)
+        this->setActiveCenterTab(sceneCenterTabId);
     }
 
     GravelandsEditorHost::GravelandsEditorHost()

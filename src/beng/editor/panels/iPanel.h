@@ -39,5 +39,37 @@ namespace beng
             virtual const char* getName() const __blib_pure_virtual_function;
         };
 
+        /**
+         * ICenterTabView — вкладка центральной области эдитора (как
+         * Scene/Game в Unity).
+         *
+         * В отличие от IPanel, вкладка НЕ рисует собственное окно: её
+         * контент каркас рисует внутрь общего центрального окна с
+         * таб-баром (первая вкладка — всегда вьюпорт «Scene»).
+         *
+         * Контракт:
+         * - drawContents() вызывается внутри BeginTabItem/EndTabItem
+         *   уже активной вкладки (текущее окно — центральное);
+         * - каркас не владеет вкладкой: она обязана жить, пока
+         *   зарегистрирована (указатель);
+         * - getTabName() — стабильная строка (id вкладки в таб-баре).
+         */
+        class __beng_api ICenterTabView
+        {
+        public:
+            virtual ~ICenterTabView() = default;
+
+            /**
+             * Отрисовать контент вкладки в текущее (центральное)
+             * окно ImGui.
+             */
+            virtual void drawContents() __blib_pure_virtual_function;
+
+            /**
+             * Имя вкладки в таб-баре центральной области.
+             */
+            virtual const char* getTabName() const __blib_pure_virtual_function;
+        };
+
     } // namespace editor
 } // namespace beng

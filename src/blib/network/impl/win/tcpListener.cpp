@@ -20,6 +20,28 @@ bool blib::network::TcpListener::setBlocking(bool isBlocking)
     return this->socket.setBlocking(isBlocking);
 }
 
+blib::network::SocketStatus blib::network::TcpListener::open(AddressType type)
+{
+    // Пересоздание: close() закрыл хендл, но память ctx жива —
+    // освободить её и создать сокет заново (в bind() после close
+    // был бы WSAENOTSOCK)
+    this->socket.destroy();
+
+    const SocketStatus status = this->socket.create(type, SocketType::Stream, SocketProtocol::TCP);
+    if (status != SocketStatus::OK)
+    {
+        return status;
+    }
+
+    this->setBlocking(true);
+    return SocketStatus::OK;
+}
+
+blib::network::SocketStatus blib::network::TcpListener::close()
+{
+    return this->socket.close();
+}
+
 blib::network::SocketStatus blib::network::TcpListener::bind(Address& addr)
 {
     return this->socket.bind(addr);

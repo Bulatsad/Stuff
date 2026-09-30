@@ -8,6 +8,7 @@ namespace gravelands
         : server()
         , client()
         , running(false)
+        , paused(false)
     {
     }
 
@@ -41,13 +42,16 @@ namespace gravelands
         }
 
         this->running = true;
+        this->paused = false;
         __blib_log_info("PIE session started (port %u)", port);
         return true;
     }
 
     void PieSession::tick()
     {
-        if (!this->running)
+        // Пауза (Pause в Unity): мир замирает целиком — симуляция и
+        // сеть не двигаются, последний кадр остаётся в FBO клиента
+        if (!this->running || this->paused)
         {
             return;
         }
@@ -68,7 +72,20 @@ namespace gravelands
         this->server.shutdown();
 
         this->running = false;
+        this->paused = false;
         __blib_log_info("PIE session stopped");
+    }
+
+    buint64 PieSession::getClientColorTextureId() const
+    {
+        // Вне запущенной сессии текстуры клиента уничтожены
+        // (client.shutdown) — наружу не отдаём
+        if (!this->running)
+        {
+            return 0;
+        }
+
+        return this->client.getColorTextureId();
     }
 
 } // namespace gravelands

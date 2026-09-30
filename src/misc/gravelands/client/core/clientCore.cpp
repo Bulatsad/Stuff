@@ -201,10 +201,16 @@ namespace gravelands
         bool imguiEnabled;
 
         ClientCoreImpl(bool imguiEnabledParam)
+            // Оконный режим — собственное ОС-окно/GL-контекст; PIE —
+            // headless-окно (без контекста): рендер идёт в FBO клиента
+            // в контексте эдитора, кадр показывает Game-панель
             : window(
-                static_cast<uint16_t>(imguiEnabledParam ? windowWidth : pieWindowWidth),
-                static_cast<uint16_t>(imguiEnabledParam ? windowHeight : pieWindowHeight),
-                gameTitle)
+                imguiEnabledParam
+                    ? blib::graphics::RenderWindow(
+                        static_cast<uint16_t>(windowWidth),
+                        static_cast<uint16_t>(windowHeight),
+                        gameTitle)
+                    : blib::graphics::RenderWindow())
             , renderTarget(
                 imguiEnabledParam ? windowWidth : pieWindowWidth,
                 imguiEnabledParam ? windowHeight : pieWindowHeight)
@@ -271,10 +277,14 @@ namespace gravelands
         new (impl) ClientCoreImpl(imguiEnabled);
 
         // Изометрическая камера: фиксированный ракурс, лёгкая перспектива.
-        // Наклон/азимут уже стоят по умолчанию в конструкторе камеры
+        // Наклон/азимут уже стоят по умолчанию в конструкторе камеры.
+        // Аспект — из рендер-таргета (в оконном режиме совпадает с окном,
+        // в PIE-режиме окна нет — источник истины один: FBO)
+        const buint32 rtWidth = impl->renderTarget.getContext().viewportWidth;
+        const buint32 rtHeight = impl->renderTarget.getContext().viewportHeight;
         impl->camera.setPerspective(
             blib::math::AngleDegreef(cameraFovDegrees),
-            static_cast<float>(impl->window.getWight()) / static_cast<float>(impl->window.getHeight()),
+            static_cast<float>(rtWidth) / static_cast<float>(rtHeight),
             cameraNearDistance,
             cameraFarDistance);
         impl->camera.setTarget(blib::graphics::Vector3f(0.0f, 0.0f, 0.0f));
@@ -321,8 +331,9 @@ namespace gravelands
 
         // ImGui + WndProc-хук (паттерн model_viewer): нужен для
         // полупрозрачного оверлея-подсказки в углу. В PIE-режиме
-        // (imguiEnabled == false) контекст НЕ создаётся — он уже есть
-        // у эдитора, второй контекст сломал бы его кадр
+        // (imguiEnabled == false, headless) контекст НЕ создаётся — он
+        // уже есть у эдитора (второй сломал бы его кадр), окна у
+        // клиента нет, кадр показывает Game-панель эдитора
         if (impl->imguiEnabled)
         {
             IMGUI_CHECKVERSION();
@@ -337,10 +348,15 @@ namespace gravelands
             ImGui_ImplOpenGL3_Init();
             s_engineWndProc = reinterpret_cast<WNDPROC>(
                 SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(gravelandsImguiWndProc)));
-        }
 
-        __blib_log_info("%s client core initialized (%ux%u window)",
-            gameTitle, windowWidth, windowHeight);
+            __blib_log_info("%s client core initialized (%ux%u window)",
+                gameTitle, windowWidth, windowHeight);
+        }
+        else
+        {
+            __blib_log_info("%s client core initialized (PIE headless, %ux%u FBO)",
+                gameTitle, pieWindowWidth, pieWindowHeight);
+        }
 
         return true;
     }
@@ -371,27 +387,33 @@ namespace gravelands
         // Обновление состояния клавиатуры перед опросом (для камеры и выхода)
         blib::graphics::Keyboard::update();
 
-        // Тильда `~` открывает/закрывает консоль (Quake-стиль)
-        if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::Grave))
+        // Консоль/окно клиента — только в оконном режиме: в PIE
+        // (headless) консоли и окна нет, Escape обрабатывает эдитор
+        // (стоп PIE — см. GravelandsEditorHost::onEscapePressed)
+        if (impl->imguiEnabled)
         {
-            impl->showConsole = !impl->showConsole;
-            if (impl->showConsole)
+            // Тильда `~` открывает/закрывает консоль (Quake-стиль)
+            if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::Grave))
             {
-                impl->consoleWindow.requestFocus();
+                impl->showConsole = !impl->showConsole;
+                if (impl->showConsole)
+                {
+                    impl->consoleWindow.requestFocus();
+                }
             }
-        }
 
-        // Escape: сперва закрывает консоль, иначе — окно
-        if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::Escape))
-        {
-            if (impl->showConsole)
+            // Escape: сперва закрывает консоль, иначе — окно
+            if (blib::graphics::Keyboard::isKeyJustPressed(blib::graphics::Keyboard::Key::Escape))
             {
-                impl->showConsole = false;
-            }
-            else
-            {
-                impl->window.close();
-                return;
+                if (impl->showConsole)
+                {
+                    impl->showConsole = false;
+                }
+                else
+                {
+                    impl->window.close();
+                    return;
+                }
             }
         }
 
@@ -497,8 +519,10 @@ namespace gravelands
 
         if (!impl->imguiEnabled)
         {
-            // PIE-режим: без ImGui-кадра — только презентация
-            impl->window.swapBuffers();
+            // PIE-режим (headless): без ImGui-кадра и презентации —
+            // кадр остаётся в FBO клиента, его показывает Game-панель
+            // эдитора (тот же GL-контекст/поток — см. GRAPHICS.md,
+            // «Владение GL»)
             return;
         }
 
@@ -1093,6 +1117,19 @@ namespace gravelands
     bool ClientCore::isRunning() const
     {
         return impl != nullptr && impl->window.isOpen();
+    }
+
+    buint64 ClientCore::getColorTextureId() const
+    {
+        if (__blib_unlikely(impl == nullptr))
+        {
+            return 0;
+        }
+
+        // Текстура текущего кадрового буфера FBO (после world.update()
+        // в tick() — дорисованный кадр); в PIE-режиме её сэмплит
+        // Game-панель эдитора
+        return static_cast<buint64>(impl->renderTarget.getColorTexture().getContext().textureID);
     }
 
     void ClientCore::shutdown()

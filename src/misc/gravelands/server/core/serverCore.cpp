@@ -19,15 +19,32 @@ namespace gravelands
 
     bool ServerCore::initialize(buint32 port)
     {
-        // TransformComponent регистрируется сценой автоматически
-        // (инвариант: каждая сущность рождается с Transform);
-        // игровой компонент — регистрируем явно
-        scene.registerComponentType<UnitComponent>();
+        // Повторный запуск (PIE: Play → Stop → Play): ядро переживает
+        // сессии — сцена сбрасывается на месте, счётчики обнуляются.
+        // Реестр типов и список систем переживают Scene::reset() —
+        // регистрация и addSystem выполняются только при ПЕРВОМ
+        // запуске (повторные — fatal: коллизия имени типа; дубли систем)
+        const bool firstStart = !scene.isRegisteredComponentType<UnitComponent>();
+        scene.reset();
 
-        // Системы выполняются в порядке приоритета (ISystem::getPriority):
-        // TransformSystem (-100) → MovementSystem (0)
-        scene.addSystem(&transformSystem);
-        scene.addSystem(&movementSystem);
+        if (firstStart)
+        {
+            // TransformComponent регистрируется сценой автоматически
+            // (инвариант: каждая сущность рождается с Transform);
+            // игровой компонент — регистрируем явно
+            scene.registerComponentType<UnitComponent>();
+
+            // Системы выполняются в порядке приоритета (ISystem::getPriority):
+            // TransformSystem (-100) → MovementSystem (0)
+            scene.addSystem(&transformSystem);
+            scene.addSystem(&movementSystem);
+        }
+
+        // Состояние сессии — с нуля
+        accumulator = 0.0f;
+        tickCounter = 0;
+        lastHeartbeatSecond = 0;
+        playerEntity = beng::invalidEntity;
 
         // Авторитетный юнит игрока (управляется по сети)
         playerEntity = scene.createEntity();

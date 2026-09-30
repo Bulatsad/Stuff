@@ -35,6 +35,7 @@ namespace beng
             // --- PIE ---
             constexpr const char* play  = u8"\U000F040A";  // mdi-play
             constexpr const char* stop  = u8"\U000F04DB";  // mdi-stop
+            constexpr const char* pause = u8"\U000F03E4";  // mdi-pause
 
             // --- Инструменты gizmo (тулбар вьюпорта) ---
             constexpr const char* translate = u8"\U000F01BE";  // mdi-cursor-move

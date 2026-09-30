@@ -39,7 +39,9 @@ namespace gravelands
         struct GravelandsEditorHostImpl;
         GravelandsEditorHostImpl* impl;
 
-        // Запуск/останов PIE-сессии (Play/Stop в верхней полосе)
+        // Запуск/останов/пауза PIE-сессии (Play/Pause/Stop в верхней
+        // полосе; Escape — стоп). Play/Stop переключают центральную
+        // вкладку (Game/Scene, как в Unity)
         void startPie();
         void stopPie();
 
@@ -51,6 +53,7 @@ namespace gravelands
         void onInput() __blib_override;
         void onSceneWillUpdate(float deltaTime) __blib_override;
         void onUi() __blib_override;
+        bool onEscapePressed() __blib_override;
         void onViewportClick(
             _In const blib::math::Vector<float, 3>& rayOrigin,
             _In const blib::math::Vector<float, 3>& rayDirection) __blib_override;

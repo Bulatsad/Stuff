@@ -29,8 +29,16 @@ namespace gravelands
             return false;
         }
 
-        // Слушатель создан в конструкторе (TcpListener(IPv4));
-        // здесь — режим/привязка
+        // Слушатель пересоздаётся: повторный запуск (PIE: Play → Stop →
+        // Play) после shutdown'а нашёл бы закрытый хендл (первый запуск —
+        // пересоздание уже созданного сокета конструктора, безвредно)
+        if (this->listener.open(blib::network::AddressType::IPv4) != blib::network::SocketStatus::OK)
+        {
+            __blib_log_error("network server: failed to open listener socket");
+            return false;
+        }
+
+        // Режим/привязка
         if (!this->listener.setBlocking(false))
         {
             __blib_log_error("network server: failed to set non-blocking listener");
@@ -226,6 +234,10 @@ namespace gravelands
             this->clientConnected = false;
         }
         this->framer.reset();
+
+        // Слушающий сокет закрывается: повторный initialize пересоздаёт
+        // его (PIE: Play → Stop → Play)
+        this->listener.close();
         this->listening = false;
     }
 

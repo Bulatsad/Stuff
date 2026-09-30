@@ -20,7 +20,8 @@ namespace beng
         enum class GizmoMode : buint8;
 
         /**
-         * ViewportPanel — 3D-вьюпорт эдитора.
+         * ViewportPanel — 3D-вьюпорт эдитора (вкладка «Scene»
+         * центральной области, как Scene view в Unity).
          *
          * Назначение:
          * - Показывает содержимое FBO рендер-таргета через
@@ -35,6 +36,13 @@ namespace beng
          *   W/E/R — переключение режима gizmo; активный режим подсвечен
          *   акцентом). Клик/зум по тулбару не уходят камере и
          *   picking'у (прямоугольник тулбара измеряется каждый кадр).
+         *
+         * Контент рисуется в ДВА режима:
+         * - drawContents() — в текущее окно (общее центральное окно
+         *   каркаса с таб-баром Scene/Game: контейнер рисует каркас,
+         *   см. EditorApplication);
+         * - draw() — в собственное окно (совместимость с IPanel:
+         *   Begin + drawContents + End).
          *
          * Окно вьюпорта зафиксировано (NoMove/NoResize/NoCollapse):
          * перетаскивание заголовка не должно двигать панель — иначе
@@ -53,6 +61,12 @@ namespace beng
         private:
             blib::graphics::IRenderTarget* renderTarget;
             blib::graphics::OrbitCamera* camera;
+
+            // Контент рисовался в этом кадре (вкладка «Scene» активна):
+            // каркас гейтит gizmo-манипулятор и ray-picking — на
+            // вкладке «Game» они работать не должны. Сбрасывается
+            // beginFrame(), ставится drawContents()
+            bool contentsDrawn;
 
             // Тулбар инструментов: иконочный шрифт (каркас; nullptr —
             // тулбар не рисуется) и поле режима gizmo каркаса
@@ -182,8 +196,29 @@ namespace beng
              */
             void getCursorNdc(_Out float& outNdcX, _Out float& outNdcY) const;
 
+            /**
+             * Начало кадра: сброс флага видимости контента.
+             * Каркас зовёт ПЕРЕД отрисовкой центральных вкладок,
+             * затем проверяет isContentsDrawn() после.
+             */
+            void beginFrame();
+
+            /**
+             * Контент вьюпорта был отрисован в этом кадре (вкладка
+             * «Scene» активна)? — гейт gizmo/picking'а каркаса.
+             */
+            bool isContentsDrawn() const { return this->contentsDrawn; }
+
+            /**
+             * Отрисовка контента вьюпорта (изображение FBO + ввод
+             * камеры + тулбар) в ТЕКУЩЕЕ окно ImGui. Вызывается
+             * каркасом внутри вкладки «Scene» центрального таб-бара;
+             * для самостоятельного окна — draw().
+             */
+            void drawContents();
+
             void draw() override;
-            const char* getName() const override { return "Viewport"; }
+            const char* getName() const override { return "Scene"; }
         };
 
     } // namespace editor

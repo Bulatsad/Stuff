@@ -2,7 +2,7 @@
 
 > Слой: `blib`. TCP/UDP сокеты (winsock). **Статус: Windows-only; TCP-часть доведена до рабочего состояния (2026-09-28), UDP — недоделан (в проде не использовать).**
 > Шпаргалка по устройству. **Обновлять при изменениях кода модуля** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-29
+> Сверено: 2026-09-30
 
 ---
 
@@ -39,7 +39,7 @@
 - **`Address`**: value-тип (deep copy, move, деструктор); `fromIPv4(str, ok)` (ошибка → пустой адрес + ok=false), `setPort(int)` — с переводом в сетевой порядок байт; статические `AnyIPv4/NoneIPv4/LocalhostIPv4/BroadcastIPv4`.
 - **`Socket`**: `create(...)`, `setBlocking(bool)` (возвращает УСПЕХ — семантика исправлена), `setTcpNoDelay(bool)` — TCP_NODELAY (отключает алгоритм Нейгла для real-time трафика; см. «Подводные камни»), `bind`, `close`, `destroy`, `getLastError`; хендл — через `GlobalAllocator` (без new/delete).
 - **`TcpSocket`**: `connect(Address&)` — в неблокирующем режиме WouldBlock = «в процессе» (повторять; WSAEISCONN → OK); `send(data, size, sentOut)` — цикл до полной отправки, при WouldBlock прогресс в `sentOut` (вызывающий продолжает с того же места!); `recv(data, size)` — `size` in/out: фактически принятые байты (частичный приём — НЕ ошибка, TCP — поток); `setTcpNoDelay(bool)` — проброс на `Socket`.
-- **`TcpListener`**: `listen(backlog = 16)`, `accept(TcpSocket&)` — WouldBlock = «подключений нет» (неблокирующий режим).
+- **`TcpListener`**: `listen(backlog = 16)`, `accept(TcpSocket&)` — WouldBlock = «подключений нет» (неблокирующий режим); `open(AddressType)` — (пере)создать слушающий сокет (повторный запуск сервера: `close` закрыл хендл — bind на нём не сработает), `close()` — закрыть (идемпотентно, память хендла освобождает следующий `open`/деструктор).
 - **`InitBlibSocket()`** — `bool`, идемпотентна; вызывать до создания сокетов. `WSACleanup` не вызывается (процесс живёт долго).
 
 ---
@@ -48,7 +48,7 @@
 
 **TCP-клиент (неблокирующий):** `InitBlibSocket()` → `TcpSocket(IPv4)` → `setBlocking(false)` → `Address::fromIPv4` + `setPort` → цикл `connect` (WouldBlock → повтор) → `send` (проверять WouldBlock + `sentOut`) / `recv` (WouldBlock — данных нет).
 
-**TCP-сервер:** `TcpListener(IPv4)` → `setBlocking(false)` → `bind` → `listen` → цикл `accept` (WouldBlock — нет подключений).
+**TCP-сервер:** `TcpListener(IPv4)` → `setBlocking(false)` → `bind` → `listen` → цикл `accept` (WouldBlock — нет подключений). Повторный запуск (после `shutdown`'а): `open(IPv4)` → `setBlocking` → `bind` → `listen`.
 
 **Режим:** конструкторы по умолчанию blocking; `setBlocking` — `ioctlsocket(FIONBIO)`.
 

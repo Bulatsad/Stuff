@@ -34,7 +34,17 @@ namespace blib
 
         public:
             RenderWindow(uint16_t _width, uint16_t _height, const std::string& title, WindowStile style = WindowStile::None);
-            
+
+            /**
+             * Headless-окно: ОС-окно и GL-контекст НЕ создаются
+             * (ctx = nullptr). Все методы — безопасные no-op, кроме
+             * __getCtx() (вернёт nullptr). Нужно PIE: клиент игры
+             * рендерит в свой FBO в контексте эдитора и презентуется
+             * не в своё окно, а в Game-панель эдитора (см. GRAPHICS.md,
+             * «Владение GL»)
+             */
+            RenderWindow();
+
             virtual ~RenderWindow();
 
             uint16_t getHeight() const { return this->height; }
