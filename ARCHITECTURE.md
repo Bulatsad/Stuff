@@ -59,8 +59,8 @@
 | Таргет | Назначение | Зависимости |
 |--------|------------|-------------|
 | `beng-core` | общее ядро: ECS, Application, тикрейт, интерфейсы модулей, рефлексия, репликация (схема/кодек/клиентское зеркало), сетевой фрейминг | blib-core, blib-system |
-| `beng-client` | клиентская среда: RenderModule, InputModule, AudioModule, рендер-ECS, сетевой клиент | beng-core, blib-graphics, blib-sound |
-| `beng-server` | headless-сервер: `ServerApplication` (тикрейт + сетевой цикл), `NetworkServer`, `ReplicationManager` (рефлексивная репликация), `WorldManager` (save/load) — **сделан (2026-09-30)**, см. `src/beng/server/SERVER.md` | beng-core, blib-network |
+| `beng-client` | клиентская среда: рендер-ECS + **клиентская оболочка** `ClientApplication` (окно/FBO/камера/пост-пасс/ImGui/сеть) + `IClientGame` — **сделан (2026-09-30)**, см. `src/beng/client/CLIENT.md`; RenderModule/InputModule/AudioModule — будущее | beng-core, blib-graphics, beng-server (сетевой слой) |
+| `beng-server` | headless-сервер: `ServerApplication` (тикрейт + сетевой цикл), `NetworkServer`, `ReplicationManager` (рефлексивная репликация), `WorldManager` (save/load), `ReplicationClient` (сетевой клиент репликации + интерполяция) — **сделан (2026-09-30)**, см. `src/beng/server/SERVER.md` | beng-core, blib-network |
 | `beng-editor-core` | каркас эдитора: `EditorApplication` (окно/вьюпорт/панели/раскладка — есть) + докинг, Hierarchy, Inspector, gizmo, selection, undo/redo | beng-client, ImGui |
 | `beng-editor` | ЕДИНЫЙ exe эдитора на все игры: тонкая `main()` над `beng-editor-core` (есть, пустая сцена); игра — плагин | beng-editor-core |
 
@@ -101,9 +101,9 @@
 
 - UDP-канал для снапшотов (на старте — только TCP).
 - Сетевая репликация компонентов на базе рефлексии. **Сделано
-  (2026-09-30)** — рефлексивная репликация в beng-core + серверная
-  сторона в beng-server (см. SERVER.md); клиентская оболочка и
-  интерполяция — фаза 3.
+  (2026-09-30)** — рефлексивная репликация в beng-core, серверная
+  сторона и сетевой клиент в beng-server, клиентская оболочка и
+  движковая интерполяция — в beng-client (см. SERVER.md/CLIENT.md).
 - 3D-контент с изометрической камерой — **начато**: `MeshRenderComponent` +
   `RenderLayer` реализованы, весь мир рисуется единым путём через
   `RenderSystem` (см. BENG.md, «beng-client»); свет в ECS — позже.
@@ -125,6 +125,24 @@
 - **`IServerGame`** — хук-интерфейс игры (типы/системы/контент/игроки/
   кодек команд — команды для движка непрозрачны).
 - Детали, формат провода, лимиты и грабли — `src/beng/server/SERVER.md`.
+
+### beng-client (реализован, 2026-09-30)
+
+- **`ClientApplication`** — игра-агностичная клиентская оболочка:
+  frame-API, окно/FBO/изокамера/пост-пасс, ECS-сцена с пайплайном
+  Transform → Animation → Render, ImGui (оверлей/консоль, WndProc-хук),
+  сеть (`ReplicationClient`), headless-режим (PIE: кадр в FBO в
+  контексте эдитора), **local-server mode** (`startLocalServer` —
+  in-process `ServerApplication` с пробой порта; один сетевой путь для
+  одиночной игры/внешнего сервера/PIE).
+- **`IClientGame`** — хук-интерфейс игры (композиция, как `IServerGame`):
+  типы/системы/контент, ввод, оверлей, сетевой кадр (события зеркал,
+  команды, предикшн), сессия (`onSessionReady`/`onSessionLost`).
+- **Интерполяция зеркал — движковая** (beng-core `ReplicationClientState`
+  + флаг `FunctionField::interpolated`): позиции снапшотов lerp'ятся с
+  постоянным лагом (см. SERVER.md).
+- Детали, порядок кадра, разрушение GL-ресурсов, грабли —
+  `src/beng/client/CLIENT.md`.
 
 ### Паттерн «lib + тонкий exe»
 
@@ -392,14 +410,20 @@ src/
    (рефлексивная репликация: зеркала → полные/дельта/destroy-снапшоты,
    хеш-сверка схем), `WorldManager` (save/load), `IServerGame` +
    тест-группы `replication`/`server` (в т.ч. loopback-интеграция) —
-   см. SERVER.md. **Миграция gravelands-server-core на бeng-server —
-   фаза 3** (вместе с клиентом, чтобы не ломать PIE/сеть посреди фаз;
-   сейчас сервер игры — на старой рукописной сети, работает как раньше).
-3. **beng-client + gravelands-client-core**: RenderModule/InputModule/AudioModule,
-   рендер-ECS (спрайтовая изометрия на базе isometricTileset);
-   подключение клиента, интерполяция. **Сделано (2026-09-28):**
-   `NetworkClient` (снапшоты + интерполяция зеркал юнитов, офлайн-фолбэк);
-   AudioModule — TODO. *(ResourceManager сделан раньше
+   см. SERVER.md. **Миграция gravelands на beng-server выполнена
+   (2026-09-30, фаза 3)** — см. п.3.
+3. **beng-client + gravelands-client-core**: рендер-ECS (спрайтовая
+   изометрия на базе isometricTileset), подключение клиента,
+   интерполяция. **Сделано (2026-09-30, фаза 3):** клиентская оболочка
+   `ClientApplication` + `IClientGame` (см. CLIENT.md); **движковая
+   интерполяция зеркал** (`ReplicationClientState` + флаг
+   `FunctionField::interpolated`); **миграция gravelands одним заходом**:
+   `ServerCore`/`ClientCore` — тонкие обёртки над `ServerApplication`/
+   `ClientApplication`, игровая логика — `GravelandsServerGame`/
+   `GravelandsClientGame` (IServerGame/IClientGame), `protocol.h` ужат
+   до кодека команд, рукописная сеть удалена, PIE без правок
+   `PieSession`; **local-server mode** (одиночная игра — in-process
+   сервер клиента). AudioModule — TODO. *(ResourceManager сделан раньше
    плана — в blib-core: кеш ISaveLoadable с dedup и refcount, см.
    RESOURCE_MANAGER.md.)*
 4. **Геймплей-петля диаблоида**: бой, лут, скиллы (gravelands-common/server),
@@ -508,6 +532,25 @@ src/
   серверные ID). Тест-группы `replication` (схема/кодек/зеркало) и
   `server` (менеджер/WorldManager/loopback-интеграция TCP) — 36/36 в
   обеих сборках. gravelands пока на старой сети — миграция в фазе 3.
+- **beng-client + миграция gravelands (фаза 3, 2026-09-30):** клиентская
+  оболочка `ClientApplication` + `IClientGame` (окно/FBO/камера/пост-пасс/
+  ImGui/сеть/headless, local-server mode — см. CLIENT.md); **движковая
+  интерполяция зеркал** (флаг `FunctionField::interpolated`,
+  `ReplicationClientState::renderMirror` — lerp с постоянным лагом в
+  тиках) и **события зеркал** (take-буферы spawn/destroy);
+  `Scene::setNextEntityId` + `serverEntityIdBase` — разделение
+  ID-пространств (серверные сущности с высокой базы, клиентский
+  локальный контент — низкие ID). Gravelands мигрирован одним заходом:
+  `ServerCore`/`ClientCore` — тонкие обёртки, игровая логика —
+  `GravelandsServerGame`/`GravelandsClientGame`, `protocol.h` — кодек
+  команд, рукописная сеть удалена, PIE без правок `PieSession`;
+  local-server — одиночный запуск клиента сам хостит сервер.
+  Исправлено по ходу: MSVC материализует тернарник в init-списке окна
+  → деструктор временного `RenderWindow` удалял GL-контекст (фабрика
+  «return prvalue», см. CLIENT.md); коллизия ID зеркал с локальным
+  контентом клиента (ID-пространства, см. SERVER.md). 36/36 тестов в
+  обеих сборках, smoke: клиент соло (local-server), пара сервер+клиент,
+  эдитор STATIC/SHARED.
 
 **Осталось (по roadmap):**
 

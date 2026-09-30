@@ -14,13 +14,13 @@
 
 | Таргет | Статус | Содержимое |
 |--------|--------|------------|
-| `beng-core` | реализован | ECS (`Scene`, `ComponentPool`, `ISystem`), `Transform`, `Time`, **рефлексивная репликация** (схема/кодек/фреймер/клиентское зеркало — см. SERVER.md) |
-| `beng-client` | зачаток | `SkinnedMeshComponent`, `AnimatorComponent`, `AnimationSystem`, `RenderSystem`, `CameraComponent` + `CameraSystem` (инвариант «одна активная камера») + `ComponentCameraAdapter` (ICamera из ECS) |
+| `beng-core` | реализован | ECS (`Scene`, `ComponentPool`, `ISystem`), `Transform`, `Time`, **рефлексивная репликация** (схема/кодек/фреймер/клиентское зеркало с интерполяцией — см. SERVER.md) |
+| `beng-client` | реализован (MVP) | рендер-ECS (`SkinnedMeshComponent`, `AnimatorComponent`, `AnimationSystem`, `RenderSystem`, `CameraComponent` + `CameraSystem` + `ComponentCameraAdapter`) + **клиентская оболочка**: `ClientApplication` (окно/FBO/камера/пост-пасс/ImGui/сеть, local-server mode) + `IClientGame` — см. `client/CLIENT.md` |
 | `beng-editor-core` | реализован | каркас эдитора: `EditorApplication` (окно/FBO/камера/ImGui/сцена + хуки хоста) + панели ImGui на `IPanel` |
 | `beng-editor` | реализован (скелет) | ЕДИНЫЙ exe эдитора на все игры: тонкая `main()` над `beng-editor-core`, пустая сцена + движковые типы (игра подключается плагином — см. ARCHITECTURE.md) |
 | `beng-server` | реализован (MVP) | headless-сервер: `ServerApplication` (тикрейт + сетевой цикл), `NetworkServer`, `ReplicationManager`, `WorldManager`, `IServerGame` — см. `src/beng/server/SERVER.md` |
 
-- Зависимости: `beng-core` → `blib-core` (+ `blib-system` транзитивно), без графики; `beng-client`/`beng-editor` → `blib-graphics`.
+- Зависимости: `beng-core` → `blib-core` (+ `blib-system` транзитивно), без графики; `beng-client` → `blib-graphics` + **`beng-server`** (оболочка клиента владеет `ReplicationClient`/local-server — клиент линкует сетевой слой, цикла нет); `beng-editor` → `blib-graphics`.
 - Frame-API и «lib + тонкий exe»: ядро не владеет главным циклом (см. ARCHITECTURE.md).
 - Что НЕ в этом доке: правила кодирования (AGENTS.md), план развития (ARCHITECTURE.md), детали графики и ассетов (см. `src/blib/graphics/GRAPHICS.md`).
 
@@ -96,6 +96,7 @@
 
 ### beng-client
 
+- **Клиентская оболочка — `ClientApplication` + `IClientGame`** (композиция, как `IServerGame` у сервера): оболочка владеет окном/FBO/камерой/пост-пассом/ImGui/сетью и сценой с пайплайном Transform → Animation → Render; игра (хуки) даёт типы, системы, контент, ввод, оверлей, кодек команд. Порядок кадра, разрушение GL-ресурсов, headless (PIE), события зеркал, local-server mode — **`client/CLIENT.md`**. Хуки: `onClientInitialize(scene, application)` → `onInput(simDt)` → `onNetworkUpdate()` (после poll — слив событий зеркал, команды, предикшн) → `onSceneWillUpdate` → `scene.update` → `onSceneDidUpdate` → `onUi`; сеть: `onSessionReady(tickRate, playerEntity)`/`onSessionLost`.
 - **ИНВАРИАНТ — единый ECS-рендер:** вся отрисовка мира идёт ТОЛЬКО через `Scene`: создать сцену → добавить объекты на сцену (сущности с рендер-компонентами) → отрисовать сцену (`scene.update()`, рисует `RenderSystem`). Прямые вызовы `renderTarget.draw(...)` вне RenderSystem запрещены. Пост-процессинг (пасс над FBO после сцены) и свет (`RenderContext`) — состояние презентации, не объекты мира (могут жить в приложении).
 - `SkinnedMeshComponent` — модель в **двух режимах**: (1) `ResourceRef` на слот кеша сцены (`loadFromFile(path, rm)`, ключ = путь; уже «опечатанный» слот просто берётся ref'ом — разделение/dedup); (2) owned-фолбэк `SkinModel*` (GlobalAllocator + placement new) — standalone-`loadFromFile(path)` и verifyRoundTrip. `getModel()` возвращает АКТИВНУЮ модель (ref ?? owned); `unload()` снимает ref, очищает путь/RM-ссылку и выгружает owned. `loadFromFile(path, rm)` при неудаче **оставляет предыдущую модель нетронутой** (RM-работа до выгрузки) — это фолбэк-путь `onLoaded` при недоступном файле. **Мутация общего слота** (`loadSkinFromFile`/`loadAnimationsFromFile`/onLoaded в ref-режиме) пере-«опечатывает» его через `reCommit` (см. RESOURCE_MANAGER.md) — dedup-индекс снова отражает содержимое.
 - `MeshRenderComponent` — меш в **двух режимах**: `ResourceRef` на слот кеша (ctor от ref'а / `setMeshResource`; для тайлов: `IsometricTileset::buildMeshInto` собирает прямо в слот — Mesh move-присваивание удалено) либо `Mesh` по значению (move-only, из билдера/примитива, напр. `Sphere::takeMesh()`). `getMesh()` возвращает АКТИВНЫЙ меш (ref ?? owned; owned пуст в ref-режиме и служит verify-фолбэком). `RenderLayer {Ground, Shadow, AlphaTested, Opaque}` задаёт порядок/поведение. ComponentPool не двигает компоненты — move-only член безопасен. Пулы RenderSystem берёт через `Scene::tryGetComponentPool` — сцены без статики (вьювер) работают как раньше.
@@ -114,7 +115,7 @@
 
 ### Рефлексия компонентов (Inspector/эдитор)
 
-- **`componentReflection.h`** (beng-core, header-only) — рефлексия БЕЗ RTTI/typeid: `FieldValue` (type-erased значение: `Kind {Float, Int, Bool, Vector3}` + поля-члены), `IComponentField` (интерфейс поля: `getName/getKind/getValue/setValue`), `FunctionField` (поле = пара геттер/сеттер — лямбды без захвата из .cpp компонента через публичные API; рефлексия не лезет в приватные члены), `ComponentTypeDescriptor` (имя типа + массив полей, порядок = порядок в Inspector), трейт `HasComponentReflection<T>` (`T::componentReflection()` → `const ComponentTypeDescriptor&`).
+- **`componentReflection.h`** (beng-core, header-only) — рефлексия БЕЗ RTTI/typeid: `FieldValue` (type-erased значение: `Kind {Float, Int, Bool, Vector3, Entity}` + поля-члены), `IComponentField` (интерфейс поля: `getName/getKind/isReplicated/isInterpolated/getValue/setValue`), `FunctionField` (поле = пара геттер/сеттер — лямбды без захвата из .cpp компонента через публичные API; рефлексия не лезет в приватные члены; флаги `replicated`/`interpolated` — сеть, см. SERVER.md), `ComponentTypeDescriptor` (имя типа + массив полей, порядок = порядок в Inspector), трейт `HasComponentReflection<T>` (`T::componentReflection()` → `const ComponentTypeDescriptor&`).
 - **Дескрипторы живут как статические объекты** в .cpp компонентов (как `componentTypeName`-литералы) и предоставляются статическим методом `componentReflection()`. Сцена хранит указатель на дескриптор per-ComponentType: `registerComponentType` (`if constexpr HasComponentReflection<T>`) → `componentReflections[typeId]`; `copyComponentTypeRegistryFrom` копирует указатели (нужно `verify()`). Доступ — `Scene::tryGetComponentReflection(typeId)` (nullptr — тип без рефлексии).
 - **Сцены-API для эдитора (type-erased):** `getComponentTypeCount()`, `getComponentTypeName(typeId)` (литерал), `getEntityId(denseIndex)` (перебор сущностей, `invalidEntity` за границей), `hasComponent(entityId, typeId)`, `tryGetComponent(entityId, typeId) → IComponent*`, `addComponent(entityId, typeId)` / `removeComponent(entityId, typeId)` (guard'ы: Transform — инвариант, дубликаты/не-default-конструируемые — false), `getTransformTypeId()` — Inspector/Hierarchy/undo-redo работают без compile-time T (игра-агностик, см. ARCHITECTURE.md «Эдитор»). Всё не-fatal: эдитор не роняет приложение на устаревших ID (после scene_load).
 - **Отражаемые поля (пока):** `TransformComponent` — position/scale (Vector3), parent (Entity — setParent с валидацией циклов); `DirectionalLightComponent` — direction/color/intensity; `AmbientLightComponent` — color/intensity. Вращение (кватернион) и сложные типы — позже (специализированные контролы).
@@ -205,8 +206,8 @@
 
 ## TODO
 
-- [ ] Фаза 2 модульных доков beng: `CLIENT.md`, `EDITOR.md` (`GRAVELANDS.md`, `MODEL_VIEWER.md` и `SERVER.md` — готовы, см. `misc/` и `server/`).
-- [ ] `Application` (frame-API приложения beng-core) — не реализован (must-требование ARCHITECTURE.md); рефлексия компонентов, ResourceManager, репликация и `beng-server` — реализованы (см. SERVER.md).
+- [ ] Фаза 2 модульных доков beng: `EDITOR.md` (`GRAVELANDS.md`, `MODEL_VIEWER.md`, `SERVER.md` и `CLIENT.md` — готовы, см. `misc/`, `server/`, `client/`).
+- [ ] `Application` (frame-API приложения beng-core) — не реализован (must-требование ARCHITECTURE.md); рефлексия компонентов, ResourceManager, репликация, `beng-server` и клиентская оболочка `beng-client` — реализованы (см. SERVER.md/CLIENT.md).
 - [ ] Эдитор: докинг (замена зон `PanelZone`), наконечники Scale-стрелок/плоскостные маркеры gizmo, поля-вращения в рефлексии. Undo/redo, gizmo-манипулятор (W/E/R), PIE, гизмо камер (фрустумы) и DLL-плагин игры (контракт `GameModuleFunctions`) — сделаны.
 
 ---

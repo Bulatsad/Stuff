@@ -48,6 +48,7 @@
 | blib-network (winsock) | `src/blib/network/NETWORK.md` |
 | blib/test (фреймворк и группы тестов) | `src/blib/test/TESTING.md` |
 | beng (ядро / клиент / эдитор) | `src/beng/BENG.md` |
+| beng-client (клиентская оболочка: ClientApplication + IClientGame) | `src/beng/client/CLIENT.md` |
 | beng-server (серверное ядро + рефлексивная репликация) | `src/beng/server/SERVER.md` |
 | gravelands (игра: клиент, сервер, common) | `src/misc/gravelands/GRAVELANDS.md` |
 | model_viewer (3D-вьювер) | `src/misc/model_viewer/MODEL_VIEWER.md` |
