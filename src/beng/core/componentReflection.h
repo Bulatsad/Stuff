@@ -115,6 +115,13 @@ namespace beng
         virtual FieldValue::Kind getKind() const __blib_pure_virtual_function;
 
         /**
+         * Участвует ли поле в сетевой репликации (флаг replicated —
+         * см. FunctionField; по умолчанию false). Из реплицируемых
+         * полей строится ReplicationSchema (см. replicationSchema.h).
+         */
+        virtual bool isReplicated() const { return false; }
+
+        /**
          * Прочитать значение поля компонента.
          *
          * @param component Компонент типа, которому принадлежит поле
@@ -146,6 +153,13 @@ namespace beng
      * не лезет в приватные члены (нет friend-инвазий). Геттер может
      * вычислять значение (например, азимут из direction).
      *
+     * Флаг replicated помечает поле для сетевой репликации: из таких
+     * полей строится схема репликации типа (ReplicationSchema, см.
+     * replicationSchema.h) — снапшоты возят только их значения.
+     * Должен быть true у полей, которые обязаны совпадать на клиенте
+     * и сервере (позиция, здоровье и т.п.); локальные кеши ввода
+     * (moveX/moveZ) реплицировать НЕ надо.
+     *
      * Пример (в .cpp компонента):
      *   static const beng::FunctionField s_intensityField(
      *       "intensity", beng::FieldValue::Kind::Float,
@@ -155,7 +169,8 @@ namespace beng
      *       },
      *       [](beng::IComponent& c, const beng::FieldValue& v) {
      *           static_cast<MyComponent&>(c).setIntensity(v.floatValue);
-     *       });
+     *       },
+     *       true); // replicated
      */
     class __beng_api FunctionField : public IComponentField
     {
@@ -164,19 +179,27 @@ namespace beng
         FieldValue::Kind kind;
         FieldGetter getter;
         FieldSetter setter;
+        bool replicated;
 
     public:
-        FunctionField(_In const char* name, FieldValue::Kind kind, _In FieldGetter getter, _In FieldSetter setter)
+        FunctionField(_In const char* name, FieldValue::Kind kind, _In FieldGetter getter, _In FieldSetter setter, bool replicated = false)
             : name(name)
             , kind(kind)
             , getter(getter)
             , setter(setter)
+            , replicated(replicated)
         {
         }
 
         const char* getName() const __blib_override { return this->name; }
 
         FieldValue::Kind getKind() const __blib_override { return this->kind; }
+
+        /**
+         * Участвует ли поле в сетевой репликации (см. комментарий
+         * к классу и replicationSchema.h).
+         */
+        bool isReplicated() const __blib_override { return this->replicated; }
 
         void getValue(_In const IComponent& component, _Out FieldValue& outValue) const __blib_override
         {

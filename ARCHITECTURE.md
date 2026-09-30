@@ -58,9 +58,9 @@
 
 | Таргет | Назначение | Зависимости |
 |--------|------------|-------------|
-| `beng-core` | общее ядро: ECS, Application, тикрейт, интерфейсы модулей, рефлексия, сетевой фрейминг | blib-core, blib-system |
+| `beng-core` | общее ядро: ECS, Application, тикрейт, интерфейсы модулей, рефлексия, репликация (схема/кодек/клиентское зеркало), сетевой фрейминг | blib-core, blib-system |
 | `beng-client` | клиентская среда: RenderModule, InputModule, AudioModule, рендер-ECS, сетевой клиент | beng-core, blib-graphics, blib-sound |
-| `beng-server` | headless-сервер: NetworkServer, WorldManager (save/load), снапшоты | beng-core, blib-network |
+| `beng-server` | headless-сервер: `ServerApplication` (тикрейт + сетевой цикл), `NetworkServer`, `ReplicationManager` (рефлексивная репликация), `WorldManager` (save/load) — **сделан (2026-09-30)**, см. `src/beng/server/SERVER.md` | beng-core, blib-network |
 | `beng-editor-core` | каркас эдитора: `EditorApplication` (окно/вьюпорт/панели/раскладка — есть) + докинг, Hierarchy, Inspector, gizmo, selection, undo/redo | beng-client, ImGui |
 | `beng-editor` | ЕДИНЫЙ exe эдитора на все игры: тонкая `main()` над `beng-editor-core` (есть, пустая сцена); игра — плагин | beng-editor-core |
 
@@ -82,7 +82,8 @@
   `componentReflection.h` (FieldValue/IComponentField/FunctionField/
   ComponentTypeDescriptor, трейт `HasComponentReflection`) + type-erased
   сцены-API для эдитора — см. BENG.md, «Рефлексия компонентов».
-- `beng-server` работает headless: без рендера, звука и ввода.
+- `beng-server` работает headless: без рендера, звука и ввода. **Сделан
+  (2026-09-30)** — см. «beng-server» ниже и `src/beng/server/SERVER.md`.
 - `beng-editor` — игра-агностик: работает только с `beng-core` типами
   и рефлексией, конкретных игровых типов не знает.
 
@@ -99,11 +100,31 @@
 #### future (ориентиры, не обещания)
 
 - UDP-канал для снапшотов (на старте — только TCP).
-- Сетевая репликация компонентов на базе рефлексии.
+- Сетевая репликация компонентов на базе рефлексии. **Сделано
+  (2026-09-30)** — рефлексивная репликация в beng-core + серверная
+  сторона в beng-server (см. SERVER.md); клиентская оболочка и
+  интерполяция — фаза 3.
 - 3D-контент с изометрической камерой — **начато**: `MeshRenderComponent` +
   `RenderLayer` реализованы, весь мир рисуется единым путём через
   `RenderSystem` (см. BENG.md, «beng-client»); свет в ECS — позже.
 - Hot-reload игровой DLL в эдиторе (не на старте).
+
+### beng-server (реализован, 2026-09-30)
+
+- **`ServerApplication`** — игра-агностичное headless-ядро: frame-API,
+  тикрейт-аккумулятор (`IServerGame::getTickRate`, `maxTicksPerFrame`),
+  сетевой цикл (poll → команды → тики → снапшоты).
+- **`NetworkServer`** — неблокирующие сокеты, слоты клиентов (массив,
+  MVP 4), фрейминг (`ReplicationFramer`), очередь отправки с
+  backpressure (дроп при переполнении → полный ресинк клиента).
+- **`ReplicationManager`** — серверная сторона рефлексивной репликации:
+  per-client зеркала, полные/дельта/destroy-снапшоты; хеш-сверка схем
+  полей при Welcome.
+- **`WorldManager`** — save/load мира (`Scene::save/load`) + пересборка
+  контента хук-функцией игры.
+- **`IServerGame`** — хук-интерфейс игры (типы/системы/контент/игроки/
+  кодек команд — команды для движка непрозрачны).
+- Детали, формат провода, лимиты и грабли — `src/beng/server/SERVER.md`.
 
 ### Паттерн «lib + тонкий exe»
 
@@ -328,7 +349,7 @@ src/
 │   ├── test/        # юнит-тесты beng (beng_test_*, BUILD_TESTS)
 │   ├── test_ecs/    # демо/Smoke ECS-ядра (есть)
 │   ├── client/      # beng-client (есть)
-│   ├── server/      # beng-server (будущее)
+│   ├── server/      # beng-server (есть, 2026-09-30 — см. SERVER.md)
 │   └── editor/      # beng-editor-core: EditorApplication + панели (есть);
 │                    # beng-editor: единый exe эдитора, main/ (есть)
 ├── misc/gravelands/         # игра Gravelands (диаблоид)
@@ -365,9 +386,15 @@ src/
 1. **beng-core: Application + тикрейт + интерфейсы модулей.** Рефлексия
    компонентов и явная регистрация типов. Shared-сборка blib/beng-core.
 2. **beng-server + gravelands-server-core**: TCP-сервер, снапшоты, WorldManager;
-   простейшая симуляция (движение юнитов, сессия игрока). **Сделано
-   (2026-09-28):** `NetworkServer` (TCP, команды/снапшоты, MVP — один
-   клиент), `MovementSystem`, юнит игрока; WorldManager — TODO.
+   простейшая симуляция (движение юнитов, сессия игрока). **beng-server
+   сделан (2026-09-30):** `ServerApplication` (тикрейт + сетевой цикл),
+   `NetworkServer` (слоты, backpressure), `ReplicationManager`
+   (рефлексивная репликация: зеркала → полные/дельта/destroy-снапшоты,
+   хеш-сверка схем), `WorldManager` (save/load), `IServerGame` +
+   тест-группы `replication`/`server` (в т.ч. loopback-интеграция) —
+   см. SERVER.md. **Миграция gravelands-server-core на бeng-server —
+   фаза 3** (вместе с клиентом, чтобы не ломать PIE/сеть посреди фаз;
+   сейчас сервер игры — на старой рукописной сети, работает как раньше).
 3. **beng-client + gravelands-client-core**: RenderModule/InputModule/AudioModule,
    рендер-ECS (спрайтовая изометрия на базе isometricTileset);
    подключение клиента, интерполяция. **Сделано (2026-09-28):**
@@ -469,6 +496,18 @@ src/
   (STATIC/SHARED) проверены запуском эдитора + smoke-сценариями
   `--game`. Удалён рудимент `blib/graphics/imageref.h` (не используется —
   в ResourceManager другой интерфейс).
+- **beng-server + рефлексивная репликация (2026-09-30):** таргет
+  `beng-server` (ServerApplication/NetworkServer/ReplicationManager/
+  WorldManager/IServerGame); в beng-core — модуль репликации
+  (`replicationSchema` — wire-типы + FNV-1a-хеши схем полей;
+  `replicationCodec` — FieldValue-кодек, Welcome, полные/дельта/destroy-
+  снапшоты фиксированных капов; `replicationFramer` — фрейминг потока;
+  `replicationClientState` — клиентское зеркало по рефлексии);
+  `FunctionField::replicated` + реплицируемые поля Transform (position/
+  scale; parent — нет); `Scene::createEntityWithId` (зеркала сохраняют
+  серверные ID). Тест-группы `replication` (схема/кодек/зеркало) и
+  `server` (менеджер/WorldManager/loopback-интеграция TCP) — 36/36 в
+  обеих сборках. gravelands пока на старой сети — миграция в фазе 3.
 
 **Осталось (по roadmap):**
 

@@ -595,6 +595,12 @@ namespace beng
         constexpr const char* reflectionFieldScale = "scale";
         constexpr const char* reflectionFieldParent = "parent";
 
+        // position/scale — реплицируемые поля (replicated = true):
+        // из них строится схема репликации (ReplicationSchema) —
+        // позиция юнитов возится по сети. parent НЕ реплицируется:
+        // ссылка на сущность-родителя в зеркале клиента может быть
+        // невалидной (родитель может не реплицироваться) — иерархии
+        // зеркал — TODO (см. SERVER.md)
         const FunctionField s_positionField(
             reflectionFieldPosition, FieldValue::Kind::Vector3,
             [](_In const IComponent& component, _Out FieldValue& outValue)
@@ -605,7 +611,8 @@ namespace beng
             [](_In IComponent& component, _In const FieldValue& value)
             {
                 static_cast<TransformComponent&>(component).setLocalPosition(value.vector3Value);
-            });
+            },
+            true);
 
         const FunctionField s_scaleField(
             reflectionFieldScale, FieldValue::Kind::Vector3,
@@ -617,7 +624,8 @@ namespace beng
             [](_In IComponent& component, _In const FieldValue& value)
             {
                 static_cast<TransformComponent&>(component).setLocalScale(value.vector3Value);
-            });
+            },
+            true);
 
         const FunctionField s_parentField(
             reflectionFieldParent, FieldValue::Kind::Entity,

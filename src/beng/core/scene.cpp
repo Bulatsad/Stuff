@@ -65,6 +65,51 @@ namespace beng
         return id;
     }
 
+    EntityID Scene::createEntityWithId(EntityID id)
+    {
+        // ID 0 зарезервирован под invalidEntity — сущность с ним
+        // создать нельзя (нарушение протокола)
+        if (__blib_unlikely(id == invalidEntity))
+        {
+            __blib_fatal("Scene::createEntityWithId: reserved id 0");
+        }
+
+        // Защита от переполнения (как в createEntity)
+        if (__blib_unlikely(id == buint64Max))
+        {
+            __blib_fatal("Entity ID overflow in Scene");
+        }
+
+        // Коллизия: id уже выдан (или был выдан и освобождён) —
+        // переиспользование запрещено. Протокол нарушен — отказ
+        // БЕЗ изменений (вызывающий логирует и пропускает запись)
+        if (__blib_unlikely(id < nextEntityId))
+        {
+            return invalidEntity;
+        }
+
+        // Пропуск диапазона: серверные ID монотонны, но клиент мог
+        // не видеть часть сущностей (подключился позже, дельта-
+        // снапшоты) — nextEntityId перепрыгивает за выданный id
+        nextEntityId = id + 1;
+
+        // Добавить в плотные массивы (ID + пустая маска)
+        entities.push_back(id);
+        entityMasks.push_back(0);
+
+        // Добавить в sparse lookup
+        entityLookup[id] = static_cast<buint32>(entities.size() - 1);
+
+        // ИНВАРИАНТ: сущность рождается с TransformComponent (как в createEntity)
+        addComponent<TransformComponent>(id, this);
+
+        __blib_log_debug("Created Entity %llu (explicit id, index %u)",
+            static_cast<unsigned long long>(id),
+            static_cast<unsigned int>(entities.size() - 1));
+
+        return id;
+    }
+
     void Scene::destroyEntity(EntityID id)
     {
         auto it = entityLookup.find(id);

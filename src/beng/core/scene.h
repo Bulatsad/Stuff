@@ -144,6 +144,27 @@ namespace beng
         EntityID createEntity();
 
         /**
+         * Создать сущность с ЯВНЫМ EntityID (зеркала сетевой репликации:
+         * клиент обязан воспроизводить серверные ID сущностей — см.
+         * replicationClientState.h).
+         *
+         * Контракт:
+         * - id обязан быть не меньше текущего nextEntityId (серверные ID
+         *   монотонны; пропуск диапазона — сущности, которые клиент не
+         *   видел, — nextEntityId перепрыгивает на id + 1);
+         * - id < nextEntityId (коллизия с уже выданным/освобождённым ID) →
+         *   возвращает invalidEntity БЕЗ изменений (нарушение протокола —
+         *   вызывающий логирует и пропускает запись);
+         * - id == invalidEntity (0) → fatal (ID 0 зарезервирован).
+         *
+         * ИНВАРИАНТ сцены сохраняется: сущность рождается с
+         * TransformComponent (как в createEntity).
+         *
+         * @return Созданный id или invalidEntity при коллизии
+         */
+        EntityID createEntityWithId(EntityID id);
+
+        /**
          * Удалить Entity и все её компоненты.
          * 
          * @param id ID Entity для удаления

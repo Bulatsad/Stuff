@@ -68,6 +68,12 @@ add_subdirectory(${blib_dir})
 # beng-core — ECS-ядро движка (Bulat Engine); от графики не зависит
 add_subdirectory(${beng_dir})
 
+# beng-server — headless-серверное ядро (ServerApplication, репликация);
+# требует blib-network (winsock)
+if(TARGET blib-network)
+	add_subdirectory(${beng_dir}/server)
+endif()
+
 # beng-client — рендер-ECS движка; требует blib-graphics (сейчас — Windows)
 if(TARGET blib-graphics)
 	add_subdirectory(${beng_dir}/client)

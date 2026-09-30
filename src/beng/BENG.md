@@ -14,11 +14,11 @@
 
 | Таргет | Статус | Содержимое |
 |--------|--------|------------|
-| `beng-core` | реализован | ECS (`Scene`, `ComponentPool`, `ISystem`), `Transform`, `Time` |
+| `beng-core` | реализован | ECS (`Scene`, `ComponentPool`, `ISystem`), `Transform`, `Time`, **рефлексивная репликация** (схема/кодек/фреймер/клиентское зеркало — см. SERVER.md) |
 | `beng-client` | зачаток | `SkinnedMeshComponent`, `AnimatorComponent`, `AnimationSystem`, `RenderSystem`, `CameraComponent` + `CameraSystem` (инвариант «одна активная камера») + `ComponentCameraAdapter` (ICamera из ECS) |
 | `beng-editor-core` | реализован | каркас эдитора: `EditorApplication` (окно/FBO/камера/ImGui/сцена + хуки хоста) + панели ImGui на `IPanel` |
 | `beng-editor` | реализован (скелет) | ЕДИНЫЙ exe эдитора на все игры: тонкая `main()` над `beng-editor-core`, пустая сцена + движковые типы (игра подключается плагином — см. ARCHITECTURE.md) |
-| `beng-server` | нет | headless-сервер (план — см. ARCHITECTURE.md) |
+| `beng-server` | реализован (MVP) | headless-сервер: `ServerApplication` (тикрейт + сетевой цикл), `NetworkServer`, `ReplicationManager`, `WorldManager`, `IServerGame` — см. `src/beng/server/SERVER.md` |
 
 - Зависимости: `beng-core` → `blib-core` (+ `blib-system` транзитивно), без графики; `beng-client`/`beng-editor` → `blib-graphics`.
 - Frame-API и «lib + тонкий exe»: ядро не владеет главным циклом (см. ARCHITECTURE.md).
@@ -37,6 +37,7 @@
 | Интерфейс системы, приоритеты | `src/beng/core/system.h` |
 | Лимиты и базовые типы ECS | `src/beng/config.h` |
 | Рефлексия компонентов (FieldValue/FunctionField/Descriptor) | `src/beng/core/componentReflection.h` |
+| Репликация (схема/кодек/фреймер/клиентское зеркало) | `src/beng/core/replication*.h/.cpp` — см. `server/SERVER.md` |
 | Команды эдитора (undo/redo: CommandHistory + команды) | `src/beng/core/commandHistory.h/.cpp` |
 | Время кадра | `src/beng/core/time.h/.cpp` |
 | Transform + иерархия | `src/beng/components/transform.h/.cpp` |
@@ -204,9 +205,8 @@
 
 ## TODO
 
-- [ ] Фаза 2 модульных доков beng: `CLIENT.md`, `EDITOR.md` (`GRAVELANDS.md` и `MODEL_VIEWER.md` — готовы, см. `misc/`).
-- [ ] `beng-server` — не реализован (см. ARCHITECTURE.md).
-- [ ] `Application` (frame-API приложения beng-core) — не реализован (must-требование ARCHITECTURE.md); рефлексия компонентов и ResourceManager — реализованы.
+- [ ] Фаза 2 модульных доков beng: `CLIENT.md`, `EDITOR.md` (`GRAVELANDS.md`, `MODEL_VIEWER.md` и `SERVER.md` — готовы, см. `misc/` и `server/`).
+- [ ] `Application` (frame-API приложения beng-core) — не реализован (must-требование ARCHITECTURE.md); рефлексия компонентов, ResourceManager, репликация и `beng-server` — реализованы (см. SERVER.md).
 - [ ] Эдитор: докинг (замена зон `PanelZone`), наконечники Scale-стрелок/плоскостные маркеры gizmo, поля-вращения в рефлексии. Undo/redo, gizmo-манипулятор (W/E/R), PIE, гизмо камер (фрустумы) и DLL-плагин игры (контракт `GameModuleFunctions`) — сделаны.
 
 ---
