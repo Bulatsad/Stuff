@@ -1,6 +1,7 @@
 #include <blib/test/src/test.h>
 
 #include <beng/core/scene.h>
+#include <beng/server/replicationClient.h>
 #include <beng/server/replicationManager.h>
 #include <beng/server/serverApplication.h>
 #include <beng/server/worldManager.h>
@@ -13,8 +14,9 @@
 #include <cstdio>
 #include <cstring>
 
-// Тесты beng-server: ReplicationManager (зеркала/дельты), WorldManager
-// (save/load мира), ServerApplication (loopback-интеграция сети)
+// Тесты beng-server и клиента репликации: ReplicationManager
+// (зеркала/дельты), WorldManager (save/load мира), ServerApplication +
+// ReplicationClient (loopback-интеграция сети)
 
 namespace
 {
@@ -373,5 +375,87 @@ BLIB_TEST_CASE("server: application loopback welcome/command/snapshot")
     }
     BLIB_TEST_CHECK(game.leaveCount == 1);
 
+    server.shutdown();
+}
+
+BLIB_TEST_CASE("server: replication client loopback mirror")
+{
+    FakeServerGame game;
+    beng::server::ServerApplication server;
+    BLIB_TEST_CHECK(server.initialize(game, FakeServerGame::fakePort));
+
+    // Mirror-сцена клиента (только движковые типы — их же регистрирует
+    // игра на сервере: fake-игра своих типов не добавляет)
+    beng::Scene clientScene;
+
+    // Клиент репликации: connect → poll в одном потоке с сервером
+    beng::ReplicationClient client;
+    client.connect(FakeServerGame::fakePort);
+
+    // Дождаться открытия сессии (Welcome → сверка схем → маппинг)
+    for (buint32 attempt = 0; attempt < 3000 && !client.isSessionReady(); ++attempt)
+    {
+        server.tick();
+        client.poll(clientScene);
+        pollSleep();
+    }
+    BLIB_TEST_CHECK(client.isSessionReady());
+    BLIB_TEST_CHECK(client.getConnection() == beng::ReplicationClient::Connection::Connected);
+    BLIB_TEST_CHECK(client.getServerTickRate() == FakeServerGame::fakeTickRate);
+    BLIB_TEST_CHECK(client.getPlayerEntityId() != beng::invalidEntity);
+
+    // Зеркало игрока: серверный ID, позиция из onClientJoin (1,0,0)
+    const beng::EntityID playerEntity = client.getPlayerEntityId();
+    for (buint32 attempt = 0;
+        attempt < 3000 && clientScene.tryGetComponent<beng::TransformComponent>(playerEntity) == nullptr;
+        ++attempt)
+    {
+        server.tick();
+        client.poll(clientScene);
+        pollSleep();
+    }
+
+    const beng::TransformComponent* mirrorTransform =
+        clientScene.tryGetComponent<beng::TransformComponent>(playerEntity);
+    BLIB_TEST_CHECK(mirrorTransform != nullptr);
+    BLIB_TEST_CHECK_CLOSE(mirrorTransform->getLocalPosition().x, 1.0f, 0.0001f);
+
+    // Команда игрока (непрозрачный payload) доходит до игры сервера
+    const buint8 commandPayload[2] = { 0x11, 0x22 };
+    bool commandSent = false;
+    for (buint32 attempt = 0; attempt < 3000 && !commandSent; ++attempt)
+    {
+        server.tick();
+        client.poll(clientScene);
+        commandSent = client.sendCommand(commandPayload, 2);
+        pollSleep();
+    }
+    BLIB_TEST_CHECK(commandSent);
+
+    for (buint32 attempt = 0; attempt < 3000 && game.commandCount == 0; ++attempt)
+    {
+        server.tick();
+        client.poll(clientScene);
+        pollSleep();
+    }
+    BLIB_TEST_CHECK(game.commandCount == 1);
+    BLIB_TEST_CHECK(game.lastCommandSize == 2);
+    BLIB_TEST_CHECK(game.lastCommandPayload[0] == 0x11 && game.lastCommandPayload[1] == 0x22);
+
+    // Destroy игрока на сервере → зеркало удаляется
+    server.getScene().destroyEntity(playerEntity);
+    for (buint32 attempt = 0;
+        attempt < 3000 && clientScene.tryGetComponent<beng::TransformComponent>(playerEntity) != nullptr;
+        ++attempt)
+    {
+        server.tick();
+        client.poll(clientScene);
+        pollSleep();
+    }
+    BLIB_TEST_CHECK(clientScene.tryGetComponent<beng::TransformComponent>(playerEntity) == nullptr);
+    // В зеркале остаётся статический объект мира (onWorldBuild)
+    BLIB_TEST_CHECK(client.getMirror().getKnownEntityCount() == 1);
+
+    client.shutdown();
     server.shutdown();
 }

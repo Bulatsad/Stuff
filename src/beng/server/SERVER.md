@@ -9,9 +9,9 @@
 
 ## Назначение и границы
 
-- **beng-server** — игра-агностичное headless-ядро сервера: без рендера/звука/ввода. Игра подключается интерфейсом `IServerGame` (типы, системы, контент, игроки, кодек команд) — патерн хуков `EditorApplication` (см. BENG.md).
+- **beng-server** — сетевой слой движка: игра-агностичное headless-ядро сервера (`ServerApplication`) и сетевой клиент репликации (`ReplicationClient`) — без рендера/звука/ввода. Игра подключается интерфейсом `IServerGame` (типы, системы, контент, игроки, кодек команд) — патерн хуков `EditorApplication` (см. BENG.md).
 - **Рефлексивная репликация** (кодек/схема — в beng-core, `replication*`): состояние мира возится по сети через рефлексию компонентов — игра НЕ пишет сетевой кодек состояния, только помечает поля (`FunctionField::replicated`) и пишет кодек КОМАНД (непрозрачный payload для движка).
-- Что НЕ здесь: клиентская сторона репликации применяется `ReplicationClientState` (beng-core), клиентская оболочка — `beng-client` (Фаза 3); формат сцен — `sceneSaveFormat.h` (BENG.md).
+- Что НЕ здесь: клиентское зеркало применяется `ReplicationClientState` (beng-core), клиентская оболочка (окно/рендер) — `beng-client` (Фаза 3); формат сцен — `sceneSaveFormat.h` (BENG.md).
 
 ## Ключевые файлы (навигация)
 
@@ -19,7 +19,8 @@
 |-----------|-----|
 | Хук-интерфейс игры (`IServerGame`) | `iServerGame.h` |
 | Ядро (frame-API, тикрейт, цикл сети) | `serverApplication.h/.cpp` |
-| Сеть (слоты, фрейминг, очередь отправки) | `networkServer.h/.cpp` |
+| Сеть сервера (слоты, фрейминг, очередь отправки) | `networkServer.h/.cpp` |
+| Сетевой клиент репликации (connect/Welcome/снапшоты) | `replicationClient.h/.cpp` |
 | Серверная репликация (зеркала, дельты) | `replicationManager.h/.cpp` |
 | Персистентность мира (save/load/reset) | `worldManager.h/.cpp` |
 | Схема репликации (wire-типы, хеши) | `beng/core/replicationSchema.h/.cpp` |
@@ -67,8 +68,9 @@ poll (accept/recv/отправка очередей)
 - Удаление КОМПОНЕНТА у живой сущности не реплицируется (MVP); сущности — только целиком (destroy).
 - Признак существования сущности в зеркале — наличие Transform (инвариант сцены: Transform есть у всех).
 
-### Клиентское зеркало (`ReplicationClientState`, beng-core)
+### Клиентское зеркало (`ReplicationClientState`, beng-core; сеть — `ReplicationClient`)
 
+- **`ReplicationClient`** (beng-server): неблокирующий connect (пересоздание сокета — close+destroy+create, паттерн `TcpListener::open`), фрейминг, Welcome → `acceptWelcome` (сверка схем), снапшоты → decode → apply к mirror-сцене, команды — непрозрачный payload, детект дисконнекта; декодированный снапшот — в куче (GlobalAllocator).
 - Сущности воспроизводят СЕРВЕРНЫЕ EntityID: `Scene::createEntityWithId` (монотонные ID, пропуск невиданных диапазонов; коллизия id → отказ записи с warning).
 - Компоненты создаются/обновляются через рефлексию (`IComponentField::setValue`) — без compile-time T; full-патч обязан покрывать ВСЕ поля схемы (fieldCount сверяется), kind поля сверяется.
 - `parent` у Transform НЕ реплицируется (родитель может не существовать на клиенте) — иерархии зеркал TODO.
