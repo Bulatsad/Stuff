@@ -4,11 +4,13 @@
 #include <beng/client/components/ambientLightComponent.h>
 #include <beng/client/components/animatorComponent.h>
 #include <beng/client/components/blobShadowComponent.h>
+#include <beng/client/components/cameraComponent.h>
 #include <beng/client/components/directionalLightComponent.h>
 #include <beng/client/components/meshRenderComponent.h>
 #include <beng/client/components/skinnedMeshComponent.h>
 #include <beng/client/systems/animationSystem.h>
 #include <beng/client/systems/blobShadowSystem.h>
+#include <beng/client/systems/cameraSystem.h>
 #include <beng/client/systems/lightSystem.h>
 #include <beng/client/systems/renderSystem.h>
 #include <beng/components/transform.h>
@@ -175,6 +177,18 @@ namespace gravelands
         // Кость, за которой следует тень танцора (root-motion танца
         // живёт в позе; система пробует также Hips/mixamorig:Hips)
         constexpr const char* dancerShadowBoneName = "mixamorig:Hips";
+
+        // Камера-сущность по умолчанию (см. cameraComponent.h):
+        // параметры — дефолты компонента (FOV 60°, кадр 1280x720,
+        // active); позиция/поворот — вид на центр мира с высоты —
+        // именно её показывает Game-превью эдитора без Play и с неё
+        // стартует клиент игры
+        constexpr float defaultCameraPosX = 0.0f;
+        constexpr float defaultCameraPosY = 70.0f;
+        constexpr float defaultCameraPosZ = -140.0f;
+        constexpr float defaultCameraTargetX = 0.0f;
+        constexpr float defaultCameraTargetY = 10.0f;
+        constexpr float defaultCameraTargetZ = 0.0f;
     }
 
     // Процедурная текстура blob-тени (фаза 7): радиальный градиент
@@ -354,10 +368,11 @@ namespace gravelands
         // в initialize(scene); сцена обязана жить дольше мира
         beng::Scene* scene;
 
-        // Системы МИРА (уникальные для игры): тень и свет. Базовый
-        // рендер-пайплайн (Transform → Animation → Render) вешает
-        // хост — см. world.h. Системы живут здесь (Scene хранит
-        // сырые указатели) и разрушаются раньше сцены
+        // Системы МИРА (уникальные для игры): камера (инвариант «одна
+        // активная»), тень и свет. Базовый рендер-пайплайн (Transform →
+        // Animation → Render) вешает хост — см. world.h. Системы живут
+        // здесь (Scene хранит сырые указатели) и разрушаются раньше сцены
+        beng::CameraSystem cameraSystem;
         beng::BlobShadowSystem blobShadowSystem;
         beng::LightSystem lightSystem;
 
@@ -375,6 +390,7 @@ namespace gravelands
 
         WorldImpl()
             : scene(nullptr)
+            , cameraSystem()
             , blobShadowSystem()
             , lightSystem()
         {
@@ -436,10 +452,16 @@ namespace gravelands
         {
             impl->scene->registerComponentType<beng::AmbientLightComponent>();
         }
+        if (!impl->scene->isRegisteredComponentType<beng::CameraComponent>())
+        {
+            impl->scene->registerComponentType<beng::CameraComponent>();
+        }
 
-        // Системы мира: тень (приоритет 50) и свет (приоритет 90).
+        // Системы мира: камера (приоритет -150: нормализация «одна
+        // активная камера» до любой симуляции), тень (50) и свет (90).
         // Базовый рендер-пайплайн (Transform -100 → Animation -50 →
         // Render 100) вешает ХОСТ — мир его не дублирует
+        impl->scene->addSystem(&impl->cameraSystem);
         impl->scene->addSystem(&impl->blobShadowSystem);
         impl->scene->addSystem(&impl->lightSystem);
 
@@ -786,6 +808,46 @@ namespace gravelands
             // (совпадают с дефолтами RenderContext)
             const beng::EntityID ambientEntity = impl->scene->createEntity();
             impl->scene->addComponent<beng::AmbientLightComponent>(ambientEntity);
+        }
+
+        // --- Камера-сущность (beng.Camera): «взгляд» игры ---
+        {
+            // Позиция и поворот: смотрим на центр мира с высоты.
+            // Поворот строится кватернионом из направления взгляда
+            // (локальная +Z сущности → forward — конвенция камеры,
+            // см. componentCameraAdapter.h)
+            const blib::math::Vector<float, 3> cameraPos(
+                defaultCameraPosX, defaultCameraPosY, defaultCameraPosZ);
+            const blib::math::Vector<float, 3> cameraTarget(
+                defaultCameraTargetX, defaultCameraTargetY, defaultCameraTargetZ);
+
+            const blib::math::Vector<float, 3> forward =
+                blib::math::normalize(cameraTarget - cameraPos);
+
+            // Кватернион, переводящий +Z в forward: угол между +Z и
+            // forward вокруг нормали к ним (см. CORE.md «Грабли math»)
+            const blib::math::Vector<float, 3> zAxis(0.0f, 0.0f, 1.0f);
+            const float forwardDot = blib::math::dot(forward, zAxis);
+            const float clampedDot = (forwardDot > 1.0f) ? 1.0f : ((forwardDot < -1.0f) ? -1.0f : forwardDot);
+            const float angleRad = std::acos(clampedDot);
+            const blib::math::Vector<float, 3> axis = blib::math::cross(zAxis, forward);
+
+            blib::math::Quaternion<float> cameraRotation(1.0f, 0.0f, 0.0f, 0.0f);
+            if (blib::math::length(axis) > 0.0001f)
+            {
+                cameraRotation = blib::math::Quaternion<float>(
+                    blib::math::AngleRadianf(angleRad),
+                    blib::math::normalize(axis));
+            }
+
+            const beng::EntityID cameraEntity = impl->scene->createEntity();
+            impl->scene->resolveComponent<beng::TransformComponent>(cameraEntity, impl->scene);
+            impl->scene->addComponent<beng::CameraComponent>(cameraEntity);
+
+            beng::TransformComponent& cameraTransform =
+                impl->scene->getComponent<beng::TransformComponent>(cameraEntity);
+            cameraTransform.setLocalPosition(cameraPos);
+            cameraTransform.setLocalRotation(cameraRotation);
         }
 
         __blib_log_info("world scene built: %u entities",

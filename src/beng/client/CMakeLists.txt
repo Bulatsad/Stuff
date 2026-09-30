@@ -9,6 +9,11 @@ file (GLOB component_impl_src "components/*.cpp")
 file (GLOB system_header_src "systems/*.h")
 file (GLOB system_impl_src "systems/*.cpp")
 
+# Корневые файлы модуля (адаптеры/утилиты поверх компонентов — напр.
+# ComponentCameraAdapter: ICamera из CameraComponent + Transform)
+file (GLOB client_root_header_src "*.h")
+file (GLOB client_root_impl_src "*.cpp")
+
 # Хидеры включены в таргет явно — чтобы быть видимыми в Solution Explorer
 GroupSoureces("${HeaderGroupPrefix}/client/components" "${component_header_src}")
 GroupSoureces("${SourceGroupPrefix}/client/components" "${component_impl_src}")
@@ -16,12 +21,18 @@ GroupSoureces("${SourceGroupPrefix}/client/components" "${component_impl_src}")
 GroupSoureces("${HeaderGroupPrefix}/client/systems" "${system_header_src}")
 GroupSoureces("${SourceGroupPrefix}/client/systems" "${system_impl_src}")
 
+GroupSoureces("${HeaderGroupPrefix}/client" "${client_root_header_src}")
+GroupSoureces("${SourceGroupPrefix}/client" "${client_root_impl_src}")
+
 beng_add_module(beng-client
     ${component_header_src}
     ${component_impl_src}
 
     ${system_header_src}
     ${system_impl_src}
+
+    ${client_root_header_src}
+    ${client_root_impl_src}
 )
 
 beng_configure_module(beng-client beng_export)

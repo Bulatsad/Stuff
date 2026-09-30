@@ -48,10 +48,12 @@ namespace gravelands
     protected:
         // Хуки EditorApplication (см. editorApplication.h):
         // регистрация мира/команд, дебаг-клавиши, правка света,
-        // верхняя полоса эдитора, выбор кликом во вьюпорте
+        // верхняя полоса эдитора, выбор кликом во вьюпорте,
+        // Game-превью из активной камеры
         void onInitialize(_In beng::Scene& scene) __blib_override;
         void onInput() __blib_override;
         void onSceneWillUpdate(float deltaTime) __blib_override;
+        void onSceneDidUpdate(float deltaTime) __blib_override;
         void onUi() __blib_override;
         bool onEscapePressed() __blib_override;
         void onViewportClick(

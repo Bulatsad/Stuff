@@ -4,8 +4,10 @@
 #include <gravelands/world/world.h>
 
 #include <beng/client/components/ambientLightComponent.h>
+#include <beng/client/components/cameraComponent.h>
 #include <beng/client/components/directionalLightComponent.h>
 #include <beng/client/components/meshRenderComponent.h>
+#include <beng/client/componentCameraAdapter.h>
 #include <beng/client/systems/animationSystem.h>
 #include <beng/client/systems/renderSystem.h>
 #include <beng/components/transform.h>
@@ -292,24 +294,15 @@ namespace gravelands
 
         impl->renderTarget.rc.setCamera(&impl->camera);
 
-        // Пост-пасс (фаза 6): дефолты класса + параметры проекции
-        // из конфигурации камеры (линеаризация глубины в шейдере)
-        {
-            blib::graphics::PostProcessSettings postSettings = impl->postProcess.getSettings();
-            postSettings.nearPlane = cameraNearDistance;
-            postSettings.farPlane = cameraFarDistance;
-            impl->postProcess.setSettings(postSettings);
-        }
-
         // Базовый рендер-пайплайн сцены клиента: Transform → Animation
-        // → Render. Мир (ниже) добавит свои системы (тень/свет)
+        // → Render. Мир (ниже) добавит свои системы (камера/тень/свет)
         impl->scene.addSystem(&impl->transformSystem);
         impl->scene.addSystem(&impl->animationSystem);
         impl->scene.addSystem(&impl->renderSystem);
         impl->renderSystem.setRenderTarget(&impl->renderTarget);
 
         // Мир (gravelands-world): привязка к сцене клиента (типы,
-        // системы тени/света), контент, консольные команды
+        // системы камеры/тени/света), контент, консольные команды
         // scene_save/scene_load. Рендер-таргет мира — наш FBO
         impl->world.initialize(impl->scene);
         impl->world.setRenderTarget(&impl->renderTarget);
@@ -319,10 +312,27 @@ namespace gravelands
         // перекомпиляция шейдеров с диска без перезапуска (см. F5)
         blib::graphics::registerGraphicsConsoleCommands();
 
-        // Мир: тайлы, сфера, деревья, тени, свет + скелетная модель
-        // с анимацией (Mixamo-FBX)
+        // Мир: тайлы, сфера, деревья, тени, свет, камера-сущность +
+        // скелетная модель с анимацией (Mixamo-FBX)
         impl->world.setupWorld();
         impl->world.loadDancerModel();
+
+        // Старт игры от активной камеры сцены (beng.Camera): ракурс,
+        // позиция и параметры проекции берутся из компонента — камера
+        // начинает ровно с того, что видно в Game-превью эдитора
+        float activeNearDistance = cameraNearDistance;
+        float activeFarDistance = cameraFarDistance;
+        this->syncCameraFromScene(activeNearDistance, activeFarDistance);
+
+        // Пост-пасс (фаза 6): дефолты класса + параметры проекции
+        // из камеры (линеаризация глубины в шейдере). Ставится ПОСЛЕ
+        // синхронизации камеры с компонентом — near/far совпадают
+        {
+            blib::graphics::PostProcessSettings postSettings = impl->postProcess.getSettings();
+            postSettings.nearPlane = activeNearDistance;
+            postSettings.farPlane = activeFarDistance;
+            impl->postProcess.setSettings(postSettings);
+        }
 
         // Сеть: попытка подключения к локальному серверу (loopback).
         // При неудаче клиент остаётся в офлайн-дебаг-режиме
@@ -359,6 +369,93 @@ namespace gravelands
         }
 
         return true;
+    }
+
+    void ClientCore::syncCameraFromScene(_Out float& outNearDistance, _Out float& outFarDistance)
+    {
+        // Фолбэк: камера-сущности нет — камера остаётся на дефолтах
+        // клиента, near/far наружу отдаются дефолтные
+        outNearDistance = cameraNearDistance;
+        outFarDistance = cameraFarDistance;
+
+        beng::ComponentPool<beng::CameraComponent>* pool =
+            impl->scene.tryGetComponentPool<beng::CameraComponent>();
+        if (__blib_unlikely(pool == nullptr))
+        {
+            return;
+        }
+
+        // Активная камера — «последняя включённая» (максимальный штамп,
+        // консистентно с CameraSystem). Итератор пула пропускает
+        // неактивные компоненты
+        const beng::CameraComponent* activeCamera = nullptr;
+        beng::EntityID cameraEntity = beng::invalidEntity;
+        for (auto it = pool->begin(); it != pool->end(); ++it)
+        {
+            if (activeCamera == nullptr ||
+                it->getActivationStamp() > activeCamera->getActivationStamp())
+            {
+                activeCamera = &*it;
+                cameraEntity = it.getEntityId();
+            }
+        }
+        if (__blib_unlikely(activeCamera == nullptr))
+        {
+            return;
+        }
+
+        beng::TransformComponent* transform =
+            impl->scene.tryGetComponent<beng::TransformComponent>(cameraEntity);
+        if (__blib_unlikely(transform == nullptr))
+        {
+            return;
+        }
+
+        // Базис взгляда из мирового поворота сущности (единая
+        // математика с ComponentCameraAdapter)
+        blib::math::Vector<float, 3> forward;
+        blib::math::Vector<float, 3> right;
+        blib::math::Vector<float, 3> up;
+        beng::ComponentCameraAdapter::computeBasis(
+            transform->getWorldRotation(), forward, right, up);
+
+        // Проекция — из компонента; аспект — из FBO (источник истины:
+        // в оконном режиме совпадает с окном, в PIE окна нет)
+        const buint32 rtWidth = impl->renderTarget.getContext().viewportWidth;
+        const buint32 rtHeight = impl->renderTarget.getContext().viewportHeight;
+        const float aspect = (rtHeight > 0)
+            ? static_cast<float>(rtWidth) / static_cast<float>(rtHeight) : 1.0f;
+
+        impl->camera.setPerspective(
+            blib::math::AngleDegreef(activeCamera->getFovDegrees()),
+            aspect,
+            activeCamera->getNearDistance(),
+            activeCamera->getFarDistance());
+
+        // Ракурс изометрии из направления взгляда: IsometricCamera
+        // хранит направление «камера → цель» (position = target +
+        // direction * distance), т.е. ПРОТИВОПОЛОЖНОЕ forward сущности.
+        // pitch — из вертикальной компоненты, yaw — из горизонтальной
+        // (см. isometricCamera.cpp update())
+        const blib::math::Vector<float, 3> toTarget = forward * -1.0f;
+        const float clampedY = (toTarget.y > 1.0f) ? 1.0f : ((toTarget.y < -1.0f) ? -1.0f : toTarget.y);
+        const float pitchDegrees = std::asin(clampedY) * lightRadToDeg;
+        const float yawDegrees = std::atan2(toTarget.x, toTarget.z) * lightRadToDeg;
+        impl->camera.setPitch(blib::math::AngleDegreef(pitchDegrees));
+        impl->camera.setYaw(blib::math::AngleDegreef(yawDegrees));
+
+        // Целевая точка — перед сущностью вдоль взгляда на текущей
+        // дистанции: позиция камеры после update() == позиции сущности,
+        // взгляд направлен как у сущности
+        const float distance = impl->camera.getDistance();
+        impl->camera.setTarget(transform->getWorldPosition() + forward * distance);
+        impl->camera.update();
+
+        outNearDistance = activeCamera->getNearDistance();
+        outFarDistance = activeCamera->getFarDistance();
+
+        __blib_log_info("client camera: adopted active scene camera (fov %.1f deg)",
+            static_cast<double>(activeCamera->getFovDegrees()));
     }
 
     void ClientCore::tick()

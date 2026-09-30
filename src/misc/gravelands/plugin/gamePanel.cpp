@@ -8,38 +8,48 @@ namespace gravelands
 {
     namespace
     {
-        // Заглушка, когда сессии нет или она не запущена
+        // Заглушки: камеры в сцене нет (превью), сессия не запущена
+        constexpr const char* noCameraMessage = "No active camera";
         constexpr const char* gameStoppedMessage = "Game view - press Play to start";
     }
 
     GamePanel::GamePanel(_In_opt PieSession* session)
         : pieSession(session)
+        , previewTextureId(0)
+        , hasCamera(false)
+        , previewAspect(
+            static_cast<float>(pieWindowWidth) / static_cast<float>(pieWindowHeight))
     {
     }
 
     void GamePanel::drawContents()
     {
-        const buint64 textureId =
-            (this->pieSession != nullptr) ? this->pieSession->getClientColorTextureId() : 0;
+        // Источник кадра: запущенная сессия — клиент, иначе — превью
+        // из активной камеры сцены эдитора
+        const bool running = (this->pieSession != nullptr) && this->pieSession->isRunning();
+        const buint64 textureId = running
+            ? this->pieSession->getClientColorTextureId()
+            : (this->hasCamera ? this->previewTextureId : 0);
 
-        // Сессии нет / не запущена / клиент не инициализирован —
-        // заглушка по центру области (текстуры FBO уничтожены
-        // shutdown'ом клиента)
         const ImVec2 availableSize = ImGui::GetContentRegionAvail();
         if (textureId == 0)
         {
-            const ImVec2 textSize = ImGui::CalcTextSize(gameStoppedMessage);
+            // Превью без камеры — своя заглушка; «не запущено» остаётся
+            // страховкой (у запущенной сессии текстура всегда есть)
+            const char* message = (!running && !this->hasCamera) ? noCameraMessage : gameStoppedMessage;
+            const ImVec2 textSize = ImGui::CalcTextSize(message);
             ImGui::SetCursorPos(ImVec2(
                 ImGui::GetCursorPosX() + (availableSize.x - textSize.x) * 0.5f,
                 ImGui::GetCursorPosY() + (availableSize.y - textSize.y) * 0.5f));
-            ImGui::TextDisabled("%s", gameStoppedMessage);
+            ImGui::TextDisabled("%s", message);
             return;
         }
 
-        // Пропорции кадра — фиксированный размер PIE-FBO (окна у
-        // headless-клиента нет): letterbox как во вкладке «Scene»
-        constexpr float frameAspect =
-            static_cast<float>(pieWindowWidth) / static_cast<float>(pieWindowHeight);
+        // Пропорции кадра: клиент — фиксированный размер PIE-FBO
+        // (окна у headless-клиента нет), превью — разрешение камеры
+        const float frameAspect = running
+            ? (static_cast<float>(pieWindowWidth) / static_cast<float>(pieWindowHeight))
+            : this->previewAspect;
         const float panelAspect =
             (availableSize.y > 0.0f) ? (availableSize.x / availableSize.y) : frameAspect;
 
@@ -63,7 +73,8 @@ namespace gravelands
 
         // FBO хранит кадр вверх ногами (GL-координаты) — UV развёрнуты
         // (как во ViewportPanel каркаса); ImTextureID в ImGui 1.92 —
-        // ImU64: GLuint кладём значением
+        // ImU64: GLuint кладём значением. GPU-фильтрация даёт
+        // downscale кадра камеры до размера вкладки
         ImGui::Image(
             static_cast<ImTextureID>(textureId),
             imageSize,

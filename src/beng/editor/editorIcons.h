@@ -51,6 +51,7 @@ namespace beng
             constexpr const char* blobShadow       = u8"\U000F1853";  // mdi-circle-opacity
             constexpr const char* animator         = u8"\U000F05D8";  // mdi-animation
             constexpr const char* transform        = u8"\U000F0D49";  // mdi-axis-arrow
+            constexpr const char* camera           = u8"\U000F0100";  // mdi-camera
 
             // --- Прочее ---
             constexpr const char* info = u8"\U000F02FD";  // mdi-information-outline
@@ -70,6 +71,7 @@ namespace beng
             constexpr ImVec4 ambientColor(0.95f, 0.75f, 0.45f, 1.00f);
             constexpr ImVec4 shadowColor(0.60f, 0.60f, 0.65f, 1.00f);
             constexpr ImVec4 animationColor(0.75f, 0.60f, 0.95f, 1.00f);
+            constexpr ImVec4 cameraColor(0.75f, 0.85f, 0.95f, 1.00f);
 
             // Стабильные имена типов компонентов (componentTypeName
             // движковых типов; игровые типы хостов сюда не входят —
@@ -81,6 +83,7 @@ namespace beng
             constexpr const char* typeNameAmbientLight     = "beng.AmbientLight";
             constexpr const char* typeNameBlobShadow       = "beng.BlobShadow";
             constexpr const char* typeNameAnimator         = "beng.Animator";
+            constexpr const char* typeNameCamera           = "beng.Camera";
         }
 
         /**
@@ -132,6 +135,10 @@ namespace beng
             if (strcmp(typeName, icons::typeNameBlobShadow) == 0)
             {
                 return ComponentIcon{ icons::blobShadow, icons::shadowColor, 20 };
+            }
+            if (strcmp(typeName, icons::typeNameCamera) == 0)
+            {
+                return ComponentIcon{ icons::camera, icons::cameraColor, 45 };
             }
             if (strcmp(typeName, icons::typeNameTransform) == 0)
             {

@@ -152,12 +152,20 @@ void blib::graphics::IRenderTarget::resize(buint32 a_viewportWidth, buint32 a_vi
     // Viewport обновится в следующем clear()
 }
 
-void blib::graphics::IRenderTarget::clear(const Color& color)
+void blib::graphics::IRenderTarget::bind()
 {
-    this->ctx.currentFrameBufferIndex = selectNextFrameBufferIndex(this->ctx.currentFrameBufferIndex, this->ctx.frameBuffersCount);
+    // Бинд текущего кадрового буфера без очистки: состояние GL
+    // (viewport, depth-test) приводится к конфигурации таргета.
+    // clear() использует тот же путь — см. bind() в rendertarget.h
     this->bindFrameBuffer(this->ctx.currentFrameBufferIndex);
     this->rc.api.ogl.__blib_glViewport(0, 0, this->ctx.viewportWidth, this->ctx.viewportHeight);
     this->rc.api.ogl.__blib_glEnable(GL_DEPTH_TEST);
+}
+
+void blib::graphics::IRenderTarget::clear(const Color& color)
+{
+    this->ctx.currentFrameBufferIndex = selectNextFrameBufferIndex(this->ctx.currentFrameBufferIndex, this->ctx.frameBuffersCount);
+    this->bind();
 
     // BUG-FIX: аргумент цвета игнорировался (glClearColor был
     // закомментирован) — фон всегда оставался чёрным дефолтом GL.

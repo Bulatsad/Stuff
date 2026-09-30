@@ -3,9 +3,11 @@
 #include <beng/client/components/ambientLightComponent.h>
 #include <beng/client/components/animatorComponent.h>
 #include <beng/client/components/blobShadowComponent.h>
+#include <beng/client/components/cameraComponent.h>
 #include <beng/client/components/directionalLightComponent.h>
 #include <beng/client/components/meshRenderComponent.h>
 #include <beng/client/components/skinnedMeshComponent.h>
+#include <beng/client/componentCameraAdapter.h>
 #include <beng/client/systems/animationSystem.h>
 #include <beng/client/systems/renderSystem.h>
 #include <beng/components/transform.h>
@@ -148,6 +150,18 @@ namespace beng
             constexpr buint8 gizmoHotColorG = 255;
             constexpr buint8 gizmoHotColorB = 80;
             constexpr buint8 gizmoAxisAlpha = 255;
+
+            // Гизмо камеры (фрустум выбранной сущности, как у гизмо-
+            // манипулятора): акцент темы
+            constexpr buint8 cameraGizmoColorR = 33;
+            constexpr buint8 cameraGizmoColorG = 150;
+            constexpr buint8 cameraGizmoColorB = 242;
+            constexpr buint8 cameraGizmoColorA = 255;
+
+            // Минимальные параметры фрустума (защита от вырожденных
+            // значений компонента: fov/aspect из чужих файлов)
+            constexpr float cameraGizmoMinFovDegrees = 1.0f;
+            constexpr float cameraGizmoMinAspect = 0.001f;
 
             // «Оси нет» (горячая ось отсутствует)
             constexpr buint8 gizmoNoAxis = 0xFF;
@@ -666,6 +680,7 @@ namespace beng
             this->impl->scene.registerComponentType<beng::DirectionalLightComponent>();
             this->impl->scene.registerComponentType<beng::AmbientLightComponent>();
             this->impl->scene.registerComponentType<beng::BlobShadowComponent>();
+            this->impl->scene.registerComponentType<beng::CameraComponent>();
 
             this->impl->scene.addSystem(&this->impl->transformSystem);
             this->impl->scene.addSystem(&this->impl->animationSystem);
@@ -1218,6 +1233,7 @@ namespace beng
                     iconRangeBuilder.AddText(icons::blobShadow);
                     iconRangeBuilder.AddText(icons::animator);
                     iconRangeBuilder.AddText(icons::transform);
+                    iconRangeBuilder.AddText(icons::camera);
                     iconRangeBuilder.AddText(icons::info);
 
                     ImVector<ImWchar> iconRanges;
@@ -1743,61 +1759,146 @@ namespace beng
 
         void EditorApplication::drawGizmo()
         {
-            const EntityID selected = this->impl->selectedEntity;
-            if (__blib_unlikely(selected == invalidEntity))
-            {
-                return;
-            }
-
-            beng::TransformComponent* transform =
-                this->impl->scene.tryGetComponent<beng::TransformComponent>(selected);
-            if (__blib_unlikely(transform == nullptr))
-            {
-                return;
-            }
-
-            const blib::math::Vector<float, 3> position = transform->getWorldPosition();
-            const buint8 hotAxis = this->impl->gizmoHotAxis;
-
-            const blib::graphics::Color axisXColor(
-                gizmoAxisXColorR, gizmoAxisXColorG, gizmoAxisXColorB, gizmoAxisAlpha);
-            const blib::graphics::Color axisYColor(
-                gizmoAxisYColorR, gizmoAxisYColorG, gizmoAxisYColorB, gizmoAxisAlpha);
-            const blib::graphics::Color axisZColor(
-                gizmoAxisZColorR, gizmoAxisZColorG, gizmoAxisZColorB, gizmoAxisAlpha);
-            const blib::graphics::Color hotColor(
-                gizmoHotColorR, gizmoHotColorG, gizmoHotColorB, gizmoAxisAlpha);
-
-            const blib::graphics::Color xColor = (hotAxis == 0) ? hotColor : axisXColor;
-            const blib::graphics::Color yColor = (hotAxis == 1) ? hotColor : axisYColor;
-            const blib::graphics::Color zColor = (hotAxis == 2) ? hotColor : axisZColor;
-
             blib::graphics::LineRenderer& gizmo = this->impl->gizmoRenderer;
             gizmo.clear();
 
-            const blib::math::Vector<float, 3> axisX(1.0f, 0.0f, 0.0f);
-            const blib::math::Vector<float, 3> axisY(0.0f, 1.0f, 0.0f);
-            const blib::math::Vector<float, 3> axisZ(0.0f, 0.0f, 1.0f);
+            // --- Манипулятор выбранной сущности (стрелки/окружности) ---
+            const EntityID selected = this->impl->selectedEntity;
+            if (selected != invalidEntity)
+            {
+                beng::TransformComponent* transform =
+                    this->impl->scene.tryGetComponent<beng::TransformComponent>(selected);
+                if (transform != nullptr)
+                {
+                    const blib::math::Vector<float, 3> position = transform->getWorldPosition();
+                    const buint8 hotAxis = this->impl->gizmoHotAxis;
 
-            if (this->impl->gizmoMode == GizmoMode::Rotate)
-            {
-                // Три окружности в плоскостях, перпендикулярных осям:
-                // ось X — окружность в плоскости YZ (базис Y, Z) и т.д.
-                addGizmoCircle(gizmo, position, axisY, axisZ, xColor);
-                addGizmoCircle(gizmo, position, axisX, axisZ, yColor);
-                addGizmoCircle(gizmo, position, axisX, axisY, zColor);
+                    const blib::graphics::Color axisXColor(
+                        gizmoAxisXColorR, gizmoAxisXColorG, gizmoAxisXColorB, gizmoAxisAlpha);
+                    const blib::graphics::Color axisYColor(
+                        gizmoAxisYColorR, gizmoAxisYColorG, gizmoAxisYColorB, gizmoAxisAlpha);
+                    const blib::graphics::Color axisZColor(
+                        gizmoAxisZColorR, gizmoAxisZColorG, gizmoAxisZColorB, gizmoAxisAlpha);
+                    const blib::graphics::Color hotColor(
+                        gizmoHotColorR, gizmoHotColorG, gizmoHotColorB, gizmoAxisAlpha);
+
+                    const blib::graphics::Color xColor = (hotAxis == 0) ? hotColor : axisXColor;
+                    const blib::graphics::Color yColor = (hotAxis == 1) ? hotColor : axisYColor;
+                    const blib::graphics::Color zColor = (hotAxis == 2) ? hotColor : axisZColor;
+
+                    const blib::math::Vector<float, 3> axisX(1.0f, 0.0f, 0.0f);
+                    const blib::math::Vector<float, 3> axisY(0.0f, 1.0f, 0.0f);
+                    const blib::math::Vector<float, 3> axisZ(0.0f, 0.0f, 1.0f);
+
+                    if (this->impl->gizmoMode == GizmoMode::Rotate)
+                    {
+                        // Три окружности в плоскостях, перпендикулярных осям:
+                        // ось X — окружность в плоскости YZ (базис Y, Z) и т.д.
+                        addGizmoCircle(gizmo, position, axisY, axisZ, xColor);
+                        addGizmoCircle(gizmo, position, axisX, axisZ, yColor);
+                        addGizmoCircle(gizmo, position, axisX, axisY, zColor);
+                    }
+                    else
+                    {
+                        // Стрелки (Translate и Scale — пока одинаковые;
+                        // маркеры наконечников — TODO)
+                        gizmo.addLine(position, position + axisX * gizmoAxisLength, xColor);
+                        gizmo.addLine(position, position + axisY * gizmoAxisLength, yColor);
+                        gizmo.addLine(position, position + axisZ * gizmoAxisLength, zColor);
+                    }
+                }
             }
-            else
+
+            // --- Гизмо камеры: фрустум-пирамида ВЫБРАННОЙ сущности (как
+            // гизмо-манипулятор; пирамиды всех камер засоряли бы сцену).
+            // Рисуется и у выключенной камеры (выбор — не активность):
+            // видно, откуда и куда она смотрит ---
+            if (selected != invalidEntity)
             {
-                // Стрелки (Translate и Scale — пока одинаковые; маркеры
-                // наконечников — TODO)
-                gizmo.addLine(position, position + axisX * gizmoAxisLength, xColor);
-                gizmo.addLine(position, position + axisY * gizmoAxisLength, yColor);
-                gizmo.addLine(position, position + axisZ * gizmoAxisLength, zColor);
+                beng::CameraComponent* camera =
+                    this->impl->scene.tryGetComponent<beng::CameraComponent>(selected);
+                beng::TransformComponent* transform = (camera != nullptr)
+                    ? this->impl->scene.tryGetComponent<beng::TransformComponent>(selected)
+                    : nullptr;
+                if (camera != nullptr && transform != nullptr)
+                {
+                    const blib::graphics::Color frustumColor(
+                        cameraGizmoColorR, cameraGizmoColorG, cameraGizmoColorB, cameraGizmoColorA);
+
+                    // Базис камеры из мирового поворота (единая
+                    // математика с ComponentCameraAdapter)
+                    blib::math::Vector<float, 3> forward;
+                    blib::math::Vector<float, 3> right;
+                    blib::math::Vector<float, 3> up;
+                    beng::ComponentCameraAdapter::computeBasis(
+                        transform->getWorldRotation(), forward, right, up);
+
+                    const blib::math::Vector<float, 3> position = transform->getWorldPosition();
+
+                    // Размеры плоскостей из параметров компонента
+                    // (аспект — из разрешения кадра камеры)
+                    const float fovDeg = (camera->getFovDegrees() < cameraGizmoMinFovDegrees)
+                        ? cameraGizmoMinFovDegrees : camera->getFovDegrees();
+                    const float pixelAspect = (camera->getPixelHeight() > 0)
+                        ? static_cast<float>(camera->getPixelWidth()) / static_cast<float>(camera->getPixelHeight())
+                        : 1.0f;
+                    const float aspect = (pixelAspect < cameraGizmoMinAspect)
+                        ? cameraGizmoMinAspect : pixelAspect;
+                    const float tanHalfFov = blib::math::tan(
+                        fovDeg * static_cast<float>(blib::math::piDiv360));
+                    const float nearDist = camera->getNearDistance();
+                    const float farDist = camera->getFarDistance();
+                    const float nearHalfHeight = tanHalfFov * nearDist;
+                    const float farHalfHeight = tanHalfFov * farDist;
+                    const float nearHalfWidth = nearHalfHeight * aspect;
+                    const float farHalfWidth = farHalfHeight * aspect;
+
+                    // Восемь углов усечённой пирамиды
+                    const blib::math::Vector<float, 3> nearCenter = position + forward * nearDist;
+                    const blib::math::Vector<float, 3> farCenter = position + forward * farDist;
+                    const blib::math::Vector<float, 3> nearTopLeft =
+                        nearCenter + up * nearHalfHeight - right * nearHalfWidth;
+                    const blib::math::Vector<float, 3> nearTopRight =
+                        nearCenter + up * nearHalfHeight + right * nearHalfWidth;
+                    const blib::math::Vector<float, 3> nearBottomLeft =
+                        nearCenter - up * nearHalfHeight - right * nearHalfWidth;
+                    const blib::math::Vector<float, 3> nearBottomRight =
+                        nearCenter - up * nearHalfHeight + right * nearHalfWidth;
+                    const blib::math::Vector<float, 3> farTopLeft =
+                        farCenter + up * farHalfHeight - right * farHalfWidth;
+                    const blib::math::Vector<float, 3> farTopRight =
+                        farCenter + up * farHalfHeight + right * farHalfWidth;
+                    const blib::math::Vector<float, 3> farBottomLeft =
+                        farCenter - up * farHalfHeight - right * farHalfWidth;
+                    const blib::math::Vector<float, 3> farBottomRight =
+                        farCenter - up * farHalfHeight + right * farHalfWidth;
+
+                    // Ближний прямоугольник
+                    gizmo.addLine(nearTopLeft, nearTopRight, frustumColor);
+                    gizmo.addLine(nearTopRight, nearBottomRight, frustumColor);
+                    gizmo.addLine(nearBottomRight, nearBottomLeft, frustumColor);
+                    gizmo.addLine(nearBottomLeft, nearTopLeft, frustumColor);
+                    // Дальний прямоугольник
+                    gizmo.addLine(farTopLeft, farTopRight, frustumColor);
+                    gizmo.addLine(farTopRight, farBottomRight, frustumColor);
+                    gizmo.addLine(farBottomRight, farBottomLeft, frustumColor);
+                    gizmo.addLine(farBottomLeft, farTopLeft, frustumColor);
+                    // Боковые рёбра
+                    gizmo.addLine(nearTopLeft, farTopLeft, frustumColor);
+                    gizmo.addLine(nearTopRight, farTopRight, frustumColor);
+                    gizmo.addLine(nearBottomLeft, farBottomLeft, frustumColor);
+                    gizmo.addLine(nearBottomRight, farBottomRight, frustumColor);
+                }
             }
 
             // Gizmo рисуем поверх мешей (X-ray): выключаем тест глубины
-            // на время отрисовки и возвращаем его обратно
+            // на время отрисовки и возвращаем его обратно. Без сегментов
+            // (ничего не выбрано) — ничего не рисуем
+            if (gizmo.getSegmentCount() == 0)
+            {
+                return;
+            }
+
             blib::graphics::IRenderTarget& renderTarget = this->impl->renderTarget;
             renderTarget.rc.api.ogl.__blib_glDisable(GL_DEPTH_TEST);
             renderTarget.draw(gizmo);

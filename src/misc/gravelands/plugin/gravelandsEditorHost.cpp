@@ -5,14 +5,19 @@
 #include <gravelands/world/world.h>
 
 #include <beng/components/transform.h>
+#include <beng/client/componentCameraAdapter.h>
+#include <beng/client/components/cameraComponent.h>
 #include <beng/client/components/meshRenderComponent.h>
 #include <beng/client/components/skinnedMeshComponent.h>
+#include <beng/client/systems/lightSystem.h>
+#include <beng/client/systems/renderSystem.h>
 #include <beng/core/scene.h>
 #include <beng/editor/editorIcons.h>
 
 #include <blib/core/console/console.h>
 #include <blib/graphics/keyboard.h>
 #include <blib/graphics/mesh.h>
+#include <blib/graphics/rendertarget.h>
 #include <blib/graphics/shader.h>
 #include <blib/graphics/skinmodel.h>
 #include <blib/system/memory/globalAllocator.h>
@@ -73,6 +78,10 @@ namespace gravelands
 
         // Интервал логирования среднего кадрового времени PIE (сек)
         constexpr float pieLogIntervalSeconds = 1.0f;
+
+        // Аспект-заглушка превью Game (панель использует аспект только
+        // при живой камере — см. GamePanel::setPreviewTexture)
+        constexpr float previewFallbackAspect = 1.0f;
     }
 
     namespace
@@ -221,10 +230,11 @@ namespace gravelands
         }
     }
 
-    // Внутренности хоста: мир Gravelands + PIE-сессия. Каркас (окно,
-    // FBO, камера, ImGui, сцена эдитора, сценные панели Hierarchy/Inspector,
-    // gizmo) живёт в базовом EditorApplication. Полное определение скрыто
-    // в .cpp (pimpl) — заголовок не тянет графические типы в потребителей.
+    // Внутренности хоста: мир Gravelands + PIE-сессия + Game-превью.
+    // Каркас (окно, FBO, камера, ImGui, сцена эдитора, сценные панели
+    // Hierarchy/Inspector, gizmo) живёт в базовом EditorApplication.
+    // Полное определение скрыто в .cpp (pimpl) — заголовок не тянет
+    // графические типы в потребителей.
     struct GravelandsEditorHost::GravelandsEditorHostImpl
     {
         // Мир: привязывается к сцене каркаса (та же сцена, что правит
@@ -238,11 +248,30 @@ namespace gravelands
         // показывается вкладкой «Game» центральной области
         gravelands::PieSession pieSession;
 
-        // Вкладка «Game» (ICenterTabView) — кадр PIE-клиента в таб-баре
-        // центральной области (Scene | Game, как в Unity). Id вкладки —
-        // из registerCenterTab (onInitialize)
+        // Вкладка «Game» (ICenterTabView) — кадр PIE-клиента или
+        // превью из активной камеры в таб-баре центральной области
+        // (Scene | Game, как в Unity). Id вкладки — из registerCenterTab
+        // (onInitialize)
         gravelands::GamePanel gamePanel;
         buint32 gameTabId;
+
+        // ---- Game-превью (вкладка «Game» без Play) ----
+        // FBO под разрешение активной камеры: создаётся в onInitialize
+        // (GL-контекст каркаса уже жив), размер выставляет первый
+        // проход превью (resize от pixelWidth/Height компонента).
+        // Память — GlobalAllocator + placement new (IRenderTarget не
+        // имеет дефолтного конструктора, а impl создаётся ДО GL)
+        blib::graphics::IRenderTarget* gameTarget;
+        buint32 gameTargetWidth;
+        buint32 gameTargetHeight;
+
+        // Камера-адаптер (ICamera из beng.Camera + Transform) и
+        // собственные рендер/свет системы превью: рисуют сцену
+        // эдитора в gameTarget. Собственные инстансы (не из сцены) —
+        // проход превью не дублирует системы каркаса в scene.update()
+        beng::ComponentCameraAdapter gameCamera;
+        beng::RenderSystem gameRenderSystem;
+        beng::LightSystem gameLightSystem;
 
         // Play отложен до начала следующего кадра: клиентское окно
         // (второй GL-контекст) нельзя создавать в середине ImGui-кадра —
@@ -260,6 +289,12 @@ namespace gravelands
             , pieSession()
             , gamePanel(&this->pieSession)
             , gameTabId(invalidCenterTabId)
+            , gameTarget(nullptr)
+            , gameTargetWidth(0)
+            , gameTargetHeight(0)
+            , gameCamera()
+            , gameRenderSystem()
+            , gameLightSystem()
             , pieStartPending(false)
             , pieLogAccumulator(0.0f)
             , pieLogFrameCount(0)
@@ -293,9 +328,26 @@ namespace gravelands
         this->impl->world.setupWorld();
         this->impl->world.loadDancerModel();
 
-        // Вкладка «Game» центральной области (кадр PIE-клиента):
-        // id нужен Play/Stop для автопереключения вкладок Game/Scene
+        // Вкладка «Game» центральной области (кадр PIE-клиента или
+        // превью из активной камеры): id нужен Play/Stop для
+        // автопереключения вкладок Game/Scene и превью — для гейта
+        // «вкладка видима»
         this->impl->gameTabId = this->registerCenterTab(&this->impl->gamePanel);
+
+        // Game-превью: FBO под разрешение активной камеры (GL-контекст
+        // каркаса уже жив — ImGui инициализирован выше). Размер 1x1 —
+        // временный: первый проход превью отресайзит под камеру
+        {
+            auto& globalAllocator = blib::memory::GlobalAllocator::instance();
+            this->impl->gameTarget = static_cast<blib::graphics::IRenderTarget*>(
+                globalAllocator.allocate(sizeof(blib::graphics::IRenderTarget)));
+            new (this->impl->gameTarget) blib::graphics::IRenderTarget(1, 1);
+
+            // Собственные системы прохода превью (см. impl): свет —
+            // в rc превью-таргета, отрисовка — в превью-FBO
+            this->impl->gameRenderSystem.setRenderTarget(this->impl->gameTarget);
+            this->impl->gameLightSystem.setRenderTarget(this->impl->gameTarget);
+        }
 
         // Сценные панели (Scene Hierarchy + Inspector через рефлексию)
         // регистрирует САМ каркас — хост их не создаёт (см.
@@ -349,6 +401,102 @@ namespace gravelands
 
             this->impl->pieSession.tick();
         }
+    }
+
+    void GravelandsEditorHost::onSceneDidUpdate(float deltaTime)
+    {
+        // В PIE кадр Game-вкладки даёт клиент — превью не рисуем
+        if (this->impl->pieSession.isRunning())
+        {
+            this->impl->gamePanel.setPreviewTexture(0, false, previewFallbackAspect);
+            return;
+        }
+
+        // Вкладка Game не видна — проход не нужен (текстура прошлого
+        // прохода остаётся в FBO и покажется при возврате на вкладку)
+        if (this->impl->gameTabId == invalidCenterTabId ||
+            this->getActiveCenterTab() != this->impl->gameTabId)
+        {
+            return;
+        }
+
+        beng::Scene& scene = this->getScene();
+
+        // Активная камера сцены: «последняя включённая» (максимальный
+        // штамп — консистентно с CameraSystem; итератор пула пропускает
+        // неактивные)
+        beng::CameraComponent* activeCamera = nullptr;
+        beng::EntityID cameraEntity = beng::invalidEntity;
+        beng::ComponentPool<beng::CameraComponent>* cameraPool =
+            scene.tryGetComponentPool<beng::CameraComponent>();
+        if (cameraPool != nullptr)
+        {
+            for (auto it = cameraPool->begin(); it != cameraPool->end(); ++it)
+            {
+                if (activeCamera == nullptr ||
+                    it->getActivationStamp() > activeCamera->getActivationStamp())
+                {
+                    activeCamera = &*it;
+                    cameraEntity = it.getEntityId();
+                }
+            }
+        }
+
+        if (__blib_unlikely(activeCamera == nullptr))
+        {
+            // Камеры нет — панель покажет заглушку «No active camera»
+            this->impl->gamePanel.setPreviewTexture(0, false, previewFallbackAspect);
+            return;
+        }
+
+        beng::TransformComponent* cameraTransform =
+            scene.tryGetComponent<beng::TransformComponent>(cameraEntity);
+        if (__blib_unlikely(cameraTransform == nullptr))
+        {
+            this->impl->gamePanel.setPreviewTexture(0, false, previewFallbackAspect);
+            return;
+        }
+
+        // Разрешение кадра — из камеры (downscale до окна вкладки —
+        // GPU-фильтрация ImGui::Image): FBO ресайзится при изменении
+        buint32 cameraWidth = activeCamera->getPixelWidth();
+        buint32 cameraHeight = activeCamera->getPixelHeight();
+        if (__blib_unlikely(cameraWidth < 1 || cameraHeight < 1))
+        {
+            this->impl->gamePanel.setPreviewTexture(0, false, previewFallbackAspect);
+            return;
+        }
+        if (cameraWidth != this->impl->gameTargetWidth ||
+            cameraHeight != this->impl->gameTargetHeight)
+        {
+            this->impl->gameTarget->resize(cameraWidth, cameraHeight);
+            this->impl->gameTargetWidth = cameraWidth;
+            this->impl->gameTargetHeight = cameraHeight;
+        }
+
+        const float aspect =
+            static_cast<float>(cameraWidth) / static_cast<float>(cameraHeight);
+
+        // Сцена из «глаз» камеры-сущности в превью-FBO. Проход идёт в
+        // onSceneDidUpdate — ПОСЛЕ scene.update() каркаса: анимация и
+        // тени этого кадра уже применены, повторно продвигать симуляцию
+        // не нужно (рисуем только свет + меши)
+        this->impl->gameCamera.sync(*activeCamera, *cameraTransform, aspect);
+        this->impl->gameTarget->clear(blib::graphics::Color::Black);
+        this->impl->gameTarget->rc.setCamera(&this->impl->gameCamera);
+        this->impl->gameLightSystem.update(scene, deltaTime);
+        this->impl->gameRenderSystem.update(scene, deltaTime);
+
+        // Возврат FBO вьюпорта каркасу: следующий шаг кадра (drawGizmo)
+        // рисует в ТЕКУЩИЙ GL-бинд — см. IRenderTarget::bind
+        this->getRenderTarget().bind();
+
+        // Кадр превью готов — панель сэмплит его текстуру
+        this->impl->gamePanel.setPreviewTexture(
+            static_cast<buint64>(
+                this->impl->gameTarget->getColorTexture().getContext().textureID),
+            true,
+            aspect);
     }
 
     void GravelandsEditorHost::onViewportClick(
@@ -601,6 +749,16 @@ namespace gravelands
         // PIE-сессия гасится первой (клиентское окно/GL-контекст),
         // затем мир, затем каркас
         this->stopPie();
+
+        // Game-превью FBO: явное разрушение до impl (GL-контекст
+        // каркаса ещё жив — ImGui/окно гасятся только ниже)
+        if (this->impl->gameTarget != nullptr)
+        {
+            this->impl->gameTarget->~IRenderTarget();
+            blib::memory::GlobalAllocator::instance().deallocate(
+                this->impl->gameTarget, sizeof(blib::graphics::IRenderTarget));
+            this->impl->gameTarget = nullptr;
+        }
 
         // Мир разрушаем ДО каркаса: меши обязаны умереть раньше
         // ImGui/GL-контекста каркаса

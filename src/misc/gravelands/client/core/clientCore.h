@@ -143,6 +143,15 @@ namespace gravelands
         beng::EntityID findMirror(buint64 serverEntityId);
 
         /**
+         * Синхронизация камеры с активной камерой сцены (beng.Camera):
+         * FOV/near/far — из компонента, ракурс/позиция — из трансформа
+         * сущности («старт игры с активной камеры»). Активной камеры
+         * нет — камера остаётся на дефолтах клиента, наружу выходят
+         * дефолтные near/far. Из initialize() (после контента мира).
+         */
+        void syncCameraFromScene(_Out float& outNearDistance, _Out float& outFarDistance);
+
+        /**
          * Создание зеркала серверного юнита (сфера-плейсхолдер) в
          * клиентской сцене. invalidEntity — лимит зеркал исчерпан.
          */

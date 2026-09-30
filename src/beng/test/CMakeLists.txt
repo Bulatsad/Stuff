@@ -12,7 +12,7 @@
 # ============================================================
 
 # Список групп: имя группы == суффикс файла test<group>.cpp
-set(beng_test_groups registry componentPool scene entity transform time dialogWindow sceneSave reflection commandHistory protocol)
+set(beng_test_groups registry componentPool scene entity transform time dialogWindow sceneSave reflection commandHistory protocol camera)
 
 # Дополнительные библиотеки групп (помимо обязательного beng-core).
 # dialogWindow рисует панель на ядре ImGui в headless-режиме
@@ -22,6 +22,10 @@ set(beng_test_group_libs_dialogWindow beng-editor-core)
 
 # protocol тестирует бинарный протокол Gravelands (gravelands-common)
 set(beng_test_group_libs_protocol gravelands-common)
+
+# camera тестирует CameraComponent/CameraSystem/ComponentCameraAdapter
+# (живут в beng-client)
+set(beng_test_group_libs_camera beng-client)
 
 # Список standalone-исполняемых групп (заполняется в цикле ниже)
 set(beng_test_group_exes)
