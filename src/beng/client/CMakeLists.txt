@@ -42,5 +42,8 @@ set_target_properties(beng-client PROPERTIES FOLDER "beng" LINKER_LANGUAGE CXX)
 # Корень инклюдов: все инклюды имеют вид <beng/client/...>, корень — src/beng
 target_include_directories(beng-client PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
-# beng-core даёт ECS-ядро, blib-graphics — SkinModel/Animator/RenderTarget
-target_link_libraries(beng-client PUBLIC beng-core blib-graphics)
+# beng-core даёт ECS-ядро, blib-graphics — SkinModel/Animator/RenderTarget,
+# beng-server — сетевой слой (ReplicationClient для оболочки клиента +
+# ServerApplication для local-server mode). Направление зависимости:
+# клиент → сетевой слой, цикла нет
+target_link_libraries(beng-client PUBLIC beng-core blib-graphics beng-server)

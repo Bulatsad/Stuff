@@ -4,6 +4,7 @@
 #include <beng/core/replicationClientState.h>
 #include <beng/core/replicationCodec.h>
 #include <beng/core/replicationFramer.h>
+#include <beng/core/time.h>
 
 #include <blib/blibint.h>
 #include <blib/network/tcpSocket.h>
@@ -23,9 +24,12 @@ namespace beng
      * Без потоков: опрос в кадре клиента (паттерн NetworkServer —
      * неблокирующие сокеты + WouldBlock-цикл, см. SERVER.md).
      *
+     * Интерполяция: poll() после разбора потока зовёт
+     * ReplicationClientState::renderMirror — зеркало рисует состояния
+     * с постоянным лагом interpolationDelayTicks (см. SERVER.md);
+     * время приёма сэмплов — внутренний beng::Time клиента.
+     *
      * Ограничения (MVP, см. SERVER.md):
-     * - снапшоты применяются НЕМЕДЛЕННО по приходу (интерполяция —
-     *   слой beng-client, фаза 3);
      * - декодированный снапшот живёт В КУЧЕ (GlobalAllocator) — его
      *   размер не умещается на стеке.
      */
@@ -56,7 +60,7 @@ namespace beng
 
         /**
          * Опрос: продвижение подключения, чтение Welcome/снапшотов,
-         * применение снапшотов к mirror-сцене.
+         * применение снапшотов к mirror-сцене + интерполяция.
          *
          * @param scene Mirror-сцена клиента (типы игры зарегистрированы);
          *        сцена передаётся каждый кадр — при сбросе сцены хостом
@@ -100,8 +104,9 @@ namespace beng
         void shutdown();
 
         /**
-         * Клиентское зеркало (применение снапшотов) — для сброса
-         * и диагностики хостом.
+         * Клиентское зеркало (применение снапшотов, события спавна/
+         * уничтожения, интерполяция) — для слива событий и сброса
+         * хостом.
          */
         ReplicationClientState& getMirror() { return this->mirror; }
 
@@ -123,6 +128,10 @@ namespace beng
 
         // Клиентское зеркало (применение снапшотов к сцене)
         ReplicationClientState mirror;
+
+        // Время клиента: секунды приёма снапшотов (интерполяция) —
+        // tick() в начале каждого poll
+        beng::Time time;
 
         // Декодированный снапшот — в куче (GlobalAllocator): структура
         // ~128 КБ, стек не резиновый (см. SERVER.md «Подводные камни»)

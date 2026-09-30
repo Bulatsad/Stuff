@@ -74,7 +74,9 @@ if(TARGET blib-network)
 	add_subdirectory(${beng_dir}/server)
 endif()
 
-# beng-client — рендер-ECS движка; требует blib-graphics (сейчас — Windows)
+# beng-client — рендер-ECS + клиентская оболочка (ClientApplication/IClientGame);
+# требует blib-graphics (сейчас — Windows) и beng-server (сетевой слой:
+# ReplicationClient, local-server) — клиент → сеть, цикла нет
 if(TARGET blib-graphics)
 	add_subdirectory(${beng_dir}/client)
 

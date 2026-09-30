@@ -3,6 +3,7 @@
 #include <beng/core/scene.h>
 
 #include <blib/core/console/console.h>
+#include <blib/system/memory/globalAllocator.h>
 
 #include <cstring>
 
@@ -11,10 +12,33 @@ namespace beng
     ReplicationClientState::ReplicationClientState()
         : wireTypeCount(0)
         , knownEntities(blib::memory::StdAllocatorAdapter<EntityID>(&this->containerAllocator))
+        , serverTickRate(0)
+        , slotPool(nullptr)
+        , freeSlotHead(interpolationSlotPoolSize)
+        , spawnEventCount(0)
+        , destroyEventCount(0)
     {
         for (buint32 w = 0; w < maxWireTypes; ++w)
         {
             this->wireToLocal[w] = invalidComponentType;
+        }
+
+        // Пул состояний интерполяции — в куче (GlobalAllocator):
+        // ~interpolationSlotPoolSize слотов не умещаются на стеке.
+        // Свободные слоты связываются списком при releaseAllSlots()
+        this->slotPool = static_cast<InterpolationFieldState*>(
+            blib::memory::GlobalAllocator::instance().allocate(
+                sizeof(InterpolationFieldState) * interpolationSlotPoolSize));
+        this->releaseAllSlots();
+    }
+
+    ReplicationClientState::~ReplicationClientState()
+    {
+        if (this->slotPool != nullptr)
+        {
+            blib::memory::GlobalAllocator::instance().deallocate(
+                this->slotPool, sizeof(InterpolationFieldState) * interpolationSlotPoolSize);
+            this->slotPool = nullptr;
         }
     }
 
@@ -26,6 +50,23 @@ namespace beng
             this->wireToLocal[w] = invalidComponentType;
         }
         this->knownEntities.clear();
+        this->serverTickRate = 0;
+        this->spawnEventCount = 0;
+        this->destroyEventCount = 0;
+        this->releaseAllSlots();
+    }
+
+    void ReplicationClientState::releaseAllSlots()
+    {
+        // Перестроить свободный список пула целиком (слоты не требуют
+        // очистки полей — валидность задаёт entityId/freeSlotHead)
+        for (buint32 i = 0; i < interpolationSlotPoolSize; ++i)
+        {
+            this->slotPool[i].entityId = invalidEntity;
+            this->slotPool[i].nextFree = i + 1;
+        }
+        this->slotPool[interpolationSlotPoolSize - 1].nextFree = interpolationSlotPoolSize;
+        this->freeSlotHead = 0;
     }
 
     bool ReplicationClientState::isKnown(EntityID id) const
@@ -59,6 +100,37 @@ namespace beng
                 return;
             }
         }
+    }
+
+    buint32 ReplicationClientState::takeSpawnEvents(_Out_opt EntityID* out, buint32 capacity)
+    {
+        const buint32 count = this->spawnEventCount < capacity ? this->spawnEventCount : capacity;
+        for (buint32 i = 0; i < count; ++i)
+        {
+            out[i] = this->spawnEvents[i];
+        }
+        // Остаток сдвигаем в начало (игра может сливать частями)
+        for (buint32 i = count; i < this->spawnEventCount; ++i)
+        {
+            this->spawnEvents[i - count] = this->spawnEvents[i];
+        }
+        this->spawnEventCount -= count;
+        return count;
+    }
+
+    buint32 ReplicationClientState::takeDestroyEvents(_Out_opt EntityID* out, buint32 capacity)
+    {
+        const buint32 count = this->destroyEventCount < capacity ? this->destroyEventCount : capacity;
+        for (buint32 i = 0; i < count; ++i)
+        {
+            out[i] = this->destroyEvents[i];
+        }
+        for (buint32 i = count; i < this->destroyEventCount; ++i)
+        {
+            this->destroyEvents[i - count] = this->destroyEvents[i];
+        }
+        this->destroyEventCount -= count;
+        return count;
     }
 
     bool ReplicationClientState::acceptWelcome(_In const Scene& scene,
@@ -125,13 +197,106 @@ namespace beng
         }
 
         this->wireTypeCount = welcome.typeCount;
+        this->serverTickRate = welcome.tickRate;
         outTickRate = welcome.tickRate;
         outPlayerEntity = welcome.playerEntityId;
         return true;
     }
 
+    ReplicationClientState::InterpolationFieldState* ReplicationClientState::findSlot(
+        EntityID entityId, buint8 wireTypeId, buint8 fieldIndex)
+    {
+        // Линейный перебор пула: зеркала MVP малы (единицы сущностей);
+        // размер пула — протокольные капы, см. шапку
+        for (buint32 i = 0; i < interpolationSlotPoolSize; ++i)
+        {
+            InterpolationFieldState& slot = this->slotPool[i];
+            if (slot.entityId == entityId && slot.wireTypeId == wireTypeId &&
+                slot.fieldIndex == fieldIndex)
+            {
+                return &slot;
+            }
+        }
+        return nullptr;
+    }
+
+    ReplicationClientState::InterpolationFieldState* ReplicationClientState::allocSlot(
+        EntityID entityId, buint8 wireTypeId, buint8 fieldIndex)
+    {
+        if (this->freeSlotHead >= interpolationSlotPoolSize)
+        {
+            // Пул исчерпан (мир больше протокольных капов) — поле
+            // применяется немедленно без интерполяции
+            static bool warned = false;
+            if (!warned)
+            {
+                __blib_log_warning("ReplicationClientState: interpolation slot pool exhausted");
+                warned = true;
+            }
+            return nullptr;
+        }
+
+        const buint32 index = this->freeSlotHead;
+        InterpolationFieldState& slot = this->slotPool[index];
+        this->freeSlotHead = slot.nextFree;
+
+        slot.entityId = entityId;
+        slot.wireTypeId = wireTypeId;
+        slot.fieldIndex = fieldIndex;
+        slot.start = 0;
+        slot.count = 0;
+        slot.nextFree = 0;
+        return &slot;
+    }
+
+    void ReplicationClientState::clearTypeSlots(EntityID entityId, buint8 wireTypeId)
+    {
+        // Full-ресинк компонента: кольца его полей переписываются —
+        // старые сэмплы забываются, слоты остаются (переиспользуются)
+        for (buint32 i = 0; i < interpolationSlotPoolSize; ++i)
+        {
+            InterpolationFieldState& slot = this->slotPool[i];
+            if (slot.entityId == entityId && slot.wireTypeId == wireTypeId)
+            {
+                slot.start = 0;
+                slot.count = 0;
+            }
+        }
+    }
+
+    void ReplicationClientState::freeEntitySlots(EntityID entityId)
+    {
+        for (buint32 i = 0; i < interpolationSlotPoolSize; ++i)
+        {
+            InterpolationFieldState& slot = this->slotPool[i];
+            if (slot.entityId == entityId)
+            {
+                slot.entityId = invalidEntity;
+                slot.nextFree = this->freeSlotHead;
+                this->freeSlotHead = i;
+            }
+        }
+    }
+
+    void ReplicationClientState::pushSample(_In_Out InterpolationFieldState& slot,
+        bfloat receiveTime, _In const FieldValue& value)
+    {
+        if (slot.count >= maxInterpolationSamples)
+        {
+            // Кольцо полное: старейший сэмпл вытесняется (кольцо
+            // «плывёт» — start сдвигается)
+            slot.start = (slot.start + 1) % maxInterpolationSamples;
+            slot.count = maxInterpolationSamples - 1;
+        }
+
+        const buint32 writeIndex = (slot.start + slot.count) % maxInterpolationSamples;
+        slot.samples[writeIndex].receiveTime = receiveTime;
+        slot.samples[writeIndex].value = value;
+        ++slot.count;
+    }
+
     bool ReplicationClientState::applyEntityComponents(_In Scene& scene, EntityID entityId,
-        _In const DecodedReplicationEntity& entity)
+        _In const DecodedReplicationEntity& entity, bfloat receiveTime)
     {
         for (buint32 c = 0; c < entity.componentCount; ++c)
         {
@@ -169,7 +334,15 @@ namespace beng
                 return false;
             }
 
-            // Применение полей через рефлексию (тип и kind сверяются)
+            // Full-ресинк: кольца интерполяции типа переписываются
+            if (component.full)
+            {
+                this->clearTypeSlots(entityId, component.wireTypeId);
+            }
+
+            // Применение полей через рефлексию (тип и kind сверяются).
+            // Интерполируемые поля не пишутся в сцену сразу — уходят
+            // в кольца сэмплов (renderMirror применяет их с задержкой)
             for (buint32 f = 0; f < component.fieldCount; ++f)
             {
                 const ReplicationFieldPatch& patch = component.fields[f];
@@ -178,13 +351,34 @@ namespace beng
                 {
                     return false;
                 }
-                field->setValue(*target, patch.value);
+
+                if (field->isInterpolated())
+                {
+                    InterpolationFieldState* slot = this->findSlot(
+                        entityId, component.wireTypeId, patch.fieldIndex);
+                    if (slot == nullptr)
+                    {
+                        slot = this->allocSlot(entityId, component.wireTypeId, patch.fieldIndex);
+                    }
+                    if (slot == nullptr)
+                    {
+                        // Пул исчерпан: деградация — применить сразу
+                        field->setValue(*target, patch.value);
+                        continue;
+                    }
+                    this->pushSample(*slot, receiveTime, patch.value);
+                }
+                else
+                {
+                    field->setValue(*target, patch.value);
+                }
             }
         }
         return true;
     }
 
-    bool ReplicationClientState::applySnapshot(_In Scene& scene, _In const DecodedReplicationSnapshot& snapshot)
+    bool ReplicationClientState::applySnapshot(_In Scene& scene,
+        _In const DecodedReplicationSnapshot& snapshot, bfloat receiveTime)
     {
         for (buint32 e = 0; e < snapshot.entityCount; ++e)
         {
@@ -198,6 +392,13 @@ namespace beng
                 {
                     scene.destroyEntity(entity.entityId);
                     this->forgetEntity(entity.entityId);
+                    this->freeEntitySlots(entity.entityId);
+
+                    if (this->destroyEventCount < maxSnapshotEntities)
+                    {
+                        this->destroyEvents[this->destroyEventCount] = entity.entityId;
+                        ++this->destroyEventCount;
+                    }
                 }
                 continue;
             }
@@ -215,9 +416,15 @@ namespace beng
                     continue;
                 }
                 this->rememberEntity(entityId);
+
+                if (this->spawnEventCount < maxSnapshotEntities)
+                {
+                    this->spawnEvents[this->spawnEventCount] = entityId;
+                    ++this->spawnEventCount;
+                }
             }
 
-            if (!this->applyEntityComponents(scene, entityId, entity))
+            if (!this->applyEntityComponents(scene, entityId, entity, receiveTime))
             {
                 __blib_log_error("ReplicationClientState: failed to apply entity %llu (tick %u)",
                     static_cast<unsigned long long>(entityId), snapshot.tickNumber);
@@ -225,6 +432,96 @@ namespace beng
             }
         }
         return true;
+    }
+
+    void ReplicationClientState::renderMirror(_In Scene& scene, bfloat nowSeconds)
+    {
+        if (this->serverTickRate == 0)
+        {
+            return; // Welcome не принят — интерполировать нечего
+        }
+
+        // Время рендера: постоянный лаг в тиках (см. шапку)
+        const bfloat delaySeconds =
+            static_cast<bfloat>(interpolationDelayTicks) / static_cast<bfloat>(this->serverTickRate);
+        const bfloat renderTime = nowSeconds - delaySeconds;
+
+        for (buint32 i = 0; i < interpolationSlotPoolSize; ++i)
+        {
+            const InterpolationFieldState& slot = this->slotPool[i];
+            if (slot.entityId == invalidEntity || slot.count == 0)
+            {
+                continue;
+            }
+
+            const ComponentType localType = this->wireToLocal[slot.wireTypeId];
+            if (localType == invalidComponentType)
+            {
+                continue;
+            }
+
+            IComponent* component = scene.tryGetComponent(slot.entityId, localType);
+            const IComponentField* field = this->schema.getReplicatedField(localType, slot.fieldIndex);
+            if (component == nullptr || field == nullptr)
+            {
+                continue;
+            }
+
+            const InterpolationSample& oldest = slot.samples[slot.start];
+            const InterpolationSample& newest =
+                slot.samples[(slot.start + slot.count - 1) % maxInterpolationSamples];
+
+            if (slot.count == 1 || renderTime <= oldest.receiveTime)
+            {
+                // Буфер ещё не наполнился (или время рендера раньше
+                // старейшего сэмпла) — держим старейший сэмпл
+                field->setValue(*component, oldest.value);
+                continue;
+            }
+            if (renderTime >= newest.receiveTime)
+            {
+                // Время рендера новее новейшего сэмпла (сервер молчит
+                // или отстаёт) — держим новейший, без экстраполяции
+                field->setValue(*component, newest.value);
+                continue;
+            }
+
+            // Пара сэмплов, охватывающая время рендера
+            buint32 a = slot.start;
+            buint32 b = (a + 1) % maxInterpolationSamples;
+            while (slot.samples[b].receiveTime < renderTime)
+            {
+                a = b;
+                b = (b + 1) % maxInterpolationSamples;
+            }
+
+            const InterpolationSample& prev = slot.samples[a];
+            const InterpolationSample& next = slot.samples[b];
+
+            if (next.receiveTime <= prev.receiveTime)
+            {
+                // Вырожденный интервал (сэмплы одного времени) —
+                // применяем новейший
+                field->setValue(*component, next.value);
+                continue;
+            }
+
+            const bfloat alpha = (renderTime - prev.receiveTime) / (next.receiveTime - prev.receiveTime);
+
+            // MVP: lerp только Vector3 (позиция); иной kind с флагом
+            // interpolated — применяется новейший сэмпл (см. шапку)
+            if (prev.value.kind == FieldValue::Kind::Vector3 &&
+                next.value.kind == FieldValue::Kind::Vector3)
+            {
+                FieldValue lerped = FieldValue::fromVector3(
+                    prev.value.vector3Value + (next.value.vector3Value - prev.value.vector3Value) * alpha);
+                field->setValue(*component, lerped);
+            }
+            else
+            {
+                field->setValue(*component, next.value);
+            }
+        }
     }
 
 } // namespace beng

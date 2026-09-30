@@ -601,6 +601,12 @@ namespace beng
         // ссылка на сущность-родителя в зеркале клиента может быть
         // невалидной (родитель может не реплицироваться) — иерархии
         // зеркал — TODO (см. SERVER.md)
+        //
+        // position дополнительно помечен interpolated: зеркало клиента
+        // интерполирует позицию между снапшотами (движение плавное,
+        // постоянный лаг = interpolationDelayTicks — см. SERVER.md);
+        // scale интерполировать не надо (меняется редко, ступеньки
+        // незаметны)
         const FunctionField s_positionField(
             reflectionFieldPosition, FieldValue::Kind::Vector3,
             [](_In const IComponent& component, _Out FieldValue& outValue)
@@ -612,7 +618,7 @@ namespace beng
             {
                 static_cast<TransformComponent&>(component).setLocalPosition(value.vector3Value);
             },
-            true);
+            true, true);
 
         const FunctionField s_scaleField(
             reflectionFieldScale, FieldValue::Kind::Vector3,

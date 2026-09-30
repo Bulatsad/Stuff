@@ -136,7 +136,9 @@ namespace beng
             return;
         }
 
-        if (!this->mirror.applySnapshot(scene, *this->decodedSnapshot))
+        // Время приёма — секунды внутреннего таймера клиента (кольца
+        // интерполяции зеркала, см. SERVER.md)
+        if (!this->mirror.applySnapshot(scene, *this->decodedSnapshot, this->time.getTotalTime()))
         {
             __blib_log_error("ReplicationClient: snapshot apply failed");
         }
@@ -199,6 +201,9 @@ namespace beng
 
     void ReplicationClient::poll(_In Scene& scene)
     {
+        // Время клиента: секунды приёма сэмплов интерполяции
+        this->time.tick();
+
         if (this->connection == Connection::Connecting)
         {
             // Асинхронный connect: WouldBlock = «в процессе»
@@ -223,6 +228,10 @@ namespace beng
         {
             this->receiveStream(scene);
         }
+
+        // Интерполяция каждый кадр (и после разбора потока, и когда
+        // сеть молчит): зеркало рисует состояния с постоянным лагом
+        this->mirror.renderMirror(scene, this->time.getTotalTime());
     }
 
 } // namespace beng

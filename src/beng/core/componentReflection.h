@@ -122,6 +122,20 @@ namespace beng
         virtual bool isReplicated() const { return false; }
 
         /**
+         * Интерполируется ли поле на клиенте между снапшотами (флаг
+         * interpolated — см. FunctionField; по умолчанию false).
+         *
+         * Чисто клиентская презентация: сервер о флаге не знает, в
+         * хеш сверки схем он НЕ входит. Зеркало (ReplicationClientState)
+         * буферизует такие поля в кольцо сэмплов и пишет в сцену
+         * интерполированные значения (см. replicationClientState.h);
+         * неинтерполируемые поля применяются сразу по приходу снапшота.
+         * Имеет смысл только для непрерывных величин (позиция) и в
+         * MVP поддерживается только kind Vector3.
+         */
+        virtual bool isInterpolated() const { return false; }
+
+        /**
          * Прочитать значение поля компонента.
          *
          * @param component Компонент типа, которому принадлежит поле
@@ -160,6 +174,10 @@ namespace beng
      * и сервере (позиция, здоровье и т.п.); локальные кеши ввода
      * (moveX/moveZ) реплицировать НЕ надо.
      *
+     * Флаг interpolated (см. IComponentField::isInterpolated) — для
+     * непрерывных реплицируемых полей (позиция): зеркало клиента
+     * интерполирует их между снапшотами вместо ступенчатого применения.
+     *
      * Пример (в .cpp компонента):
      *   static const beng::FunctionField s_intensityField(
      *       "intensity", beng::FieldValue::Kind::Float,
@@ -180,14 +198,16 @@ namespace beng
         FieldGetter getter;
         FieldSetter setter;
         bool replicated;
+        bool interpolated;
 
     public:
-        FunctionField(_In const char* name, FieldValue::Kind kind, _In FieldGetter getter, _In FieldSetter setter, bool replicated = false)
+        FunctionField(_In const char* name, FieldValue::Kind kind, _In FieldGetter getter, _In FieldSetter setter, bool replicated = false, bool interpolated = false)
             : name(name)
             , kind(kind)
             , getter(getter)
             , setter(setter)
             , replicated(replicated)
+            , interpolated(interpolated)
         {
         }
 
@@ -200,6 +220,12 @@ namespace beng
          * к классу и replicationSchema.h).
          */
         bool isReplicated() const __blib_override { return this->replicated; }
+
+        /**
+         * Интерполируется ли поле на клиенте между снапшотами
+         * (см. IComponentField::isInterpolated).
+         */
+        bool isInterpolated() const __blib_override { return this->interpolated; }
 
         void getValue(_In const IComponent& component, _Out FieldValue& outValue) const __blib_override
         {
