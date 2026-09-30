@@ -1,8 +1,8 @@
 # gravelands-plugin — «игровая сторона» единого эдитора (плагин-модель,
 # см. ARCHITECTURE.md): GravelandsEditorHost поверх каркаса
-# EditorApplication + фабрика gravelandsCreateEditorHost() —
-# единственная точка входа, на DLL-этапе она станет экспортируемым
-# символом gravelands.dll.
+# EditorApplication + игровой модуль (контракт GameModuleFunctions,
+# точка входа bengGetGameModule — beng/editor/gameModule.h) —
+# единственный экспортируемый символ gravelands.dll.
 #
 # gravelands_plugin_type:
 #   STATIC (дефолт) — плагин линкуется в beng-editor.exe: удобная
@@ -26,11 +26,17 @@ add_library(gravelands-plugin ${gravelands_plugin_type}
     ${plugin_impl_src}
 )
 
-# DLL-режим: фабрики помечаются dllexport (GRAVELANDS_PLUGIN_EXPORTS) —
-# единственные экспортируемые символы плагина; эдитор берёт их через
-# GetProcAddress. Статический режим — макрос пустой
+# DLL-режим: точка входа модуля помечается dllexport
+# (GRAVELANDS_PLUGIN_EXPORTS) — единственный экспортируемый символ
+# плагина; эдитор берёт его через GetProcAddress по стабильному
+# имени (gameModuleEntryName). Статический режим — макрос пустой
 if(gravelands_plugin_type STREQUAL "SHARED")
     target_compile_definitions(gravelands-plugin PRIVATE GRAVELANDS_PLUGIN_EXPORTS)
+
+    # Имя DLL — по стабильному id игры (контракт: имя DLL = id игры =
+    # значение --game; см. common/config.h, gameModuleName) —
+    # дефолтное имя таргета gravelands-plugin эдитор не нашёл бы
+    set_target_properties(gravelands-plugin PROPERTIES OUTPUT_NAME "gravelands")
 endif()
 
 set_target_properties(gravelands-plugin PROPERTIES FOLDER "gravelands/plugin" LINKER_LANGUAGE CXX)

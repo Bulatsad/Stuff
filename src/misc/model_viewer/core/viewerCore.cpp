@@ -249,8 +249,13 @@ namespace modelviewer
         this->shutdown();
     }
 
-    bool ViewerCore::initialize()
+    bool ViewerCore::initialize(
+        _In uint16_t windowWidth, _In uint16_t windowHeight, _In const char* windowTitle)
     {
+        (void)windowWidth;
+        (void)windowHeight;
+        (void)windowTitle;
+
         auto& globalAllocator = blib::memory::GlobalAllocator::instance();
 
         // Сценные панели каркаса (Scene Hierarchy/Inspector) вьюверу
@@ -266,7 +271,11 @@ namespace modelviewer
         this->impl = static_cast<ViewerCoreImpl*>(globalAllocator.allocate(sizeof(ViewerCoreImpl)));
         new (this->impl) ViewerCoreImpl();
 
-        return this->EditorApplication::initialize(windowWidth, windowHeight, windowTitle);
+        // Окно — собственные параметры вьювера (см. константы выше;
+        // квалифицированы по namespace — параметры их затеняют);
+        // переданные вызывающим игнорируются — инструмент, не плагин
+        return this->EditorApplication::initialize(
+            modelviewer::windowWidth, modelviewer::windowHeight, modelviewer::windowTitle);
     }
 
     void ViewerCore::shutdown()

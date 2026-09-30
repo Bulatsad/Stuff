@@ -13,6 +13,7 @@ file (GLOB panel_impl_src "panels/*.cpp")
 # Хидеры включены в таргет явно — чтобы быть видимыми в Solution Explorer
 GroupSoureces("${HeaderGroupPrefix}/editor" "${CMAKE_CURRENT_SOURCE_DIR}/editorApplication.h")
 GroupSoureces("${HeaderGroupPrefix}/editor" "${CMAKE_CURRENT_SOURCE_DIR}/editorIcons.h")
+GroupSoureces("${HeaderGroupPrefix}/editor" "${CMAKE_CURRENT_SOURCE_DIR}/gameModule.h")
 GroupSoureces("${SourceGroupPrefix}/editor" "${CMAKE_CURRENT_SOURCE_DIR}/editorApplication.cpp")
 GroupSoureces("${HeaderGroupPrefix}/editor/panels" "${panel_header_src}")
 GroupSoureces("${SourceGroupPrefix}/editor/panels" "${panel_impl_src}")
@@ -21,6 +22,7 @@ GroupSoureces("${SourceGroupPrefix}/editor/main" "${CMAKE_CURRENT_SOURCE_DIR}/ma
 beng_add_module(beng-editor-core
     ${CMAKE_CURRENT_SOURCE_DIR}/editorApplication.h
     ${CMAKE_CURRENT_SOURCE_DIR}/editorIcons.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/gameModule.h
     ${CMAKE_CURRENT_SOURCE_DIR}/editorApplication.cpp
 
     ${panel_header_src}

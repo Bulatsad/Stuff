@@ -92,16 +92,23 @@ add_subdirectory(misc/gravelands)
 # Единый эдитор с плагином игры (плагин-модель, см. ARCHITECTURE.md,
 # «Эдитор»). Режим доставки — gravelands_plugin_type:
 #   STATIC (этап 1): плагин линкуется в beng-editor.exe — удобная
-#     отладка; exe зовёт фабрику напрямую (дефайн ..._STATIC);
+#     отладка; exe включает заголовок игры (BENG_EDITOR_STATIC_GAME_HEADER)
+#     и зовёт точку входа bengGetGameModule() напрямую;
 #   SHARED (этап 2): gravelands.dll грузится эдитором через
-#     LoadLibrary/GetProcAddress (дефайн ..._DLL) — exe игру не знает.
-# Код плагина один и тот же — меняется только способ доставки.
+#     LoadLibrary/GetProcAddress (BENG_EDITOR_GAME_DLL) — exe игру
+#     не знает; имя DLL по умолчанию — BENG_EDITOR_DEFAULT_GAME_NAME
+#     (переопределяется опцией --game=<id>).
+# Контракт в обоих режимах один — GameModuleFunctions
+# (beng/editor/gameModule.h); код плагина не меняется.
 if(TARGET beng-editor AND TARGET gravelands-plugin)
 	if(gravelands_plugin_type STREQUAL "SHARED")
-		target_compile_definitions(beng-editor PRIVATE BENG_EDITOR_GRAVELANDS_DLL)
+		target_compile_definitions(beng-editor PRIVATE
+			BENG_EDITOR_GAME_DLL
+			BENG_EDITOR_DEFAULT_GAME_NAME=\"gravelands\")
 	else()
 		target_link_libraries(beng-editor PRIVATE gravelands-plugin)
-		target_compile_definitions(beng-editor PRIVATE BENG_EDITOR_GRAVELANDS_STATIC)
+		target_compile_definitions(beng-editor PRIVATE
+			BENG_EDITOR_STATIC_GAME_HEADER=\"gravelands/plugin/gravelandsEditorHost.h\")
 	endif()
 endif()
 

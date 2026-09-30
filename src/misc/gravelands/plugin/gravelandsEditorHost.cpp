@@ -31,12 +31,6 @@ namespace gravelands
 {
     namespace
     {
-        // Параметры окна единого эдитора с игрой Gravelands
-        // (правило проекта: без вшитых литералов)
-        constexpr uint16_t editorWindowWidth = 1280;
-        constexpr uint16_t editorWindowHeight = 720;
-        constexpr const char* editorWindowTitle = "beng-editor";
-
         // Имя консольной команды перезагрузки шейдеров (см. F5)
         constexpr const char* hotreloadCommand = "hotreload";
 
@@ -725,7 +719,8 @@ namespace gravelands
         this->shutdown();
     }
 
-    bool GravelandsEditorHost::initialize()
+    bool GravelandsEditorHost::initialize(
+        _In uint16_t windowWidth, _In uint16_t windowHeight, _In const char* windowTitle)
     {
         auto& globalAllocator = blib::memory::GlobalAllocator::instance();
 
@@ -736,7 +731,9 @@ namespace gravelands
         this->impl = static_cast<GravelandsEditorHostImpl*>(globalAllocator.allocate(sizeof(GravelandsEditorHostImpl)));
         new (this->impl) GravelandsEditorHostImpl();
 
-        return this->EditorApplication::initialize(editorWindowWidth, editorWindowHeight, editorWindowTitle);
+        // Параметры окна — от вызывающего (плагин-контракт зовёт
+        // initialize() без аргументов — дефолты каркаса)
+        return this->EditorApplication::initialize(windowWidth, windowHeight, windowTitle);
     }
 
     void GravelandsEditorHost::shutdown()
@@ -770,16 +767,17 @@ namespace gravelands
         this->EditorApplication::shutdown();
     }
 
-    GravelandsEditorHost* gravelandsCreateEditorHost()
+    beng::editor::EditorApplication* gravelandsCreateEditorHost()
     {
-        // Фабрика — единственная точка входа плагина (на DLL-этапе —
-        // экспортируемый символ gravelands.dll). Память — GlobalAllocator;
-        // владелец гасит парной gravelandsDestroyEditorHost
+        // Фабрика хоста (внутренняя функция модуля): снаружи модуль
+        // торчит только точкой входа bengGetGameModule (см. ниже).
+        // Память — GlobalAllocator; владелец гасит парной
+        // gravelandsDestroyEditorHost
         auto& globalAllocator = blib::memory::GlobalAllocator::instance();
         GravelandsEditorHost* host = static_cast<GravelandsEditorHost*>(
             globalAllocator.allocate(sizeof(GravelandsEditorHost)));
         new (host) GravelandsEditorHost();
-        return host;
+        return static_cast<beng::editor::EditorApplication*>(host);
     }
 
     void gravelandsDestroyEditorHost(_In beng::editor::EditorApplication* host)
@@ -797,4 +795,35 @@ namespace gravelands
         blib::memory::GlobalAllocator::instance().deallocate(typed, sizeof(GravelandsEditorHost));
     }
 
+    namespace
+    {
+        // Статический id игры — из common/config.h (контрактный
+        // идентификатор: имя gravelands.dll и значение --game)
+        const char* getGameModuleName()
+        {
+            return gameModuleName;
+        }
+
+        // Игровой модуль эдитора: контракт GameModuleFunctions
+        // (beng/editor/gameModule.h) — единственная точка стыковки
+        // «эдитор ↔ игра». Память — статическая, освобождать не нужно
+        const beng::editor::GameModuleFunctions gameModuleFunctions = {
+            &getGameModuleName,
+            &gravelandsCreateEditorHost,
+            &gravelandsDestroyEditorHost,
+            beng::editor::gameModuleContractVersion
+        };
+    }
+
 } // namespace gravelands
+
+// Точка входа игрового модуля — глобальный extern "C"-символ
+// (объявление — в заголовке, ВНЕ namespace gravelands): единственный
+// экспортируемый символ gravelands.dll (стабильное имя —
+// gameModuleEntryName); статический режим зовёт её напрямую
+const beng::editor::GameModuleFunctions* bengGetGameModule()
+{
+    // Статическая структура контракта (см. выше): память не
+    // требует освобождения
+    return &gravelands::gameModuleFunctions;
+}

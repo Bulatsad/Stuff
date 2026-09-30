@@ -4,7 +4,7 @@
 > (`blib` → `beng` → `game`), требования к движку beng и целевую
 > архитектуру референсной игры (диаблоид). Статус: план, не код.
 > Обновляется вместе с развитием кодовой базы.
-> Сверено: 2026-09-29
+> Сверено: 2026-09-30
 
 ---
 
@@ -194,16 +194,19 @@ core-библиотеку — см. раздел про эдитор.
 
 ```
 beng-editor.exe (единственный эдитор, аналог UnrealEditor.exe — готов,
-                 оба режима доставки плагина)
+                 оба режима доставки плагина; НЕ знает ни одной игры —
+                 только контракт GameModuleFunctions, см. ниже)
    ├── EditorApplication (beng-editor-core.dll: окно, вьюпорт, панели, раскладка,
-   │     сцена с движковыми типами, gizmo, undo/redo; хуки хоста on*())
-   ├── плагин игры (gravelands-plugin): GravelandsEditorHost + extern "C"-фабрики
-   │     gravelandsCreateEditorHost/gravelandsDestroyEditorHost — единственная
-   │     точка входа; этап 1 — статический линк (gravelands_plugin_type=STATIC),
+   │     сцена с движковыми типами, gizmo, undo/redo; хуки хоста on*();
+   │     initialize/shutdown — ВИРТУАЛЬНЫЕ: плагин-контракт зовёт их через
+   │     базовый указатель — диспетчеризация обязана попадать в override хоста)
+   ├── плагин игры (gravelands-plugin): GravelandsEditorHost + игровой модуль —
+   │     единственная точка входа bengGetGameModule() (extern "C", глобальный
+   │     символ; этап 1 — статический линк (gravelands_plugin_type=STATIC),
    │     этап 2 — gravelands.dll через LoadLibrary/GetProcAddress (SHARED) —
-   │     exe игру не знает
+   │     exe игру не знает; id игры = имя DLL = значение --game)
    └── Play mode: хостит gravelands-client-core in-process + gravelands-server-core in-process
-        (связь между ними — loopback TCP, сетевой код-путь остаётся настоящим)
+         (связь между ними — loopback TCP, сетевой код-путь остаётся настоящим)
 ```
 
 - **Shared-сборка (сделано, 2026-09-28):** blib и beng собираются как DLL
@@ -229,9 +232,24 @@ beng-editor.exe (единственный эдитор, аналог UnrealEdito
   хостит общий `gravelands::World` в сцене эдитора (та же сцена, что у
   клиента — эдитор правит игру), подключает `scene_save`/`scene_load`,
   дебаг-свет и hot-reload шейдеров. Статический линк и DLL используют
-  одну фабрику `gravelandsCreateEditorHost()` — переход на DLL меняет
-  способ доставки, не код плагина; статический режим остаётся удобным
-  режимом отладки и после DLL-этапа.
+  одну точку входа `bengGetGameModule()` (игровой модуль, контракт
+  `GameModuleFunctions`) — переход на DLL меняет способ доставки, не код
+  плагина; статический режим остаётся удобным режимом отладки и после
+  DLL-этапа.
+- **Контракт «эдитор ↔ игра» (`GameModuleFunctions`, сделан 2026-09-30):**
+  `beng/editor/gameModule.h` — POD-структура (стабильный ABI): стабильный
+  id игры `getGameName()` (= имя DLL = значение `--game=<id>`), фабрики
+  хоста `createEditorHost()`/`destroyEditorHost()` (память —
+  GlobalAllocator, конкретный тип известен только плагину), версия
+  контракта (сверка — fatal). Точка входа — `bengGetGameModule()`
+  (extern "C", глобальный символ, стабильное имя `gameModuleEntryName`).
+  Загрузчик `beng-editor/main/main.cpp` игра-агностичен: DLL-режим —
+  `LoadLibrary("<id>.dll")` + GetProcAddress; статический — заголовок
+  игры и прямой вызов (дефайны `BENG_EDITOR_STATIC_GAME_HEADER`/
+  `BENG_EDITOR_GAME_DLL` + `BENG_EDITOR_DEFAULT_GAME_NAME` ставит игра
+  через CMake); без опций — игра по умолчанию, без игры — пустая сцена.
+  Имя DLL плагина = id игры (CMake `OUTPUT_NAME`; дефолтное имя таргета
+  `gravelands-plugin` эдитор не нашёл бы).
 - **Inspector строит поля из дескрипторов рефлексии beng-core** — эдитор
   не знает типов игры. **Сделано (2026-09-28):** `SceneHierarchyPanel`
   (сущности + компоненты + выбор + Create/Delete) и `InspectorPanel`
@@ -261,13 +279,15 @@ beng-editor.exe (единственный эдитор, аналог UnrealEdito
    (`T::componentTypeName`, литерал из класса — работает из любого модуля);
    коллизия имени в сцене — fatal, guard — `isRegisteredComponentType<T>()`.
    Осталось: `registerGameTypes` для эдитора (имена + рефлексия).
-3. **Стабильный интерфейс эдитор ↔ игра** (`IGameModule`): регистрация типов,
-   хуки сериализации, жизненный цикл PIE. **Задел сделан:** хук-интерфейс
-   `EditorApplication::on*()` + extern "C"-фабрики плагина
-   (`gravelandsCreateEditorHost`/`gravelandsDestroyEditorHost` — единственные
-   экспортируемые символы gravelands.dll, эдитор берёт их через
-   GetProcAddress). Полноценный `IGameModule` вырастет на этапе PIE
-   (жизненный цикл симуляции, команды play/stop).
+3. **Стабильный интерфейс эдитор ↔ игра.** **Сделано (2026-09-30):**
+   контракт `GameModuleFunctions` + точка входа `bengGetGameModule`
+   (см. выше «Контракт "эдитор ↔ игра"»); хук-интерфейс каркаса
+   `EditorApplication::on*()` + `initialize`/`shutdown` — **виртуальные**
+   (плагин-контракт зовёт через базовый указатель: без virtual
+   диспетчеризации impl хоста не создался бы — AV на старте; грабли
+   задокументированы в BENG.md). Полноценный `IGameModule` с жизненным
+   циклом PIE (команды play/stop от каркаса) — остаётся фьюче-этапом
+   эдитора.
 4. **Экспорт символов: сделан (2026-09-28).** `__blib_api`-семейство и
    `__beng_api` — настоящие `dllexport` при сборке модуля; потребители —
    без декораций (auto-import линкера), данные — через data-макросы.
@@ -285,10 +305,14 @@ beng-editor.exe (единственный эдитор, аналог UnrealEdito
 явная регистрация, версионированный формат). **Этап 1 (статический линк) —
 сделан (2026-09-28):** плагин игры линкуется в эдитор через CMake-опцию
 `gravelands_plugin_type` (STATIC — дефолт/отладка, SHARED — DLL-этап).
-**Этап 2 (DLL) — сделан (2026-09-28):** shared blib/beng, gravelands.dll
-с единственной точкой входа (extern "C"-фабрики), загрузчик в
+**Этап 2 (DLL) — сделан (2026-09-28), доведён до рабочего запуска
+(2026-09-30):** shared blib/beng, gravelands.dll с единственной точкой
+входа (игровой модуль, контракт `GameModuleFunctions`), загрузчик в
 `beng-editor.exe` (LoadLibrary/GetProcAddress, гашение парной фабрикой,
-FreeLibrary). Код плагина один и тот же — меняется только способ доставки.
+FreeLibrary); починено имя DLL (= id игры, `OUTPUT_NAME` — до этого
+эдитор искал несуществующий файл) и виртуализированы
+`initialize`/`shutdown` каркаса. Код плагина один и тот же — меняется
+только способ доставки; оба режима проверены запуском эдитора.
 
 ---
 
@@ -357,8 +381,10 @@ src/
    см. BENG.md; первый хост — model_viewer) + тонкий `beng-editor.exe` —
    **сделан**; Inspector через рефлексию + Hierarchy + selection-сервис +
    gizmo-манипулятор (W/E/R) + выбор кликом + undo/redo — **сделано**;
-   плагин игры (этап 1 — статический линк через фабрику, **сделан**;
-   этап 2 — DLL, **сделан**); **PIE — сделан (2026-09-28)**: `PieSession`
+   плагин игры (этап 1 — статический линк, **сделан**; этап 2 — DLL,
+   **сделан**; контракт `GameModuleFunctions` + игра-агностичный
+   загрузчик `--game=<id>` — **сделан 2026-09-30**, оба режима проверены
+   запуском); **PIE — сделан (2026-09-28)**: `PieSession`
    (in-process хостинг сервера + клиента, loopback TCP — настоящий
    сетевой путь), Play/Stop в эдиторе; докинг, наконечники/плоскости
    gizmo — TODO.
@@ -394,11 +420,12 @@ src/
 - **Мир Gravelands вынесен в `gravelands-world` (2026-09-28):** `World`
   (ECS-сцена + контент + scene_save/load + дебаг-свет) — общий для
   клиента и эдитора; `ClientCore` ужат до окна/камеры/ввода/презентации.
-- **Плагин Gravelands в эдиторе, этап 1 (2026-09-28):** `gravelands-plugin`
-  (GravelandsEditorHost + фабрика `gravelandsCreateEditorHost()`) линкуется
-  в `beng-editor.exe` статически (`gravelands_plugin_type=STATIC`, дефайн
-  `BENG_EDITOR_GRAVELANDS_STATIC`) — единый эдитор правит мир Gravelands;
-  на DLL-этапе та же фабрика станет экспортом gravelands.dll.
+- **Плагин Gravelands в эдиторе, этап 1 (2026-09-28; контракт — 2026-09-30):**
+  `gravelands-plugin` (GravelandsEditorHost + игровой модуль, точка входа
+  `bengGetGameModule()`) линкуется в `beng-editor.exe` статически
+  (`gravelands_plugin_type=STATIC`, дефайн
+  `BENG_EDITOR_STATIC_GAME_HEADER`) — единый эдитор правит мир Gravelands;
+  на DLL-этапе та же точка входа — экспорт gravelands.dll.
 - **Рефлексия + Inspector (2026-09-28):** `componentReflection.h` в beng-core
   (FieldValue/FunctionField/ComponentTypeDescriptor), дескрипторы в сцене
   per-тип; панели `SceneHierarchyPanel`/`InspectorPanel`; `Scene::reset()`
@@ -432,6 +459,16 @@ src/
   формулой сервера, реконсиляция снапом при расхождении > порога);
   тикрейт 30→60 Гц; PIE-перф (уменьшенное окно клиента, пост-пасс off,
   debug-лог кадрового времени).
+- **Контракт `GameModuleFunctions` (2026-09-30):** игровой модуль
+  (`beng/editor/gameModule.h`: id игры + фабрики хоста + версия контракта),
+  единственная точка входа плагина — `bengGetGameModule()`; загрузчик
+  `beng-editor` игра-агностичен (заголовок/имя игры — дефайны CMake,
+  выбор — `--game=<id>` + `BENG_EDITOR_DEFAULT_GAME_NAME`); имя DLL =
+  id игры (`OUTPUT_NAME`); `initialize`/`shutdown` каркаса — virtual
+  (плагин-контракт зовёт через базовый указатель). Оба режима
+  (STATIC/SHARED) проверены запуском эдитора + smoke-сценариями
+  `--game`. Удалён рудимент `blib/graphics/imageref.h` (не используется —
+  в ResourceManager другой интерфейс).
 
 **Осталось (по roadmap):**
 

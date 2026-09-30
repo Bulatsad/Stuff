@@ -1,10 +1,11 @@
 #pragma once
 
 #include <beng/editor/editorApplication.h>
+#include <beng/editor/gameModule.h>
 
-// Макрос экспорта фабрик плагина: dllexport при сборке gravelands.dll
-// (CMake задаёт GRAVELANDS_PLUGIN_EXPORTS), пустой при статической
-// линковке (этап 1 плагин-модели, см. ARCHITECTURE.md)
+// Макрос экспорта точки входа плагина: dllexport при сборке
+// gravelands.dll (CMake задаёт GRAVELANDS_PLUGIN_EXPORTS), пустой
+// при статической линковке (этап 1 плагин-модели, см. ARCHITECTURE.md)
 #ifndef GRAVELANDS_PLUGIN_API
 #ifdef GRAVELANDS_PLUGIN_EXPORTS
 #define GRAVELANDS_PLUGIN_API __declspec(dllexport)
@@ -27,8 +28,8 @@ namespace gravelands
      * hot-reload шейдеров.
      *
      * На DLL-этапе этот класс станет содержимым gravelands.dll:
-     * фабрика `gravelandsCreateEditorHost()` превратится в
-     * экспортируемый символ плагина, код хоста не изменится.
+     * эдитор получает его через контракт GameModuleFunctions
+     * (bengGetGameModule — см. ниже), код хоста не изменился.
      * Пока (этап 1) плагин линкуется в `beng-editor.exe` статически
      * (CMake-опция `gravelands_plugin_type`) — это удобный режим
      * отладки, меняется только способ доставки, не код игры.
@@ -68,27 +69,33 @@ namespace gravelands
         GravelandsEditorHost& operator=(const GravelandsEditorHost&) = delete;
 
         /**
-         * Инициализация: impl хоста (мир) + каркас EditorApplication
-         * (окно, FBO, камера, ImGui, сцена эдитора).
+         * Инициализация (override каркаса): impl хоста (мир)
+         * создаётся ДО каркасного EditorApplication::initialize —
+         * хуки onInitialize() работают уже внутри него. Плагин-
+         * контракт зовёт initialize() через базовый указатель —
+         * виртуальная диспетчеризация обязательна (см. editorApplication.h).
          * @return true при успехе
          */
-        bool initialize();
+        bool initialize(
+            _In uint16_t windowWidth = beng::editor::EditorApplication::editorDefaultWindowWidth,
+            _In uint16_t windowHeight = beng::editor::EditorApplication::editorDefaultWindowHeight,
+            _In const char* windowTitle = beng::editor::EditorApplication::editorDefaultWindowTitle) __blib_override;
 
         /**
-         * Корректное гашение (идемпотентно): мир разрушается ДО
-         * гашения каркаса (меши должны умереть раньше GL-контекста).
-         * Скрывает базовый EditorApplication::shutdown() — см. .cpp.
+         * Корректное гашение (идемпотентно, override каркаса): мир
+         * разрушается ДО гашения каркаса (меши должны умереть раньше
+         * GL-контекста) — см. .cpp.
          */
-        void shutdown();
+        void shutdown() __blib_override;
 
         // tick()/isRunning() — наследуются от EditorApplication
     };
 
     /**
-     * Фабрика игрового модуля эдитора — единственная точка входа
-     * плагина: на DLL-этапе это экспортируемый символ gravelands.dll
-     * (extern "C" — стабильное недекорированное имя для GetProcAddress;
-     * см. ARCHITECTURE.md, «Сложности плагин-модели»).
+     * Фабрика хоста эдитора игры — внутренняя функция модуля
+     * (см. gravelandsEditorHost.cpp): на DLL-этапе наружу торчит
+     * только точка входа bengGetGameModule, статический режим зовёт
+     * её же напрямую.
      *
      * Память — через GlobalAllocator (shared blib — один на процесс);
      * владелец гасит хост ПАРНОЙ функцией gravelandsDestroyEditorHost
@@ -96,12 +103,21 @@ namespace gravelands
      * самому вызывать деструктор нельзя: в DLL-режиме вызывающий не
      * знает конкретного типа хоста.
      */
-    extern "C" GRAVELANDS_PLUGIN_API GravelandsEditorHost* gravelandsCreateEditorHost();
+    beng::editor::EditorApplication* gravelandsCreateEditorHost();
 
     /**
      * Парная фабрике функция уничтожения хоста: гасит и возвращает
      * память GlobalAllocator'у (конкретный тип известен только плагину).
      */
-    extern "C" GRAVELANDS_PLUGIN_API void gravelandsDestroyEditorHost(_In beng::editor::EditorApplication* host);
+    void gravelandsDestroyEditorHost(_In beng::editor::EditorApplication* host);
 
 } // namespace gravelands
+
+// Точка входа игрового модуля — ВНЕ namespace: глобальный extern "C"
+// символ bengGetGameModule (стабильное имя контракта — см.
+// beng::editor::gameModuleEntryName в beng/editor/gameModule.h).
+// Эдитор зовёт её БЕЗ квалификации (игровых namespace'ов не знает):
+// DLL-режим — GetProcAddress, статический — прямой вызов. Возвращает
+// статическую структуру контракта GameModuleFunctions — память не
+// требует освобождения.
+extern "C" GRAVELANDS_PLUGIN_API const beng::editor::GameModuleFunctions* bengGetGameModule();

@@ -11,6 +11,12 @@ namespace gravelands
     // Название игры (заголовок окна, лог-префиксы)
     constexpr const char* gameTitle = "Gravelands";
 
+    // Стабильный id игры: имя игрового модуля эдитора (контракт
+    // GameModuleFunctions — см. BENG.md), имя gravelands.dll и
+    // значение опции beng-editor.exe --game=gravelands. Нижний
+    // регистр; не меняется при переименовании заголовков/титулов
+    constexpr const char* gameModuleName = "gravelands";
+
     // ========== Симуляция (сервер) ==========
 
     // Тикрейт авторитетной симуляции: тиков в секунду.

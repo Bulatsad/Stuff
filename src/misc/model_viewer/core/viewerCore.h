@@ -78,18 +78,24 @@ namespace modelviewer
         bool loadModelFromFile(_In const std::string& path);
 
         /**
-         * Инициализация: impl вьювера + каркас EditorApplication
-         * (окно, FBO, камера, ECS, ImGui).
+         * Инициализация (override каркаса): impl вьювера + каркас
+         * EditorApplication (окно, FBO, камера, ECS, ImGui). Параметры
+         * окна — собственные константы вьювера (см. .cpp); переданные
+         * игнорируются (инструмент, не плагин игры — контракт требует
+         * сигнатуру каркаса для виртуальной диспетчеризации).
          * @return true при успехе
          */
-        bool initialize();
+        bool initialize(
+            _In uint16_t windowWidth = beng::editor::EditorApplication::editorDefaultWindowWidth,
+            _In uint16_t windowHeight = beng::editor::EditorApplication::editorDefaultWindowHeight,
+            _In const char* windowTitle = beng::editor::EditorApplication::editorDefaultWindowTitle) __blib_override;
 
         /**
-         * Корректное гашение (идемпотентно): выгрузка модели и панелей
-         * вьювера ДО гашения каркаса (сцена/GL должны их пережить).
-         * Скрывает базовый EditorApplication::shutdown() — см. .cpp.
+         * Корректное гашение (идемпотентно, override каркаса): выгрузка
+         * модели и панелей вьювера ДО гашения каркаса (сцена/GL должны
+         * их пережить) — см. .cpp.
          */
-        void shutdown();
+        void shutdown() __blib_override;
 
         // tick()/isRunning() — наследуются от EditorApplication
     };
