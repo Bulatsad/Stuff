@@ -5,6 +5,7 @@
 #include <blib/test/src/test.h>
 
 #include <blib/network/address.h>
+#include <blib/network/router.h>
 #include <blib/network/socket.h>
 #include <blib/network/tcpListener.h>
 #include <blib/network/tcpSocket.h>
@@ -742,4 +743,308 @@ BLIB_TEST_CASE("network: Udp endpoint parse/format")
     // Ошибка — сброс
     BLIB_TEST_CHECK(!endpoint.fromString("10.0.0.1:99999"));
     BLIB_TEST_CHECK(endpoint.getType() == AddressType::UNDEFINED);
+}
+
+// =====================================================================
+// Router: загрузка таблиц маршрутизации (linux/windows) и эмуляция
+// выбора маршрута (longest-prefix-match)
+// =====================================================================
+
+BLIB_TEST_CASE("network: Router linux table - default, on-link, src")
+{
+    using blib::network::Router;
+    using blib::network::RouteResult;
+    using blib::network::RouteTableFormat;
+    using blib::network::RouterError;
+
+    // Вывод "ip route show": default + напрямую подключённая сеть
+    // (on-link, src — локальный адрес интерфейса) + статический маршрут
+    const char* linuxTable =
+        "default via 192.168.1.1 dev eth0 proto dhcp metric 100\n"
+        "192.168.1.0/24 dev eth0 proto kernel scope link src 192.168.1.5 metric 100\n"
+        "10.0.0.0/8 via 10.0.0.1 dev eth1 proto static metric 50\n";
+
+    Router router;
+    BLIB_TEST_CHECK(router.loadFromString(linuxTable, RouteTableFormat::Linux) == RouterError::None);
+    BLIB_TEST_CHECK(router.getRouteCount() == 3);
+
+    // Внешний адрес → default: шлюз 192.168.1.1 через eth0
+    const IPv4 external{ 8, 8, 8, 8 };
+    const IPv4 defaultGateway{ 192, 168, 1, 1 };
+    RouteResult result;
+    BLIB_TEST_CHECK(router.route(external, result));
+    BLIB_TEST_CHECK(result.nextHop.getType() == AddressType::IPv4);
+    BLIB_TEST_CHECK(result.nextHop.toIPv4() == defaultGateway);
+    BLIB_TEST_CHECK(result.metric == 100);
+    BLIB_TEST_CHECK(std::strcmp(result.iface.name, "eth0") == 0);
+    BLIB_TEST_CHECK(result.iface.localAddress.getType() == AddressType::UNDEFINED);
+
+    // Локальная сеть → on-link: nextHop — сам адресат, интерфейс eth0
+    // с локальным адресом из src
+    const IPv4 lanHost{ 192, 168, 1, 50 };
+    const IPv4 lanSrc{ 192, 168, 1, 5 };
+    BLIB_TEST_CHECK(router.route(lanHost, result));
+    BLIB_TEST_CHECK(result.nextHop.getType() == AddressType::IPv4);
+    BLIB_TEST_CHECK(result.nextHop.toIPv4() == lanHost);
+    BLIB_TEST_CHECK(result.metric == 100);
+    BLIB_TEST_CHECK(std::strcmp(result.iface.name, "eth0") == 0);
+    BLIB_TEST_CHECK(result.iface.localAddress.getType() == AddressType::IPv4);
+    BLIB_TEST_CHECK(result.iface.localAddress.toIPv4() == lanSrc);
+
+    // 10/8 → шлюз 10.0.0.1 через eth1
+    const IPv4 tenNetHost{ 10, 1, 2, 3 };
+    const IPv4 tenGateway{ 10, 0, 0, 1 };
+    BLIB_TEST_CHECK(router.route(tenNetHost, result));
+    BLIB_TEST_CHECK(result.nextHop.toIPv4() == tenGateway);
+    BLIB_TEST_CHECK(result.metric == 50);
+    BLIB_TEST_CHECK(std::strcmp(result.iface.name, "eth1") == 0);
+
+    // Диспетчер по Address: IPv4 — работает, Mac/подсети — нет
+    const Address asAddress = Address(external);
+    BLIB_TEST_CHECK(router.route(asAddress, result));
+    BLIB_TEST_CHECK(result.nextHop.toIPv4() == defaultGateway);
+    BLIB_TEST_CHECK(!router.route(Address::fromString("aa:bb:cc:dd:ee:ff"), result));
+    BLIB_TEST_CHECK(!router.route(Address::fromString("192.168.1.0/24"), result));
+    BLIB_TEST_CHECK(!router.route(Address(), result));
+
+    // IPv6-таблица пуста — IPv6-адресат не маршрутизируется
+    const IPv6 ipv6Host{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
+    BLIB_TEST_CHECK(!router.route(ipv6Host, result));
+}
+
+BLIB_TEST_CASE("network: Router longest-prefix and metric tie-break")
+{
+    using blib::network::Router;
+    using blib::network::RouteResult;
+    using blib::network::RouteTableFormat;
+    using blib::network::RouterError;
+
+    // Вложенные подсети: выбор — самый длинный префикс
+    const char* prefixTable =
+        "10.0.0.0/8 via 10.0.0.1 dev eth0 metric 100\n"
+        "10.1.0.0/16 via 10.1.0.1 dev eth1 metric 200\n"
+        "10.1.2.0/24 via 10.1.2.1 dev eth2 metric 200\n";
+
+    Router router;
+    BLIB_TEST_CHECK(router.loadFromString(prefixTable, RouteTableFormat::Linux) == RouterError::None);
+    BLIB_TEST_CHECK(router.getRouteCount() == 3);
+
+    const IPv4 in24{ 10, 1, 2, 5 };
+    const IPv4 in16{ 10, 1, 9, 9 };
+    const IPv4 in8{ 10, 9, 9, 9 };
+    const IPv4 gw24{ 10, 1, 2, 1 };
+    const IPv4 gw16{ 10, 1, 0, 1 };
+    const IPv4 gw8{ 10, 0, 0, 1 };
+    RouteResult result;
+    BLIB_TEST_CHECK(router.route(in24, result));
+    BLIB_TEST_CHECK(result.nextHop.toIPv4() == gw24);
+    BLIB_TEST_CHECK(std::strcmp(result.iface.name, "eth2") == 0);
+    BLIB_TEST_CHECK(router.route(in16, result));
+    BLIB_TEST_CHECK(result.nextHop.toIPv4() == gw16);
+    BLIB_TEST_CHECK(std::strcmp(result.iface.name, "eth1") == 0);
+    BLIB_TEST_CHECK(router.route(in8, result));
+    BLIB_TEST_CHECK(result.nextHop.toIPv4() == gw8);
+    BLIB_TEST_CHECK(std::strcmp(result.iface.name, "eth0") == 0);
+
+    // Равный префикс: меньшая метрика; при равной метрике — первый
+    const char* tieBreakTable =
+        "10.0.0.0/8 via 10.0.0.1 dev ethA metric 50\n"
+        "10.0.0.0/8 via 10.0.0.2 dev ethB metric 10\n"
+        "10.9.0.0/16 via 10.9.0.1 dev ethC metric 10\n"
+        "10.9.0.0/16 via 10.9.0.2 dev ethD metric 10\n";
+    BLIB_TEST_CHECK(router.loadFromString(tieBreakTable, RouteTableFormat::Linux) == RouterError::None);
+    BLIB_TEST_CHECK(router.getRouteCount() == 4);
+
+    const IPv4 tieHost{ 10, 5, 5, 5 };
+    const IPv4 tieGwBetter{ 10, 0, 0, 2 };
+    BLIB_TEST_CHECK(router.route(tieHost, result));
+    BLIB_TEST_CHECK(result.nextHop.toIPv4() == tieGwBetter);
+    BLIB_TEST_CHECK(std::strcmp(result.iface.name, "ethB") == 0);
+    BLIB_TEST_CHECK(result.metric == 10);
+
+    const IPv4 tieEqualHost{ 10, 9, 9, 9 };
+    const IPv4 tieGwFirst{ 10, 9, 0, 1 };
+    BLIB_TEST_CHECK(router.route(tieEqualHost, result));
+    BLIB_TEST_CHECK(result.nextHop.toIPv4() == tieGwFirst);
+    BLIB_TEST_CHECK(std::strcmp(result.iface.name, "ethC") == 0);
+}
+
+BLIB_TEST_CASE("network: Router linux IPv6 default and on-link")
+{
+    using blib::network::Router;
+    using blib::network::RouteResult;
+    using blib::network::RouteTableFormat;
+    using blib::network::RouterError;
+
+    // IPv6: default через link-local шлюз + напрямую подключённая сеть
+    const char* linuxV6Table =
+        "default via fe80::1 dev eth0 proto ra metric 1024\n"
+        "2001:db8::/64 dev eth0 proto kernel metric 256\n";
+
+    Router router;
+    BLIB_TEST_CHECK(router.loadFromString(linuxV6Table, RouteTableFormat::Linux) == RouterError::None);
+    BLIB_TEST_CHECK(router.getRouteCount() == 2);
+
+    // 2001:db8::/64 — on-link: nextHop — сам адресат
+    IPv6 lanHost;
+    BLIB_TEST_CHECK(lanHost.fromString("2001:db8::5"));
+    RouteResult result;
+    BLIB_TEST_CHECK(router.route(lanHost, result));
+    BLIB_TEST_CHECK(result.nextHop.getType() == AddressType::IPv6);
+    BLIB_TEST_CHECK(result.nextHop.toIPv6() == lanHost);
+    BLIB_TEST_CHECK(result.metric == 256);
+    BLIB_TEST_CHECK(std::strcmp(result.iface.name, "eth0") == 0);
+
+    // Внешний адрес → default через fe80::1
+    IPv6 external;
+    BLIB_TEST_CHECK(external.fromString("2606:4700::1111"));
+    IPv6 defaultGateway;
+    BLIB_TEST_CHECK(defaultGateway.fromString("fe80::1"));
+    BLIB_TEST_CHECK(router.route(external, result));
+    BLIB_TEST_CHECK(result.nextHop.toIPv6() == defaultGateway);
+    BLIB_TEST_CHECK(result.metric == 1024);
+
+    // Диспетчер по Address — IPv6 тоже работает
+    BLIB_TEST_CHECK(router.route(Address(external), result));
+    BLIB_TEST_CHECK(result.nextHop.toIPv6() == defaultGateway);
+}
+
+BLIB_TEST_CASE("network: Router windows route print")
+{
+    using blib::network::Router;
+    using blib::network::RouteResult;
+    using blib::network::RouteTableFormat;
+    using blib::network::RouterError;
+
+    // Полный вывод "route print" (английская локаль): Interface List,
+    // секции IPv4 (destination/netmask/gateway/interface/metric) и IPv6
+    // (if/metric/destination/gateway)
+    const char* windowsTable =
+        "===========================================================================\n"
+        "Interface List\n"
+        "  1...XX XX XX XX XX XX ......Software Loopback Interface 1\n"
+        "  5...00 1b 21 5c 4e 7f ......Realtek PCIe GbE Family Controller\n"
+        "===========================================================================\n"
+        "\n"
+        "IPv4 Route Table\n"
+        "===========================================================================\n"
+        "Active Routes:\n"
+        "Network Destination        Netmask          Gateway       Interface  Metric\n"
+        "          0.0.0.0          0.0.0.0      192.168.1.1     192.168.1.5     25\n"
+        "      192.168.1.0    255.255.255.0         On-link      192.168.1.5    281\n"
+        "===========================================================================\n"
+        "Persistent Routes:\n"
+        "  None\n"
+        "\n"
+        "IPv6 Route Table\n"
+        "===========================================================================\n"
+        "Active Routes:\n"
+        " If Metric Network Destination      Gateway\n"
+        "  1    331 ::1/128                  On-link\n"
+        "  5    281 2001:db8::/64            On-link\n"
+        "  5    281 ::/0                     fe80::1\n"
+        "===========================================================================\n"
+        "Persistent Routes:\n"
+        "  None\n";
+
+    Router router;
+    BLIB_TEST_CHECK(router.loadFromString(windowsTable, RouteTableFormat::Windows) == RouterError::None);
+    BLIB_TEST_CHECK(router.getRouteCount() == 5);
+
+    // IPv4 default: шлюз 192.168.1.1, локальный адрес интерфейса —
+    // колонка Interface (имени в IPv4-таблице нет)
+    const IPv4 external{ 8, 8, 8, 8 };
+    const IPv4 defaultGateway{ 192, 168, 1, 1 };
+    const IPv4 ifaceAddress{ 192, 168, 1, 5 };
+    RouteResult result;
+    BLIB_TEST_CHECK(router.route(external, result));
+    BLIB_TEST_CHECK(result.nextHop.toIPv4() == defaultGateway);
+    BLIB_TEST_CHECK(result.metric == 25);
+    BLIB_TEST_CHECK(result.iface.localAddress.getType() == AddressType::IPv4);
+    BLIB_TEST_CHECK(result.iface.localAddress.toIPv4() == ifaceAddress);
+    BLIB_TEST_CHECK(std::strcmp(result.iface.name, "") == 0);
+
+    // 192.168.1.0/24 — On-link
+    const IPv4 lanHost{ 192, 168, 1, 77 };
+    BLIB_TEST_CHECK(router.route(lanHost, result));
+    BLIB_TEST_CHECK(result.nextHop.toIPv4() == lanHost);
+    BLIB_TEST_CHECK(result.metric == 281);
+
+    // IPv6 ::/0 → fe80::1 через интерфейс 5 (имя из Interface List)
+    IPv6 v6External;
+    BLIB_TEST_CHECK(v6External.fromString("2606:4700::1"));
+    IPv6 v6Gateway;
+    BLIB_TEST_CHECK(v6Gateway.fromString("fe80::1"));
+    BLIB_TEST_CHECK(router.route(v6External, result));
+    BLIB_TEST_CHECK(result.nextHop.toIPv6() == v6Gateway);
+    BLIB_TEST_CHECK(result.metric == 281);
+    BLIB_TEST_CHECK(std::strcmp(result.iface.name, "Realtek PCIe GbE Family Controller") == 0);
+    BLIB_TEST_CHECK(result.iface.localAddress.getType() == AddressType::UNDEFINED);
+
+    // 2001:db8::/64 — On-link (тот же интерфейс)
+    IPv6 v6LanHost;
+    BLIB_TEST_CHECK(v6LanHost.fromString("2001:db8::9"));
+    BLIB_TEST_CHECK(router.route(v6LanHost, result));
+    BLIB_TEST_CHECK(result.nextHop.toIPv6() == v6LanHost);
+    BLIB_TEST_CHECK(std::strcmp(result.iface.name, "Realtek PCIe GbE Family Controller") == 0);
+
+    // ::1/128 — On-link через loopback (интерфейс 1)
+    IPv6 v6Loopback;
+    BLIB_TEST_CHECK(v6Loopback.fromString("::1"));
+    BLIB_TEST_CHECK(router.route(v6Loopback, result));
+    BLIB_TEST_CHECK(result.nextHop.toIPv6() == v6Loopback);
+    BLIB_TEST_CHECK(result.metric == 331);
+    BLIB_TEST_CHECK(std::strcmp(result.iface.name, "Software Loopback Interface 1") == 0);
+}
+
+BLIB_TEST_CASE("network: Router errors, replacement and clear")
+{
+    using blib::network::Router;
+    using blib::network::RouteResult;
+    using blib::network::RouteTableFormat;
+    using blib::network::RouterError;
+
+    Router router;
+    BLIB_TEST_CHECK(router.getRouteCount() == 0);
+    const IPv4 external{ 8, 8, 8, 8 };
+    RouteResult result;
+    BLIB_TEST_CHECK(!router.route(external, result));
+
+    // Пустой ввод
+    BLIB_TEST_CHECK(router.loadFromString("", RouteTableFormat::Linux) == RouterError::EmptyTable);
+    BLIB_TEST_CHECK(router.loadFromString(nullptr, RouteTableFormat::Linux) == RouterError::EmptyTable);
+
+    // Нераспознанные строки пропускаются — маршрутов ноль
+    BLIB_TEST_CHECK(router.loadFromString("junk line here", RouteTableFormat::Linux) == RouterError::EmptyTable);
+    BLIB_TEST_CHECK(router.getRouteCount() == 0);
+
+    // JSON — пока не реализован (TODO)
+    BLIB_TEST_CHECK(router.loadFromString("{}", RouteTableFormat::Json) == RouterError::NotSupported);
+
+    // Несуществующий файл
+    BLIB_TEST_CHECK(router.loadFromFile("__router_missing_file__.txt",
+        RouteTableFormat::Linux) == RouterError::FileNotFound);
+
+    // Успешная загрузка, затем неудачная — прежняя таблица не тронута
+    const char* linuxTable =
+        "default via 192.168.1.1 dev eth0 metric 100\n"
+        "10.0.0.0/8 via 10.0.0.1 dev eth1 metric 50\n";
+    BLIB_TEST_CHECK(router.loadFromString(linuxTable, RouteTableFormat::Linux) == RouterError::None);
+    BLIB_TEST_CHECK(router.getRouteCount() == 2);
+    BLIB_TEST_CHECK(router.loadFromString("", RouteTableFormat::Linux) == RouterError::EmptyTable);
+    BLIB_TEST_CHECK(router.getRouteCount() == 2);
+    BLIB_TEST_CHECK(router.route(external, result));
+
+    // Повторная успешная загрузка заменяет таблицу
+    const char* v6OnlyTable = "default via fe80::1 dev eth0 metric 1024\n";
+    BLIB_TEST_CHECK(router.loadFromString(v6OnlyTable, RouteTableFormat::Linux) == RouterError::None);
+    BLIB_TEST_CHECK(router.getRouteCount() == 1);
+    BLIB_TEST_CHECK(!router.route(external, result)); // IPv4-таблица теперь пуста
+
+    // clear сбрасывает обе таблицы
+    router.clear();
+    BLIB_TEST_CHECK(router.getRouteCount() == 0);
+    IPv6 v6External;
+    BLIB_TEST_CHECK(v6External.fromString("2606:4700::1"));
+    BLIB_TEST_CHECK(!router.route(v6External, result));
 }
