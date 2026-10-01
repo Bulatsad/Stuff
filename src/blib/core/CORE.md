@@ -2,7 +2,7 @@
 
 > Слой: `blib`. Переносимое ядро: math, console, streams, алгоритмы, PDL, утилиты.
 > Шпаргалка по инвариантам и граблям. **Обновлять при изменениях кода модуля** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-25
+> Сверено: 2026-10-01
 
 ---
 
@@ -98,7 +98,7 @@
 - `string.h`: `StringList`, `split`, `replace`, шаблонный `contains`. **Нюанс:** `split` сдвигает позицию на 1, а не на длину разделителя (для многобуквенных разделителей поведение нестандартное).
 - `Folder`: нормализует `\`→`/`; если путь не папка — поднимается на уровень вверх. `getAllEntries`/`isFolder` реализованы только под Win32 (на других платформах — пустой список/false). Возвращает в том числе `.` и `..`.
 - `Flags<Enum, Storage>`: побитовые флаги с `isUp/isDown`.
-- `UnsafeSlicer<T>` / `ConstUnsafeSlicer<T>`: доступ по `base + index*stride`; используется `Image`.
+- `UnsafeSlicer<T>` / `ConstUnsafeSlicer<T>`: доступ по `base + index*stride`; используется `Image` (в т.ч. const-срез `image[x][y]` на `const Image`). **Баг-фикс 2026-10-01:** `UnsafeSlicer::operator[]() const` рекурсивно звал сам себя (C4717) — падал stack overflow при первом использовании const-среза (compose зданий в sc2img); теперь читает напрямую.
 - `bytearray.h`: `typedef std::vector<buint8> ByteArray` (без `#pragma once`).
 - `time.h`: legacy-класс `Time` на `clock()`, нигде не подключён (в beng свой `beng::Time`).
 

@@ -48,7 +48,9 @@ namespace blib
         template<class Type>
         inline const Type& UnsafeSlicer<Type>::operator[](size_t index) const
         {
-            return (*this)[index];
+            // Прямой доступ: вызов (*this)[index] ушёл бы в этот же
+            // const-overload (бесконечная рекурсия — C4717)
+            return *(reinterpret_cast<const Type*>(this->base + (index * this->stride)));
         }
         
         //ConstUnsafeSlicer

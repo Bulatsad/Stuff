@@ -16,6 +16,7 @@
 | `blib`   | library    | Сервисы: math, graphics (OpenGL-обёртка), sound (WinMM), network (winsock), thread, algorithm (FFT), кеш ресурсов (ResourceManager). Кроссплатформенный по задумке |
 | `beng`   | library    | Bulat Engine: ECS-ядро (Scene, Entity, ComponentPool, System, TransformComponent). Целевые таргеты: beng-core / beng-client / beng-server / beng-editor (см. ARCHITECTURE.md) |
 | `model_viewer` | executable | 3D-инструмент (не эдитор): загрузка моделей через Assimp, скелетная анимация (.md5mesh), ImGui (Windows, поверх blib-graphics); первый хост каркаса `beng::editor::EditorApplication`. Будущая основа 3D-ветки |
+| `sc2img` | executable + 2 lib | Конвертер текстур Stronghold (TGX/GM1 → PNG/BMP/JPG): GUI (хост EditorApplication, вкладка изображений с превью) + headless CLI; парсеры переиспользуются из blib-graphics, запись — stb_image_write. Питает плейсхолдеры lamphold |
 | `vochat` | executable | Voice chat: запись/воспроизведение звука, FFT, UDP/TCP стриминг (отдельный инструмент) |
 | `gravelands-common` | library | Gravelands: общие определения (константы; позже — компоненты, пакеты, формулы). Header-only, таргет INTERFACE |
 | `gravelands-world` | library | Gravelands: мир (`World`: ECS-сцена + контент + scene_save/load + дебаг-свет); рендер-таргет выдаёт хост. Общий для клиента и эдитора |
@@ -53,6 +54,7 @@
 | gravelands (игра: клиент, сервер, common) | `src/misc/gravelands/GRAVELANDS.md` |
 | lamphold (игра: RTS в духе Stronghold; roadmap, модуль ещё не начат) | `src/misc/lamphold/LAMPHOLD.md` |
 | model_viewer (3D-вьювер) | `src/misc/model_viewer/MODEL_VIEWER.md` |
+| sc2img (конвертер текстур Stronghold) | `src/misc/sc2img/SC2IMG.md` |
 
 Индекс пополняется при создании новых доков (`MODEL_VIEWER.md`, `GRAVELANDS.md`, `CLIENT.md`, `EDITOR.md`, ...). При изменении кода модуля — обязательно обновлять его док (см. «Документация модулей» в строгих правилах ниже).
 
@@ -71,6 +73,7 @@ M:\Stuff\
 │   ├── beng/               <-- Bulat Engine: ECS-ядро (library) + тесты (beng/test) + демо (beng/test_ecs)
 │   ├── vochat/             <-- voice chat (executable)
 │   ├── misc/model_viewer/  <-- 3D-вьювер (executable, только Windows)
+│   ├── misc/sc2img/        <-- конвертер текстур Stronghold TGX/GM1 (GUI + headless CLI, только Windows)
 │   ├── misc/gravelands/    <-- игра Gravelands: common + client (core+exe) + server (core+exe)
 │   ├── shaders/            <-- GLSL шейдеры
 │   ├── test/               <-- тестовые файлы

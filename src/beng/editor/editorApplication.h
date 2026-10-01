@@ -153,6 +153,16 @@ namespace beng
         // в тех же зонах (вьювер) ДО initialize (см. setScenePanelsEnabled)
         bool scenePanelsEnabled;
 
+        // Подмена содержимого вкладки «Scene» (id 0): если задано —
+        // центр рисует вкладку хоста вместо 3D-вьюпорта каркаса.
+        // Задаётся до initialize (см. setSceneTabView)
+        ICenterTabView* sceneTabView;
+
+        // Число строк, резервируемых под верхнюю панель хоста (onUi):
+        // высота считается из метрик текущего шрифта ImGui (см.
+        // setHostBarRows), а не пиксельной константой
+        buint32 hostBarRows;
+
         protected:
             /**
              * Вызывается в initialize() после создания каркаса
@@ -286,8 +296,9 @@ namespace beng
 
         /**
          * Сделать активной вкладку центральной области по id
-         * (0 — «Scene» вьюпорта каркаса). Смена применится в
-         * ближайшем кадре (таб помечается SetSelected).
+         * (0 — «Scene» вьюпорта каркаса либо вкладка, подменённая
+         * через setSceneTabView). Смена применится в ближайшем кадре
+         * (таб помечается SetSelected).
          */
         void setActiveCenterTab(buint32 tabId);
 
@@ -312,6 +323,32 @@ namespace beng
          * @return true если флаг применён
          */
         bool setScenePanelsEnabled(bool enabled);
+
+        /**
+         * Заменить содержимое вкладки «Scene» (id 0) центральной
+         * области: если задано, каркас рисует вкладку хоста
+         * (ICenterTabView) вместо 3D-вьюпорта — инструменты без сцены
+         * (sc2img) используют центр под свои задачи, заголовок вкладки
+         * берётся из view->getTabName(). Вызывать ДО initialize();
+         * после — warning + false. nullptr — вернуть вьюпорт каркаса.
+         *
+         * При подмене gizmo/ray-picking не работают (вьюпорт не
+         * рисуется — isContentsDrawn() == false).
+         *
+         * @return true если флаг применён
+         */
+        bool setSceneTabView(_In_opt ICenterTabView* view);
+
+        /**
+         * Число строк под верхнюю панель хоста (onUi): высота панели =
+         * rows строк текущего шрифта ImGui + отступы (без пиксельных
+         * констант — при смене шрифта панель масштабируется). Дефолт —
+         * 1 строка (одна строка контролов, как у вьювера моделей).
+         * Вызывать ДО initialize(); после — warning + false.
+         *
+         * @return true если значение применено
+         */
+        bool setHostBarRows(_In buint32 rows);
 
         /**
          * Выбранная сущность сцены (selection эдитора). Источник

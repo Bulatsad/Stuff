@@ -94,6 +94,12 @@ if(TARGET blib-graphics)
 	add_subdirectory(misc/model_viewer)
 endif()
 
+# misc/sc2img — конвертер текстур Stronghold (TGX/GM1 → PNG/BMP/JPG):
+# GUI + headless CLI; требует blib-graphics (парсеры) и beng-editor (GUI)
+if(TARGET blib-graphics)
+	add_subdirectory(misc/sc2img)
+endif()
+
 # misc/gravelands — игра Gravelands (диаблоид): библиотеки + тонкие exe
 add_subdirectory(misc/gravelands)
 

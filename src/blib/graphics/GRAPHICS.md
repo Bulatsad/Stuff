@@ -2,7 +2,7 @@
 
 > Слой: `blib`. OpenGL/WGL, окно, ассеты, скелетная анимация, ImGui.
 > Шпаргалка по инвариантам, владению GL и граблям. **Обновлять при изменениях кода модуля** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-30
+> Сверено: 2026-10-01
 
 ---
 
@@ -150,7 +150,7 @@
 
 ### Форматы
 
-- `TGXFile`/`GM1File` — парсеры форматов серии Stronghold (TGX — картинки, GM1 — контейнер с палитрой). Используются gravelands-клиентом (`tiles.gm1`).
+- `TGXFile`/`GM1File` — парсеры форматов серии Stronghold (TGX — картинки, GM1 — контейнер). **Layout GM1 выверен по референс-декомпилу Stronghold Image Toolbox (ilspycmd) и файлам Stronghold/Crusader Extreme:** заголовок 22×u32 (Image_Count@12, Data_Type@20, Data_Size@80, Unknown18@84), палитра 2560×u16 @88, затем offsets (u32, **относительные от начала блока данных**), sizes, заголовки кадров 16 байт (width/height/horizontalOffset/verticalOffset/part/subparts/baseHeight/direction/horizontalStartOffset/widthInGame/performanceId). Данные кадров по Data_Type: 1/4/6 — 16-бит RGB555 в TGX-токенах; 2 — индексы палитры (1 байт, индекс 0 — прозрачный); 3 — 512 байт ромб-тайла 30×16 (строки ромба 2,6,…,30,…,2, центрированы) + TGX-часть `widthInGame × (baseHeight+7)`; 5 — raw 16 бит `w×(h−7)`; 7 — raw 16 бит `w×h`. **Тайлы кадров Building отдаются отдельным списком** (`getImageTiles()` — ромб 30×16 с прозрачными углами, индекс-в-индекс с images; декодируются для КАЖДОГО кадра, даже когда есть TGX-часть) — композит «здание + земля» по offsets собирает потребитель (sc2img). `getHeader()` отдаёт разобранный заголовок (Data_Type нужен для пост-обработки). `GM1File` поддерживает переопределение палитры (`playerColorOverridden`/`playerColorOverride`). Валидация: quantity ≤ 4096, стороны кадров 1..4096, offset+size ≤ Data_Size — битые файлы дают пропуск кадра (пустой 1×1), не исключение. Потребитель — утилита sc2img (`src/misc/sc2img`, см. SC2IMG.md).
 
 ---
 

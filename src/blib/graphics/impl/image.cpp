@@ -274,6 +274,17 @@ blib::core::UnsafeSlicer<blib::graphics::Color> blib::graphics::Image::operator[
         this->width);
 }
 
+const blib::core::UnsafeSlicer<blib::graphics::Color> blib::graphics::Image::operator[](buint16 index) const
+{
+    // Const-вариант для чтения: тот же row-major срез. UnsafeSlicer
+    // хранит не-const base (контракт «небезопасного» API без проверок),
+    // поэтому константность указателя снимается — доступ предполагается
+    // только на чтение (const operator[] среза)
+    return blib::core::UnsafeSlicer<blib::graphics::Color>(
+        const_cast<blib::graphics::Color*>(&(this->bitmap[static_cast<size_t>(index)])),
+        this->width);
+}
+
 blib::core::json::JsonValue blib::graphics::Image::toJson() const
 {
     blib::core::json::JsonValue doc = blib::core::json::JsonValue::makeObject();

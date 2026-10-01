@@ -87,17 +87,17 @@ namespace beng
             constexpr float cameraTargetY = 0.0f;
             constexpr float cameraTargetZ = 0.0f;
 
-            // Дефолтная раскладка панелей (ручная, до докинга)
-            constexpr float leftPanelWidth = 280.0f;
-            constexpr float rightPanelWidth = 320.0f;
-            // Верхняя полоса приложения: резервируется каркасом,
-            // заполняет хост через onUi (панель модели/меню)
-            constexpr float topBarHeight = 44.0f;
+            // Дефолтная раскладка панелей (ручная, до докинга).
+            // Размеры — доли окна (адаптивно к разрешению), а не
+            // пиксельные константы: при 1280x720 доли дают прежние
+            // ~280/~320px и консоль ~900x340
+            constexpr float leftPanelWidthFraction = 0.22f;
+            constexpr float rightPanelWidthFraction = 0.25f;
             // Доля окна под верхнюю зону левой колонки (остальное —
             // нижняя зона)
             constexpr float hierarchyHeightFraction = 0.65f;
-            constexpr float consoleWidth = 900.0f;
-            constexpr float consoleHeight = 340.0f;
+            constexpr float consoleWidthFraction = 0.70f;
+            constexpr float consoleHeightFraction = 0.47f;
 
             // Минимальная измеряемая размерность вьюпорта (защита от
             // схлопнутого окна/панели)
@@ -632,6 +632,8 @@ namespace beng
         EditorApplication::EditorApplication()
             : impl(nullptr)
             , scenePanelsEnabled(true)
+            , sceneTabView(nullptr)
+            , hostBarRows(1)
         {
         }
 
@@ -907,12 +909,48 @@ namespace beng
             {
                 const float windowW = static_cast<float>(this->impl->window.getWight());
                 const float windowH = static_cast<float>(this->impl->window.getHeight());
+                const ImGuiStyle& layoutStyle = ImGui::GetStyle();
+
+                // Размеры зон — доли окна (адаптивно к разрешению)
+                const float leftPanelWidth = windowW * leftPanelWidthFraction;
+                const float rightPanelWidth = windowW * rightPanelWidthFraction;
+                const float consoleWidth = windowW * consoleWidthFraction;
+                const float consoleHeight = windowH * consoleHeightFraction;
                 const float hierarchyHeight = windowH * hierarchyHeightFraction;
+
+                // Верх панели хоста: строки, запрошенные сеттером
+                // (setHostBarRows), в метриках текущего шрифта ImGui +
+                // отступы контента окна — без пиксельных констант
+                const float hostBarHeight =
+                    static_cast<float>(this->hostBarRows) * ImGui::GetFrameHeight() +
+                    static_cast<float>(this->hostBarRows - 1) * layoutStyle.ItemSpacing.y +
+                    layoutStyle.WindowPadding.y * 2.0f;
+
                 // Верх окна: меню-бар каркаса (высота = высоте фрейма
                 // текущего шрифта), под ним — верхняя полоса хоста,
                 // ещё ниже — панели и вьюпорт
                 const float menuBarOffset = ImGui::GetFrameHeight();
-                const float topStripOffset = menuBarOffset + topBarHeight;
+                const float topStripOffset = menuBarOffset + hostBarHeight;
+
+                // Пустые зоны панелей отдают место центру: ширина зоны
+                // резервируется, только если в ней есть панели
+                // (инструменты без сценных панелей и без своих — sc2img —
+                // получают центр на всю ширину окна)
+                bool hasLeftZonePanels = false;
+                bool hasRightZonePanels = false;
+                for (const EditorApplicationImpl::RegisteredPanel& registered : this->impl->panels)
+                {
+                    if (registered.zone == PanelZone::LeftTop || registered.zone == PanelZone::LeftBottom)
+                    {
+                        hasLeftZonePanels = true;
+                    }
+                    else if (registered.zone == PanelZone::Right)
+                    {
+                        hasRightZonePanels = true;
+                    }
+                }
+                const float leftReservedWidth = hasLeftZonePanels ? leftPanelWidth : 0.0f;
+                const float rightReservedWidth = hasRightZonePanels ? rightPanelWidth : 0.0f;
 
                 for (const EditorApplicationImpl::RegisteredPanel& registered : this->impl->panels)
                 {
@@ -940,16 +978,16 @@ namespace beng
                 // окна — скругления дали бы щели), модальные диалоги
                 ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
                 ImGui::SetNextWindowPos(ImVec2(0.0f, menuBarOffset), ImGuiCond_FirstUseEver);
-                ImGui::SetNextWindowSize(ImVec2(windowW, topBarHeight), ImGuiCond_FirstUseEver);
+                ImGui::SetNextWindowSize(ImVec2(windowW, hostBarHeight), ImGuiCond_FirstUseEver);
                 this->onUi();
                 ImGui::PopStyleVar();
 
                 // Центр: контейнер вкладок области (вкладка «Scene» с
-                // вьюпортом каркаса + вкладки хоста — Game и т.п.).
-                // Видимость вьюпорта ставится внутри (beginFrame/
-                // drawContents) — гейт gizmo/picking'а ниже
-                ImGui::SetNextWindowPos(ImVec2(leftPanelWidth, topStripOffset), ImGuiCond_FirstUseEver);
-                ImGui::SetNextWindowSize(ImVec2(windowW - leftPanelWidth - rightPanelWidth, windowH - topStripOffset), ImGuiCond_FirstUseEver);
+                // вьюпортом каркаса или подменённая хостом + вкладки
+                // хоста — Game и т.п.). Видимость вьюпорта ставится
+                // внутри (beginFrame/drawContents) — гейт gizmo/picking'а
+                ImGui::SetNextWindowPos(ImVec2(leftReservedWidth, topStripOffset), ImGuiCond_FirstUseEver);
+                ImGui::SetNextWindowSize(ImVec2(windowW - leftReservedWidth - rightReservedWidth, windowH - topStripOffset), ImGuiCond_FirstUseEver);
                 this->drawCenterTabs();
 
                 // Gizmo-манипулятор: драг за стрелку/окружность (режим
@@ -1132,10 +1170,27 @@ namespace beng
                 const ImGuiTabItemFlags sceneTabFlags =
                     (switchRequested && requestedTab == sceneCenterTabId)
                         ? ImGuiTabItemFlags_SetSelected : 0;
-                if (ImGui::BeginTabItem(sceneTabLabel, nullptr, sceneTabFlags))
+
+                // Подмена содержимого вкладки «Scene» (setSceneTabView):
+                // инструментам без 3D-сцены центр отдаётся под их вкладку;
+                // заголовок — из getTabName() вкладки хоста
+                const bool sceneOverridden = (this->sceneTabView != nullptr);
+                const char* sceneLabel = sceneOverridden
+                    ? this->sceneTabView->getTabName()
+                    : sceneTabLabel;
+                if (ImGui::BeginTabItem(sceneLabel, nullptr, sceneTabFlags))
                 {
                     this->impl->activeCenterTab = sceneCenterTabId;
-                    this->impl->viewportPanel.drawContents();
+                    if (sceneOverridden)
+                    {
+                        // Вьюпорт не рисуется: isContentsDrawn() остаётся
+                        // false — gizmo/ray-picking отключены сами
+                        this->sceneTabView->drawContents();
+                    }
+                    else
+                    {
+                        this->impl->viewportPanel.drawContents();
+                    }
                     ImGui::EndTabItem();
                 }
 
@@ -1368,6 +1423,37 @@ namespace beng
             }
 
             this->scenePanelsEnabled = enabled;
+            return true;
+        }
+
+        bool EditorApplication::setSceneTabView(_In_opt ICenterTabView* view)
+        {
+            // Флаг применяется при инициализации: вкладка «Scene»
+            // рисуется каждый кадр по указателю (каркас не владеет
+            // вкладкой — контракт ICenterTabView)
+            if (__blib_unlikely(this->impl != nullptr))
+            {
+                __blib_log_warning("EditorApplication: setSceneTabView() must be called before initialize()");
+                return false;
+            }
+
+            this->sceneTabView = view;
+            return true;
+        }
+
+        bool EditorApplication::setHostBarRows(_In buint32 rows)
+        {
+            // Высота панели считается из метрик шрифта при раскладке
+            // каждого кадра — менять после initialize() поздно: окно
+            // панели уже создано с первой высотой (FirstUseEver)
+            if (__blib_unlikely(this->impl != nullptr))
+            {
+                __blib_log_warning("EditorApplication: setHostBarRows() must be called before initialize()");
+                return false;
+            }
+
+            // Минимум — одна строка (панель хоста всегда существует)
+            this->hostBarRows = (rows > 0) ? rows : 1;
             return true;
         }
 

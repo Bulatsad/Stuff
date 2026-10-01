@@ -64,7 +64,7 @@
 | **Подсеть (`IPv4Subnet`/`IPv6Subnet`)** | Адрес сети + длина префикса в битах (`buint8 prefix`, 0-32/0-128); строка `"1.2.3.0/24"`; проверка вхождения — `isInSubnet(ip)`. | NETWORK.md |
 | **RFC 5952** | Каноническая текстовая форма IPv6: группы hex без ведущих нулей, нижний регистр, `::` сжимает САМЫЙ длинный прогон нулевых групп (при равных длинах — первый). | NETWORK.md |
 | **TGX** | Проприетарный формат изображений серии Stronghold (Firefly Studios): 16-битный цвет RGB555, RLE-токены (PixelStream/TransparentPixelString/RepeatingPixels/NewLine). Парсер `parsers::TGXFile` в blib-graphics. | GRAPHICS.md |
-| **GM1** | Проприетарный контейнер изображений серии Stronghold: палитра 256 цветов на игрока (RGB555) + кадры в TGX-подобных RLE-токенах с индексами палитры + заголовок каждого кадра (размеры, widthOffset/heightOffset, part/subparts, dir, color). Парсер `parsers::GM1File` в blib-graphics; offset-таблица кадров — абсолютные смещения от начала файла. | GRAPHICS.md |
+| **GM1** | Проприетарный контейнер изображений серии Stronghold: палитра 2560 цветов RGB555 (сегментирована по игрокам) + кадры разных типов (16-бит TGX-токены / палитровые индексы / ромб-тайл 30×16 + TGX-часть / raw 16 бит) + заголовок каждого кадра (размеры, horizontalOffset/verticalOffset, part/subparts, baseHeight, direction). Layout выверен по референс-декомпилу Stronghold Image Toolbox; offset-таблица кадров — **относительные** смещения от начала блока данных; кадры зданий (`Building`) собираются потребителем в композит «здание + земля» по part/offsets (sc2img). Парсер `parsers::GM1File` в blib-graphics. | GRAPHICS.md |
 
 ## beng
 

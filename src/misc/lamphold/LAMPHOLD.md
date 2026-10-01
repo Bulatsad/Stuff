@@ -177,3 +177,4 @@
 - `GRAPHICS.md` — рендер, камеры, слои, спрайты.
 - `CLIENT.md` / `SERVER.md` — клиентская оболочка и серверное ядро.
 - `CORE.md` — blib-core (алгоритмы, math, ресурсы).
+- `SC2IMG.md` — конвертер текстур Stronghold (TGX/GM1 → PNG/BMP/JPG): источник плейсхолдеров lamphold.
