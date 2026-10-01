@@ -4,7 +4,7 @@
 #include <blib/network/udpSocket.h>
 #include <blib/network/impl/win/winNetworkUtil.h>
 
-blib::network::UdpSocket::UdpSocket(AddressType type)
+blib::network::UdpSocket::UdpSocket(address::AddressType type)
 {
     this->socket.create(type, SocketType::Dgram, SocketProtocol::UDP);
     setBlocking(true);
@@ -15,17 +15,25 @@ bool blib::network::UdpSocket::setBlocking(bool isBlocking)
     return this->socket.setBlocking(isBlocking);
 }
 
-blib::network::SocketStatus blib::network::UdpSocket::bind(Address& addr)
+blib::network::SocketStatus blib::network::UdpSocket::bind(_In const address::Udp& endpoint)
 {
-    return this->socket.bind(addr);
+    return this->socket.bind(endpoint.ip, endpoint.port);
 }
 
-blib::network::SocketStatus blib::network::UdpSocket::send(Address& addr,const void* data, int size)
+blib::network::SocketStatus blib::network::UdpSocket::send(_In const address::Udp& endpoint, const void* data, int size)
 {
-    int result = ::sendto(*(__blib_cast_socket_handler(this->socket.__getHandler())),
+    // Конвертация в sockaddr_in (только IPv4; IPv6 — TODO в NETWORK.md)
+    sockaddr_in sockAddress;
+    if (!blibToSockaddr(endpoint.ip, endpoint.port, sockAddress))
+    {
+        return SocketStatus::Error;
+    }
+
+    int result = ::sendto(
+        *(__blib_cast_socket_handler(this->socket.__getHandler())),
         (const char*)data, (int)size,
         0,
-        __blib_cast_address_handler(addr.__getHandler()),
+        reinterpret_cast<const sockaddr*>(&sockAddress),
         sizeof(sockaddr_in)
     );
 
@@ -35,16 +43,18 @@ blib::network::SocketStatus blib::network::UdpSocket::send(Address& addr,const v
     return SocketStatus::Error;
 }
 
-blib::network::SocketStatus blib::network::UdpSocket::recv(Address& addr, void* data, int& size)
+blib::network::SocketStatus blib::network::UdpSocket::recv(_In_Out address::Udp& endpoint, void* data, int& size)
 {
-    platform_socket_address_handler_t from;
-    int fromlen = sizeof(platform_socket_address_handler_t);
-    int result = recvfrom(*(__blib_cast_socket_handler(this->socket.__getHandler())), (char*)data, size, 0, &from, &fromlen);
-    
-    if (blibWinApiToBlib(from.sa_family) == AddressType::IPv4)
-    {
-        memcpy(addr.__getHandler(), &from, fromlen);
-    }
+    sockaddr_in from;
+    int fromlen = sizeof(from);
+    int result = recvfrom(
+        *(__blib_cast_socket_handler(this->socket.__getHandler())),
+        (char*)data, size, 0,
+        reinterpret_cast<sockaddr*>(&from), &fromlen
+    );
+
+    // Адрес и порт отправителя (IPv4; прочие семейства — UNDEFINED/0)
+    blibFromSockaddr(from, endpoint.ip, endpoint.port);
 
     if (result != SOCKET_ERROR)
         return SocketStatus::OK;

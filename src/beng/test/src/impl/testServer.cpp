@@ -104,11 +104,11 @@ namespace
     /**
      * Неблокирующее подключение loopback-клиента (WouldBlock = в процессе).
      */
-    bool connectNonBlocking(_In blib::network::TcpSocket& client, _In_Out blib::network::Address& address)
+    bool connectNonBlocking(_In blib::network::TcpSocket& client, _In_Out blib::network::address::Tcp& endpoint)
     {
         for (buint32 attempt = 0; attempt < 1000; ++attempt)
         {
-            const blib::network::SocketStatus status = client.connect(address);
+            const blib::network::SocketStatus status = client.connect(endpoint);
             if (status == blib::network::SocketStatus::OK)
             {
                 return true;
@@ -250,18 +250,19 @@ BLIB_TEST_CASE("server: application loopback welcome/command/snapshot")
     BLIB_TEST_CHECK(server.initialize(game, FakeServerGame::fakePort));
 
     // ===== Loopback-клиент (сокет создаётся typed-конструктором) =====
-    blib::network::TcpSocket client(blib::network::AddressType::IPv4);
+    blib::network::TcpSocket client(blib::network::address::AddressType::IPv4);
     BLIB_TEST_CHECK(client.setBlocking(false));
 
-    blib::network::Address address(blib::network::Address::LocalhostIPv4);
-    address.setPort(static_cast<int>(FakeServerGame::fakePort));
+    blib::network::address::Tcp endpoint;
+    endpoint.ip = blib::network::address::Address::LocalhostIPv4;
+    endpoint.port = static_cast<buint16>(FakeServerGame::fakePort);
 
     // Подключение + серверные тики (accept в poll) — в одном потоке
     bool connected = false;
     for (buint32 attempt = 0; attempt < 3000 && !connected; ++attempt)
     {
         server.tick();
-        const blib::network::SocketStatus status = client.connect(address);
+        const blib::network::SocketStatus status = client.connect(endpoint);
         if (status == blib::network::SocketStatus::OK)
         {
             connected = true;

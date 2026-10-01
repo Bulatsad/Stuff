@@ -14,13 +14,13 @@ namespace blib
 
         public:
             TcpListener();
-            TcpListener(AddressType type);
+            TcpListener(address::AddressType type);
             TcpListener(const TcpListener&) = delete;
             TcpListener(TcpListener&&) = delete;
 
             bool setBlocking(bool isBlocking);
 
-            SocketStatus bind(Address& addr);
+            SocketStatus bind(_In const address::Tcp& endpoint);
             SocketStatus listen(int backlog = 16);
 
             /**
@@ -30,7 +30,7 @@ namespace blib
              * Идемпотентно пригоден и для первого запуска: старый
              * сокет (если был) освобождается.
              */
-            SocketStatus open(AddressType type);
+            SocketStatus open(address::AddressType type);
 
             /**
              * Закрыть слушающий сокет (идемпотентно). Память хендла

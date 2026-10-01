@@ -12,7 +12,7 @@ namespace blib
             Socket socket;
         public:
             TcpSocket();
-            TcpSocket(AddressType type);
+            TcpSocket(address::AddressType type);
             TcpSocket(const TcpSocket&) = delete;
             TcpSocket(TcpSocket&&) = delete;
 
@@ -24,14 +24,14 @@ namespace blib
              */
             bool setTcpNoDelay(bool enable);
 
-            SocketStatus bind(Address& addr);
+            SocketStatus bind(_In const address::Tcp& endpoint);
 
             /**
-             * Подключение к адресу. В неблокирующем режиме соединение
+             * Подключение к эндпоинту. В неблокирующем режиме соединение
              * устанавливается асинхронно: WouldBlock = «в процессе» —
              * вызывающий повторяет connect позже (WSAEISCONN → OK).
              */
-            SocketStatus connect(Address& addr);
+            SocketStatus connect(_In const address::Tcp& endpoint);
 
             /**
              * Отправка данных. Цикл до полной отправки; при WouldBlock —

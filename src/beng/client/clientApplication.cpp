@@ -321,11 +321,12 @@ namespace beng
             // TOCTOU-гонка теоретически возможна, но все сценарии
             // (local-server/PIE) живут в одном процессе
             blib::network::TcpListener probe;
-            blib::network::SocketStatus probeStatus = probe.open(blib::network::AddressType::IPv4);
+            blib::network::SocketStatus probeStatus = probe.open(blib::network::address::AddressType::IPv4);
             if (probeStatus == blib::network::SocketStatus::OK)
             {
-                blib::network::Address probeAddress(blib::network::Address::LocalhostIPv4);
-                probeAddress.setPort(static_cast<int>(port));
+                blib::network::address::Tcp probeAddress;
+                probeAddress.ip = blib::network::address::Address::LocalhostIPv4;
+                probeAddress.port = static_cast<buint16>(port);
                 probeStatus = probe.bind(probeAddress);
             }
             probe.close();

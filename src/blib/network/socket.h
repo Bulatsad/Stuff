@@ -75,7 +75,7 @@ namespace blib
         {
         public:
             Socket();
-            SocketStatus create(const AddressType af, const SocketType type, const SocketProtocol protocol);
+            SocketStatus create(const address::AddressType af, const SocketType type, const SocketProtocol protocol);
             SocketStatus create(void* ctx);
 
             /**
@@ -96,7 +96,11 @@ namespace blib
              */
             bool setTcpNoDelay(bool enable);
 
-            SocketStatus bind(Address& addr);
+            /**
+             * Привязать сокет к IP-адресу и порту (реализовано для
+             * IPv4; прочие семейства — Error).
+             */
+            SocketStatus bind(_In const address::Address& ip, _In buint16 port);
 
             SocketStatus close();
             void destroy();

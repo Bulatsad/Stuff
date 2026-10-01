@@ -29,17 +29,18 @@ namespace beng
 
             // Слушатель пересоздаётся open() (идемпотентно и для
             // первого запуска, и для перезапуска после shutdown)
-            if (this->listener.open(blib::network::AddressType::IPv4) != blib::network::SocketStatus::OK)
+            if (this->listener.open(blib::network::address::AddressType::IPv4) != blib::network::SocketStatus::OK)
             {
                 __blib_log_error("NetworkServer: failed to create listener");
                 return false;
             }
 
-            // Loopback-адрес + порт (LocalhostIPv4 — статический
-            // адрес-шаблон, копия с портом — value-семантика Address)
-            blib::network::Address addr(blib::network::Address::LocalhostIPv4);
-            addr.setPort(static_cast<int>(port));
-            if (this->listener.bind(addr) != blib::network::SocketStatus::OK)
+            // Loopback-эндпоинт (LocalhostIPv4 — статический
+            // адрес-шаблон; Tcp — value-семантика)
+            blib::network::address::Tcp endpoint;
+            endpoint.ip = blib::network::address::Address::LocalhostIPv4;
+            endpoint.port = static_cast<buint16>(port);
+            if (this->listener.bind(endpoint) != blib::network::SocketStatus::OK)
             {
                 __blib_log_error("NetworkServer: failed to bind port %u", port);
                 return false;

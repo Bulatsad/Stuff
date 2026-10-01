@@ -29,7 +29,7 @@ blib::network::TcpSocket::TcpSocket()
 {
 }
 
-blib::network::TcpSocket::TcpSocket(AddressType type)
+blib::network::TcpSocket::TcpSocket(address::AddressType type)
 {
     this->socket.create(type, SocketType::Stream, SocketProtocol::TCP);
     this->setBlocking(true);
@@ -45,23 +45,25 @@ bool blib::network::TcpSocket::setTcpNoDelay(bool enable)
     return this->socket.setTcpNoDelay(enable);
 }
 
-blib::network::SocketStatus blib::network::TcpSocket::bind(Address& addr)
+blib::network::SocketStatus blib::network::TcpSocket::bind(_In const address::Tcp& endpoint)
 {
-    return this->socket.bind(addr);
+    return this->socket.bind(endpoint.ip, endpoint.port);
 }
 
-blib::network::SocketStatus blib::network::TcpSocket::connect(Address& addr)
+blib::network::SocketStatus blib::network::TcpSocket::connect(_In const address::Tcp& endpoint)
 {
-    AddressType type = addr.getType();
-    if (type != blib::network::AddressType::IPv4)
+    // Конвертация в sockaddr_in (только IPv4; IPv6 — TODO в NETWORK.md)
+    sockaddr_in sockAddress;
+    if (!blibToSockaddr(endpoint.ip, endpoint.port, sockAddress))
     {
-        this->socket.__setLastError(NetworkError::Unknown);
+        this->socket.__setLastError(NetworkError::ConnectFailed);
         return SocketStatus::Error;
     }
 
-    int result = ::connect(*__blib_cast_socket_handler(this->socket.__getHandler()),
-        __blib_cast_address_handler(addr.__getHandler()),
-        sizeof(platform_socket_internet_address_handler_t)
+    int result = ::connect(
+        *__blib_cast_socket_handler(this->socket.__getHandler()),
+        reinterpret_cast<const sockaddr*>(&sockAddress),
+        sizeof(sockaddr_in)
     );
 
     if (result != SOCKET_ERROR)

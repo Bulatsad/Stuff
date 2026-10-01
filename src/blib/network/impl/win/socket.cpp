@@ -18,7 +18,7 @@ blib::network::Socket::Socket()
     this->lastError = NetworkError::None;
 }
 
-blib::network::SocketStatus blib::network::Socket::create(const AddressType af, const SocketType type, const SocketProtocol protocol)
+blib::network::SocketStatus blib::network::Socket::create(const address::AddressType af, const SocketType type, const SocketProtocol protocol)
 {
     // Самодостаточность: конструкторы TcpSocket/TcpListener с типом
     // создают сокет ДО явного InitBlibSocket у вызывающего —
@@ -97,24 +97,21 @@ bool blib::network::Socket::setTcpNoDelay(bool enable)
     return false;
 }
 
-blib::network::SocketStatus blib::network::Socket::bind(Address& addr)
+blib::network::SocketStatus blib::network::Socket::bind(_In const address::Address& ip, _In buint16 port)
 {
-    AddressType addrtype = addr.getType();
+    // Конвертация в sockaddr_in (только IPv4; IPv6 — TODO в NETWORK.md)
+    sockaddr_in sockAddress;
+    if (!blibToSockaddr(ip, port, sockAddress))
+    {
+        this->lastError = NetworkError::BindFailed;
+        return SocketStatus::Error;
+    }
 
-    int result = !NO_ERROR;
-    switch (addrtype)
-    {
-    case blib::network::AddressType::IPv4:
-    {
-        result = ::bind(*__blib_cast_socket_handler(this->__getHandler()),
-            __blib_cast_address_handler(addr.__getHandler()),
-            sizeof(platform_socket_internet_address_handler_t)
-        );
-        break;
-    }
-    default:
-        break;
-    }
+    const int result = ::bind(
+        *__blib_cast_socket_handler(this->__getHandler()),
+        reinterpret_cast<const sockaddr*>(&sockAddress),
+        sizeof(sockaddr_in)
+    );
 
     if (result != SOCKET_ERROR)
     {

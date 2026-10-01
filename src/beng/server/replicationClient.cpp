@@ -44,7 +44,7 @@ namespace beng
         blib::network::Socket* raw = this->socket.getSocket();
         raw->close();
         raw->destroy();
-        raw->create(blib::network::AddressType::IPv4,
+        raw->create(blib::network::address::AddressType::IPv4,
             blib::network::SocketType::Stream, blib::network::SocketProtocol::TCP);
         this->socket.setBlocking(false);
 
@@ -207,9 +207,10 @@ namespace beng
         if (this->connection == Connection::Connecting)
         {
             // Асинхронный connect: WouldBlock = «в процессе»
-            blib::network::Address address(blib::network::Address::LocalhostIPv4);
-            address.setPort(static_cast<int>(this->serverPort));
-            const blib::network::SocketStatus status = this->socket.connect(address);
+            blib::network::address::Tcp endpoint;
+            endpoint.ip = blib::network::address::Address::LocalhostIPv4;
+            endpoint.port = static_cast<buint16>(this->serverPort);
+            const blib::network::SocketStatus status = this->socket.connect(endpoint);
             if (status == blib::network::SocketStatus::OK)
             {
                 this->socket.setTcpNoDelay(true);

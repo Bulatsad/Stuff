@@ -9,7 +9,7 @@ blib::network::TcpListener::TcpListener()
 {
 }
 
-blib::network::TcpListener::TcpListener(AddressType type)
+blib::network::TcpListener::TcpListener(address::AddressType type)
 {
     this->socket.create(type, SocketType::Stream, SocketProtocol::TCP);
     setBlocking(true);
@@ -20,7 +20,7 @@ bool blib::network::TcpListener::setBlocking(bool isBlocking)
     return this->socket.setBlocking(isBlocking);
 }
 
-blib::network::SocketStatus blib::network::TcpListener::open(AddressType type)
+blib::network::SocketStatus blib::network::TcpListener::open(address::AddressType type)
 {
     // Пересоздание: close() закрыл хендл, но память ctx жива —
     // освободить её и создать сокет заново (в bind() после close
@@ -42,9 +42,9 @@ blib::network::SocketStatus blib::network::TcpListener::close()
     return this->socket.close();
 }
 
-blib::network::SocketStatus blib::network::TcpListener::bind(Address& addr)
+blib::network::SocketStatus blib::network::TcpListener::bind(_In const address::Tcp& endpoint)
 {
-    return this->socket.bind(addr);
+    return this->socket.bind(endpoint.ip, endpoint.port);
 }
 
 blib::network::SocketStatus blib::network::TcpListener::listen(int backlog)

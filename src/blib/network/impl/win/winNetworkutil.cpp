@@ -3,6 +3,8 @@
 
 #include <WinSock2.h>
 
+#include <cstring>
+
 int blibToWinApi(const blib::network::SocketType type)
 {
 	switch (type)
@@ -44,44 +46,66 @@ int blibToWinApi(const blib::network::SocketProtocol protocol)
 	}
 }
 
-int blibToWinApi(const blib::network::AddressType af)
+int blibToWinApi(const blib::network::address::AddressType af)
 {
 	switch (af)
 	{
-	case blib::network::AddressType::IPv4:
+	case blib::network::address::AddressType::IPv4:
 		return AF_INET;
-	case blib::network::AddressType::IPv6:
+	case blib::network::address::AddressType::IPv6:
 		return AF_INET6;
-	case blib::network::AddressType::AppleTalk:
-		return AF_APPLETALK;
-	case blib::network::AddressType::NetBios:
-		return AF_NETBIOS;
-	case blib::network::AddressType::IRDA:
-		return AF_IRDA;
-	case blib::network::AddressType::Bluetooth:
-		return AF_BTH;
 	default:
 		return AF_UNSPEC;
 	}
 }
 
-blib::network::AddressType blibWinApiToBlib(ADDRESS_FAMILY af)
+blib::network::address::AddressType blibWinApiToBlib(ADDRESS_FAMILY af)
 {
 	switch (af)
 	{
 	case AF_INET:
-		return blib::network::AddressType::IPv4;
+		return blib::network::address::AddressType::IPv4;
 	case AF_INET6:
-		return blib::network::AddressType::IPv6;
-	case AF_APPLETALK:
-		return blib::network::AddressType::AppleTalk;
-	case AF_NETBIOS:
-		return blib::network::AddressType::NetBios;
-	case AF_IRDA:
-		return blib::network::AddressType::IRDA;
-	case AF_BTH:
-		return blib::network::AddressType::Bluetooth;
+		return blib::network::address::AddressType::IPv6;
 	default:
-		return blib::network::AddressType::UNDEFINED;
+		return blib::network::address::AddressType::UNDEFINED;
 	}
+}
+
+bool blibToSockaddr(_In const blib::network::address::Address& ip, _In buint16 port,
+	_Out sockaddr_in& out)
+{
+	memset(&out, 0, sizeof(out));
+
+	if (ip.getType() != blib::network::address::AddressType::IPv4)
+	{
+		// IPv6 — TODO (см. NETWORK.md): сокеты пока только IPv4
+		return false;
+	}
+
+	const blib::network::address::IPv4 ipv4 = ip.toIPv4();
+	out.sin_family = AF_INET;
+	out.sin_port = htons(port);
+	// Байты IPv4 хранятся в сетевом порядке (bytes[0] — старший октет),
+	// sin_addr — big-endian: копия байт-в-байт корректна
+	memcpy(&out.sin_addr, ipv4.bytes, sizeof(ipv4.bytes));
+	return true;
+}
+
+bool blibFromSockaddr(_In const sockaddr_in& in,
+	_Out blib::network::address::Address& outIp, _Out buint16& outPort)
+{
+	outIp = blib::network::address::Address();
+	outPort = 0;
+
+	if (in.sin_family != AF_INET)
+	{
+		return false;
+	}
+
+	blib::network::address::IPv4 ipv4;
+	memcpy(ipv4.bytes, &in.sin_addr, sizeof(ipv4.bytes));
+	outIp = blib::network::address::Address(ipv4);
+	outPort = ntohs(in.sin_port);
+	return true;
 }
