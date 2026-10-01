@@ -51,6 +51,7 @@
 | beng-client (клиентская оболочка: ClientApplication + IClientGame) | `src/beng/client/CLIENT.md` |
 | beng-server (серверное ядро + рефлексивная репликация) | `src/beng/server/SERVER.md` |
 | gravelands (игра: клиент, сервер, common) | `src/misc/gravelands/GRAVELANDS.md` |
+| lamphold (игра: RTS в духе Stronghold; roadmap, модуль ещё не начат) | `src/misc/lamphold/LAMPHOLD.md` |
 | model_viewer (3D-вьювер) | `src/misc/model_viewer/MODEL_VIEWER.md` |
 
 Индекс пополняется при создании новых доков (`MODEL_VIEWER.md`, `GRAVELANDS.md`, `CLIENT.md`, `EDITOR.md`, ...). При изменении кода модуля — обязательно обновлять его док (см. «Документация модулей» в строгих правилах ниже).
