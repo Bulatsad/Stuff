@@ -133,6 +133,66 @@ namespace beng
         return count;
     }
 
+    bool ReplicationClientState::getLatestFieldSample(EntityID entityId,
+        _In const char* componentTypeName, _In const char* fieldName,
+        _Out FieldValue& outValue) const
+    {
+        // Wire-id по стабильному имени типа (схема Welcome)
+        buint32 wireId = 0;
+        bool wireFound = false;
+        for (buint32 w = 0; w < this->wireTypeCount; ++w)
+        {
+            const ReplicationSchema::WireType* wire = this->schema.getWireType(w);
+            if (wire != nullptr && std::strcmp(wire->name, componentTypeName) == 0)
+            {
+                wireId = w;
+                wireFound = true;
+                break;
+            }
+        }
+        if (!wireFound)
+        {
+            return false; // тип не реплицируется (или Welcome не принят)
+        }
+
+        const ComponentType localType = this->wireToLocal[wireId];
+        if (localType == invalidComponentType)
+        {
+            return false;
+        }
+
+        // Индекс реплицируемого поля по имени (дескриптор рефлексии;
+        // индексы совпадают с fieldIndex слотов интерполяции)
+        buint8 fieldIndex = 0;
+        bool fieldFound = false;
+        const buint32 fieldCount = this->schema.getReplicatedFieldCount(localType);
+        for (buint32 f = 0; f < fieldCount; ++f)
+        {
+            const IComponentField* field = this->schema.getReplicatedField(localType, f);
+            if (field != nullptr && std::strcmp(field->getName(), fieldName) == 0)
+            {
+                fieldIndex = static_cast<buint8>(f);
+                fieldFound = true;
+                break;
+            }
+        }
+        if (!fieldFound)
+        {
+            return false;
+        }
+
+        // Новейший сэмпл кольца (последний по времени приёма)
+        const InterpolationFieldState* slot = this->findSlot(
+            entityId, static_cast<buint8>(wireId), fieldIndex);
+        if (slot == nullptr || slot->count == 0)
+        {
+            return false; // зеркало неизвестно или снапшот ещё не пришёл
+        }
+
+        outValue = slot->samples[(slot->start + slot->count - 1) % maxInterpolationSamples].value;
+        return true;
+    }
+
     bool ReplicationClientState::acceptWelcome(_In const Scene& scene,
         _In const DecodedReplicationWelcome& welcome,
         _Out buint32& outTickRate, _Out EntityID& outPlayerEntity)
@@ -211,6 +271,21 @@ namespace beng
         for (buint32 i = 0; i < interpolationSlotPoolSize; ++i)
         {
             InterpolationFieldState& slot = this->slotPool[i];
+            if (slot.entityId == entityId && slot.wireTypeId == wireTypeId &&
+                slot.fieldIndex == fieldIndex)
+            {
+                return &slot;
+            }
+        }
+        return nullptr;
+    }
+
+    const ReplicationClientState::InterpolationFieldState* ReplicationClientState::findSlot(
+        EntityID entityId, buint8 wireTypeId, buint8 fieldIndex) const
+    {
+        for (buint32 i = 0; i < interpolationSlotPoolSize; ++i)
+        {
+            const InterpolationFieldState& slot = this->slotPool[i];
             if (slot.entityId == entityId && slot.wireTypeId == wireTypeId &&
                 slot.fieldIndex == fieldIndex)
             {

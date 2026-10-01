@@ -11,6 +11,12 @@ namespace gravelands
         params.height = imguiEnabled ? windowHeight : pieWindowHeight;
         params.title = gameTitle;
         params.imguiEnabled = imguiEnabled;
+        // Движковый client-side prediction игрока: оболочка шлёт
+        // WASD-команды с dedup, реконсилирует предсказание со свежайшим
+        // серверным сэмплом и перекрывает зеркало (см. CLIENT.md);
+        // порог снапа — общий контракт игры (config.h)
+        params.predictionEnabled = true;
+        params.predictionSnapDistance = predictionSnapDistance;
 
         if (!this->application.initialize(this->game, params))
         {

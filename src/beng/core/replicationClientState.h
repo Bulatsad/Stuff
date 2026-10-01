@@ -130,6 +130,21 @@ namespace beng
         buint32 takeDestroyEvents(_Out_opt EntityID* out, buint32 capacity);
 
         /**
+         * Новейший известный СЕРВЕРНЫЙ сэмпл поля зеркальной сущности —
+         * для реконсиляции движкового client-side prediction игрока
+         * (см. CLIENT.md): сравнение с последним снапшотом, а не с
+         * интерполированным значением сцены — то отстаёт на
+         * interpolationDelayTicks. Резолв по стабильным именам: имя
+         * типа → wire-id (схема Welcome), имя поля → индекс
+         * реплицируемого поля (дескриптор рефлексии).
+         *
+         * @return false — тип/поле не реплицируются, зеркало неизвестно
+         *         или сэмплов ещё не было (снапшот не пришёл)
+         */
+        bool getLatestFieldSample(EntityID entityId, _In const char* componentTypeName,
+            _In const char* fieldName, _Out FieldValue& outValue) const;
+
+        /**
          * Сброс состояния (переподключение к серверу): маппинг, зеркала,
          * кольца интерполяции, события.
          */
@@ -200,6 +215,7 @@ namespace beng
         // ===== Интерполяция =====
 
         InterpolationFieldState* findSlot(EntityID entityId, buint8 wireTypeId, buint8 fieldIndex);
+        const InterpolationFieldState* findSlot(EntityID entityId, buint8 wireTypeId, buint8 fieldIndex) const;
         InterpolationFieldState* allocSlot(EntityID entityId, buint8 wireTypeId, buint8 fieldIndex);
 
         // Очистить кольца всех полей типа сущности (full-ресинк)

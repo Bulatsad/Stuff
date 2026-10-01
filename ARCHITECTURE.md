@@ -4,7 +4,7 @@
 > (`blib` → `beng` → `game`), требования к движку beng и целевую
 > архитектуру референсной игры (диаблоид). Статус: план, не код.
 > Обновляется вместе с развитием кодовой базы.
-> Сверено: 2026-09-30
+> Сверено: 2026-10-01
 
 ---
 
@@ -136,11 +136,17 @@
   in-process `ServerApplication` с пробой порта; один сетевой путь для
   одиночной игры/внешнего сервера/PIE).
 - **`IClientGame`** — хук-интерфейс игры (композиция, как `IServerGame`):
-  типы/системы/контент, ввод, оверлей, сетевой кадр (события зеркал,
-  команды, предикшн), сессия (`onSessionReady`/`onSessionLost`).
+  типы/системы/контент, ввод, оверлей, сетевой кадр (события зеркал),
+  кодек команд и формула интеграции ввода для движкового предикшна
+  (`buildPlayerCommand`/`applyPlayerCommand`), сессия
+  (`onSessionReady`/`onSessionLost`).
 - **Интерполяция зеркал — движковая** (beng-core `ReplicationClientState`
   + флаг `FunctionField::interpolated`): позиции снапшотов lerp'ятся с
   постоянным лагом (см. SERVER.md).
+- **Client-side prediction игрока — движковый (2026-10-01):** оболочка
+  `ClientApplication` владеет полным циклом (команда с dedup →
+  реконсиляция по свежайшему серверному сэмплу →
+  `IClientGame::applyPlayerCommand` → перекрытие зеркала), см. CLIENT.md.
 - Детали, порядок кадра, разрушение GL-ресурсов, грабли —
   `src/beng/client/CLIENT.md`.
 
@@ -423,7 +429,10 @@ src/
    `GravelandsClientGame` (IServerGame/IClientGame), `protocol.h` ужат
    до кодека команд, рукописная сеть удалена, PIE без правок
    `PieSession`; **local-server mode** (одиночная игра — in-process
-   сервер клиента). AudioModule — TODO. *(ResourceManager сделан раньше
+   сервер клиента); **client-side prediction игрока — движковая фича
+   оболочки (2026-10-01)** — `ClientPrediction`/`getLatestFieldSample` +
+   хуки `buildPlayerCommand`/`applyPlayerCommand` (см. CLIENT.md).
+   AudioModule — TODO. *(ResourceManager сделан раньше
    плана — в blib-core: кеш ISaveLoadable с dedup и refcount, см.
    RESOURCE_MANAGER.md.)*
 4. **Геймплей-петля диаблоида**: бой, лут, скиллы (gravelands-common/server),
@@ -545,12 +554,27 @@ src/
   `GravelandsServerGame`/`GravelandsClientGame`, `protocol.h` — кодек
   команд, рукописная сеть удалена, PIE без правок `PieSession`;
   local-server — одиночный запуск клиента сам хостит сервер.
-  Исправлено по ходу: MSVC материализует тернарник в init-списке окна
-  → деструктор временного `RenderWindow` удалял GL-контекст (фабрика
-  «return prvalue», см. CLIENT.md); коллизия ID зеркал с локальным
-  контентом клиента (ID-пространства, см. SERVER.md). 36/36 тестов в
-  обеих сборках, smoke: клиент соло (local-server), пара сервер+клиент,
-  эдитор STATIC/SHARED.
+   Исправлено по ходу: MSVC материализует тернарник в init-списке окна
+   → деструктор временного `RenderWindow` удалял GL-контекст (фабрика
+   «return prvalue», см. CLIENT.md); коллизия ID зеркал с локальным
+   контентом клиента (ID-пространства, см. SERVER.md). 36/36 тестов в
+   обеих сборках, smoke: клиент соло (local-server), пара сервер+клиент,
+   эдитор STATIC/SHARED.
+- **Предикшн игрока — движковая фича оболочки (2026-10-01):**
+  client-side prediction вынесен из `GravelandsClientGame` в
+  `ClientApplication` (beng-client): чистая логика — `ClientPrediction`
+  (`clientPrediction.h`; старт от серверного сэмпла, снап при
+  расхождении > порога, штатный лаг доверяем предсказанию), новейший
+  серверный сэмпл — `ReplicationClientState::getLatestFieldSample`
+  (резолв по стабильным именам типа/поля; интерполированное значение
+  сцены для сверки не годится — отстаёт на `interpolationDelayTicks`).
+  Игра даёт только кодек команды и формулу интеграции: новые хуки
+  `IClientGame::buildPlayerCommand`/`applyPlayerCommand`; оболочка шлёт
+  команды с dedup по байтам и перекрывает зеркало игрока после
+  renderMirror; сброс — в переходе ready→lost. `predictionEnabled`/
+  `predictionSnapDistance` — в `ClientApplicationParams`. Группа тестов
+  `client_prediction` (6 кейсов), 37/37 тестов, smoke: клиент соло,
+  эдитор STATIC.
 
 **Осталось (по roadmap):**
 

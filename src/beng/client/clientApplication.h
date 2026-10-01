@@ -35,6 +35,11 @@ namespace beng
             bool imguiEnabled;     // false = headless (PIE): без ОС-окна,
                                    // своего GL-контекста и ImGui — кадр
                                    // остаётся в FBO клиента
+            bool predictionEnabled;      // движковый client-side prediction
+                                         // игрока (IClientGame::
+                                         // buildPlayerCommand/applyPlayerCommand)
+            float predictionSnapDistance; // порог реконсиляции предикшна
+                                         // (мир. ед., см. clientPrediction.h)
         };
 
         /**
@@ -47,6 +52,14 @@ namespace beng
          * Игра подключается интерфейсом IClientGame (композиция, как
          * IServerGame у сервера): типы, системы, контент, ввод,
          * оверлей, кодек команд — игра; оболочка игра-агностична.
+         *
+         * Client-side prediction ИГРОКА — движковая фича оболочки
+         * (clientPrediction.h + ReplicationClientState::
+         * getLatestFieldSample): игра даёт построение команды ввода и
+         * формулу интеграции (IClientGame::buildPlayerCommand/
+         * applyPlayerCommand), оболочка шлёт команду с dedup,
+         * реконсилирует предсказание со свежайшим серверным сэмплом и
+         * перекрывает зеркало игрока (детали — CLIENT.md).
          *
          * Frame-API (паттерн «lib + тонкий exe», см. ARCHITECTURE.md):
          * initialize/tick/shutdown — циклом владеет тонкий exe (или

@@ -1,4 +1,5 @@
 #include <beng/client/clientApplication.h>
+#include <beng/client/clientPrediction.h>
 #include <beng/client/iClientGame.h>
 
 #include <beng/client/componentCameraAdapter.h>
@@ -26,6 +27,7 @@
 #include <imgui/imgui_impl_win32.h>
 
 #include <cmath>
+#include <cstring>
 #include <new>
 
 #include <Windows.h>
@@ -69,6 +71,12 @@ namespace beng
 
             // Имя консольной команды перезагрузки шейдеров (см. F5)
             constexpr const char* hotreloadCommand = "hotreload";
+
+            // Имя реплицируемого поля Transform с позицией игрока:
+            // обязано совпадать с именем поля дескриптора рефлексии
+            // TransformComponent (см. transform.cpp, reflectionFieldPosition) —
+            // по нему getLatestFieldSample резолвит сэмпл для реконсиляции
+            constexpr const char* predictionPositionFieldName = "position";
 
             // Консольное окно (тильда): размер и позиция внизу окна игры
             constexpr float consoleWidth = 900.0f;
@@ -140,6 +148,17 @@ namespace beng
             // ready ↔ lost (см. tick)
             bool sessionReadyNotified;
 
+            // ===== Движковый client-side prediction игрока =====
+            // Чистая логика (старт/реконсиляция/снап) — clientPrediction.h;
+            // интеграция ввода — игра (IClientGame::applyPlayerCommand),
+            // команды шлёт оболочка (dedup по байтам)
+            bool predictionEnabled;
+            float predictionSnapDistance;
+            beng::client::ClientPrediction prediction;
+            buint8 lastSentPayload[replicationPayloadMaxSize];
+            buint32 lastSentPayloadSize;
+            bool lastSentPayloadValid;
+
             beng::Time time;
 
             // Консоль (тильда): ImGui-окно поверх blib::console::Console
@@ -172,6 +191,11 @@ namespace beng
                 , localServer(nullptr)
                 , replicationClient()
                 , sessionReadyNotified(false)
+                , predictionEnabled(params.predictionEnabled)
+                , predictionSnapDistance(params.predictionSnapDistance)
+                , prediction()
+                , lastSentPayloadSize(0)
+                , lastSentPayloadValid(false)
                 , time()
                 , consoleWindow()
                 , showConsole(false)
@@ -425,11 +449,96 @@ namespace beng
             {
                 this->impl->sessionReadyNotified = false;
                 this->impl->game->onSessionLost();
+
+                // Разрыв сессии: предикшн и dedup команд сбрасываются —
+                // следующее подключение стартует от первого снапшота
+                this->impl->prediction.reset();
+                this->impl->lastSentPayloadValid = false;
             }
 
-            // Игра: ввод → сетевой кадр (события зеркал, команды,
-            // предсказание) → состояние рендера (камера, свет)
+            // Игра: ввод → сетевой кадр (события зеркал) → состояние
+            // рендера (камера, свет). Команды ввода и предикшн игрока —
+            // движковый блок ниже (см. CLIENT.md, «Предикшн игрока»)
             this->impl->game->onInput(simDeltaTime);
+
+            // ===== Движковый client-side prediction игрока =====
+            // Гейт: включён в параметрах, сессия открыта, консоль
+            // закрыта (буквы команд не должны двигать юнит — глобальный
+            // Keyboard не знает про фокус ImGui). Порядок: команда →
+            // реконсиляция → интеграция игрой → перекрытие зеркала.
+            // renderMirror уже отработал в poll — интерполированная
+            // позиция игрока перекрывается предсказанной
+            if (this->impl->predictionEnabled &&
+                this->impl->replicationClient.isSessionReady() &&
+                !this->impl->showConsole)
+            {
+                // 1. Команда ввода: игра кодирует payload, движок шлёт
+                //    при изменении (dedup по байтам — повторяющиеся
+                //    команды не плодят пакеты)
+                buint8 commandPayload[replicationPayloadMaxSize];
+                const buint32 commandSize = this->impl->game->buildPlayerCommand(
+                    commandPayload, replicationPayloadMaxSize);
+                if (commandSize > 0 && commandSize <= replicationPayloadMaxSize &&
+                    (!this->impl->lastSentPayloadValid ||
+                     commandSize != this->impl->lastSentPayloadSize ||
+                     std::memcmp(commandPayload, this->impl->lastSentPayload, commandSize) != 0))
+                {
+                    this->impl->replicationClient.sendCommand(commandPayload, commandSize);
+                    std::memcpy(this->impl->lastSentPayload, commandPayload, commandSize);
+                    this->impl->lastSentPayloadSize = commandSize;
+                    this->impl->lastSentPayloadValid = true;
+                }
+
+                // 2. Новейший серверный сэмпл позиции игрока (не
+                //    интерполированное значение сцены — то отстаёт на
+                //    interpolationDelayTicks, см. replicationClientState.h)
+                beng::FieldValue serverSample;
+                const bool hasServerSample =
+                    this->impl->replicationClient.getMirror().getLatestFieldSample(
+                        this->impl->replicationClient.getPlayerEntityId(),
+                        beng::TransformComponent::componentTypeName,
+                        predictionPositionFieldName,
+                        serverSample);
+
+                // 3. Реконсиляция: старт от серверной позиции при первом
+                //    снапшоте; снап — только при расхождении больше
+                //    порога (штатный лаг сервера доверяем предсказанию —
+                //    постоянная коррекция дала бы rubber-band)
+                if (hasServerSample && serverSample.kind == beng::FieldValue::Kind::Vector3)
+                {
+                    const bool wasActive = this->impl->prediction.isActive();
+                    const blib::math::Vector<float, 3> divergence =
+                        this->impl->prediction.getPredictedPosition() - serverSample.vector3Value;
+                    if (this->impl->prediction.reconcile(
+                        true, serverSample.vector3Value, this->impl->predictionSnapDistance))
+                    {
+                        __blib_log_debug("network: prediction %s (divergence %.1f)",
+                            wasActive ? "snapped to server" : "started from server",
+                            static_cast<double>(blib::math::length(divergence)));
+                    }
+                }
+
+                // 4. Интеграция ввода игрой (формула 1:1 с серверной
+                //    симуляцией) + перекрытие зеркала предсказанной
+                //    позицией. Зеркала игрока нет (первый снапшот ещё
+                //    не пришёл / сцена сброшена) — предсказание ждёт
+                if (this->impl->prediction.isActive())
+                {
+                    beng::TransformComponent* playerTransform =
+                        this->impl->scene.tryGetComponent<beng::TransformComponent>(
+                            this->impl->replicationClient.getPlayerEntityId());
+                    if (playerTransform != nullptr)
+                    {
+                        blib::math::Vector<float, 3> position =
+                            this->impl->prediction.getPredictedPosition();
+                        this->impl->game->applyPlayerCommand(
+                            position, commandPayload, commandSize, simDeltaTime);
+                        this->impl->prediction.setPredictedPosition(position);
+                        playerTransform->setLocalPosition(position);
+                    }
+                }
+            }
+
             this->impl->game->onNetworkUpdate();
             this->impl->game->onSceneWillUpdate(simDeltaTime);
 

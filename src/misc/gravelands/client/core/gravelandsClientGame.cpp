@@ -65,12 +65,6 @@ namespace gravelands
         , playerNetworkEntity(beng::invalidEntity)
         , localPlayerRemoved(false)
         , cameraFollowActive(false)
-        , predictedPosition(0.0f, 0.0f, 0.0f)
-        , predictionActive(false)
-        , predictionCommand{ 0, 0 }
-        , lastSentCommand{ 0, 0 }
-        , lastSentCommandValid(false)
-        , simDeltaTime(0.0f)
     {
     }
 
@@ -106,8 +100,7 @@ namespace gravelands
 
     void GravelandsClientGame::onInput(float deltaTime)
     {
-        // dt этого кадра нужен onNetworkUpdate (команды/предсказание)
-        this->simDeltaTime = deltaTime;
+        (void)deltaTime;
 
         // Отладочные клавиши работают ТОЛЬКО при закрытой консоли:
         // глобальный Keyboard не знает про фокус ImGui, и при печати
@@ -161,6 +154,51 @@ namespace gravelands
         }
     }
 
+    buint32 GravelandsClientGame::buildPlayerCommand(_Out buint8* out, buint32 capacity)
+    {
+        // WASD-вектор: D/A — ось X, W/S — ось Z (W — «от камеры»,
+        // к центру мира при стартовом ракурсе). Кодек — protocol.h;
+        // движок шлёт payload при изменении (dedup по байтам) и питает
+        // им движковый предикшн (applyPlayerCommand)
+        PlayerCommand command;
+        command.moveX = static_cast<bint8>(
+            (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::D) ? 1 : 0) -
+            (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::A) ? 1 : 0));
+        command.moveZ = static_cast<bint8>(
+            (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::W) ? 1 : 0) -
+            (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::S) ? 1 : 0));
+        return encodeCommandPayload(out, capacity, command);
+    }
+
+    void GravelandsClientGame::applyPlayerCommand(
+        _In_Out blib::math::Vector<float, 3>& position,
+        _In const buint8* payload, buint32 payloadSize, float deltaTime)
+    {
+        PlayerCommand command;
+        if (!decodeCommandPayload(payload, payloadSize, command))
+        {
+            return; // команды нет / битый payload — не интегрируем
+        }
+        if (command.moveX == 0 && command.moveZ == 0)
+        {
+            return; // нет ввода — нет движения
+        }
+
+        // Формула 1:1 с MovementSystem сервера (нормализованная
+        // диагональ × playerMoveSpeed, кламп worldBounds): предсказанная
+        // траектория совпадает с серверной, просто начинается раньше
+        // (сервер применяет команды с лагом кадра)
+        blib::math::Vector<float, 3> direction(
+            static_cast<float>(command.moveX), 0.0f, static_cast<float>(command.moveZ));
+        direction = blib::math::normalize(direction);
+
+        position = position + direction * (playerMoveSpeed * deltaTime);
+        if (position.x > worldBounds) position.x = worldBounds;
+        if (position.x < -worldBounds) position.x = -worldBounds;
+        if (position.z > worldBounds) position.z = worldBounds;
+        if (position.z < -worldBounds) position.z = -worldBounds;
+    }
+
     void GravelandsClientGame::onNetworkUpdate()
     {
         beng::ReplicationClient& replicationClient = this->application->getReplicationClient();
@@ -186,19 +224,9 @@ namespace gravelands
         beng::EntityID destroyEvents[beng::maxSnapshotEntities];
         mirror.takeDestroyEvents(destroyEvents, beng::maxSnapshotEntities);
 
-        // Команда игрока (WASD) — при открытой сессии; она же питает
-        // локальное предсказание (см. updatePlayerPrediction). При
-        // открытой консоли не шлём — буквы команд не должны двигать
-        // юнит (глобальный Keyboard не видит фокус ImGui)
-        if (replicationClient.isSessionReady() && !this->application->isConsoleOpen())
-        {
-            this->sendMovementCommand();
-        }
-
-        // Реконсиляция по интерполированной позиции зеркала игрока +
-        // локальное предсказание (движение начинается мгновенно)
-        this->reconcilePlayerPrediction();
-        this->updatePlayerPrediction(this->simDeltaTime);
+        // Команды ввода и client-side prediction игрока — движковая
+        // оболочка (buildPlayerCommand/applyPlayerCommand + предикшн-
+        // блок ClientApplication::tick, см. CLIENT.md) — здесь их нет
     }
 
     void GravelandsClientGame::onSceneWillUpdate(float deltaTime)
@@ -230,12 +258,11 @@ namespace gravelands
 
     void GravelandsClientGame::onSessionLost()
     {
-        // Разрыв сессии: предсказание гасится (при следующем
-        // подключении стартует заново от первого снапшота), камера
-        // возвращается в офлайн-режим WASD
+        // Разрыв сессии: камера возвращается в офлайн-режим WASD.
+        // Предсказание и dedup команд гасит оболочка (предикшн-блок
+        // ClientApplication::tick — следующее подключение стартует
+        // заново от первого снапшота)
         this->playerNetworkEntity = beng::invalidEntity;
-        this->predictionActive = false;
-        this->predictionCommand = PlayerCommand{ 0, 0 };
         this->cameraFollowActive = false;
 
         __blib_log_info("%s client: session lost", gameTitle);
@@ -262,7 +289,7 @@ namespace gravelands
         }
 
         // Сетевой режим: камера следует за зеркалом игрового юнита
-        // (WASD уходит в команды серверу — см. sendMovementCommand)
+        // (WASD уходит в команды серверу — см. buildPlayerCommand)
         if (this->application->getReplicationClient().isSessionReady())
         {
             if (this->playerNetworkEntity != beng::invalidEntity)
@@ -335,122 +362,6 @@ namespace gravelands
         camera.moveTarget(movement * (cameraMoveSpeed * deltaTime));
 
         camera.update();
-    }
-
-    void GravelandsClientGame::sendMovementCommand()
-    {
-        // WASD-вектор: D/A — ось X, W/S — ось Z (W — «от камеры»,
-        // к центру мира при стартовом ракурсе)
-        PlayerCommand command;
-        command.moveX = static_cast<bint8>(
-            (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::D) ? 1 : 0) -
-            (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::A) ? 1 : 0));
-        command.moveZ = static_cast<bint8>(
-            (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::W) ? 1 : 0) -
-            (blib::graphics::Keyboard::isKeyPressed(blib::graphics::Keyboard::Key::S) ? 1 : 0));
-
-        // Dedup: слать только при изменении вектора
-        if (!this->lastSentCommandValid ||
-            command.moveX != this->lastSentCommand.moveX ||
-            command.moveZ != this->lastSentCommand.moveZ)
-        {
-            buint8 payload[commandPayloadSize];
-            if (encodeCommandPayload(payload, commandPayloadSize, command) == commandPayloadSize)
-            {
-                this->application->getReplicationClient().sendCommand(payload, commandPayloadSize);
-            }
-            this->lastSentCommand = command;
-            this->lastSentCommandValid = true;
-        }
-
-        // Текущий ввод питает локальное предсказание (каждый кадр)
-        this->predictionCommand = command;
-    }
-
-    void GravelandsClientGame::reconcilePlayerPrediction()
-    {
-        if (!this->application->getReplicationClient().isSessionReady() ||
-            this->playerNetworkEntity == beng::invalidEntity)
-        {
-            return; // сессии нет — игрока не знаем
-        }
-
-        // Позиция игрока в зеркале (интерполированная движком)
-        beng::TransformComponent* mirrorTransform =
-            this->scene->tryGetComponent<beng::TransformComponent>(this->playerNetworkEntity);
-        if (mirrorTransform == nullptr)
-        {
-            return;
-        }
-        const blib::math::Vector<float, 3> serverPosition = mirrorTransform->getLocalPosition();
-
-        if (!this->predictionActive)
-        {
-            // Первый снапшот игрока: предсказание стартует от зеркала
-            // (скачка при старте сессии нет)
-            this->predictedPosition = serverPosition;
-            this->predictionActive = true;
-            return;
-        }
-
-        // Штатное расхождение = скорость × латентность команды (сервер
-        // воспроизводит те же команды, просто отстаёт на кадр) — ему
-        // доверяем: постоянная коррекция дала бы видимый rubber-band
-        // на остановке. Снап — только при реальной рассинхронизации
-        const blib::math::Vector<float, 3> error = this->predictedPosition - serverPosition;
-        const float errorLength = blib::math::length(error);
-        if (errorLength > predictionSnapDistance)
-        {
-            __blib_log_debug("network: prediction snapped to server (divergence %.1f)",
-                static_cast<double>(errorLength));
-            this->predictedPosition = serverPosition;
-        }
-    }
-
-    void GravelandsClientGame::updatePlayerPrediction(float deltaTime)
-    {
-        if (!this->application->getReplicationClient().isSessionReady())
-        {
-            // Разрыв сессии — предсказание гасится; при следующем
-            // подключении стартует заново от первого снапшота
-            this->predictionActive = false;
-            this->predictionCommand = PlayerCommand{ 0, 0 };
-            return;
-        }
-        if (!this->predictionActive)
-        {
-            return; // первый снапшот ещё не пришёл
-        }
-
-        // Интеграция ввода — формула 1:1 с MovementSystem сервера
-        // (нормализованная диагональ, playerMoveSpeed, кламп worldBounds):
-        // предсказанная траектория совпадает с серверной, просто
-        // начинается раньше (сервер применяет команды с лагом кадра)
-        const bint8 moveX = this->predictionCommand.moveX;
-        const bint8 moveZ = this->predictionCommand.moveZ;
-        if (moveX != 0 || moveZ != 0)
-        {
-            blib::math::Vector<float, 3> direction(
-                static_cast<float>(moveX), 0.0f, static_cast<float>(moveZ));
-            direction = blib::math::normalize(direction);
-
-            blib::math::Vector<float, 3> position = this->predictedPosition;
-            position = position + direction * (playerMoveSpeed * deltaTime);
-            if (position.x > worldBounds) position.x = worldBounds;
-            if (position.x < -worldBounds) position.x = -worldBounds;
-            if (position.z > worldBounds) position.z = worldBounds;
-            if (position.z < -worldBounds) position.z = -worldBounds;
-            this->predictedPosition = position;
-        }
-
-        // Зеркало игрока рендерится по предсказанию — интерполированная
-        // позиция (движковая) для игрока перекрывается
-        beng::TransformComponent* mirrorTransform =
-            this->scene->tryGetComponent<beng::TransformComponent>(this->playerNetworkEntity);
-        if (mirrorTransform != nullptr)
-        {
-            mirrorTransform->setLocalPosition(this->predictedPosition);
-        }
     }
 
     void GravelandsClientGame::drawOverlay()

@@ -3,7 +3,7 @@
 > Слой: `beng` (таргет `beng-server`, каталог `src/beng/server`). Шпаргалка по серверному ядру, клиенту репликации и рефлексивной репликации.
 > Не дублирует правила проекта (`AGENTS.md`) и roadmap (`ARCHITECTURE.md`) — только ссылается.
 > **Обновлять при любом изменении кода beng-server или репликации beng-core** (см. AGENTS.md, «Документация модулей»).
-> Сверено: 2026-09-30
+> Сверено: 2026-10-01
 
 ---
 
@@ -86,7 +86,8 @@ poll (accept/recv/отправка очередей)
 - Поля с флагом `FunctionField::interpolated` (Transform.position) НЕ пишутся в сцену при `applySnapshot` — значения буферизуются в **per-field кольца сэмплов** `(entityId, wireTypeId, fieldIndex) → [(receiveTime, value) × maxInterpolationSamples]`; неинтерполируемые поля (scale) применяются сразу.
 - `renderMirror(scene, nowSeconds)` каждый кадр пишет в сцену интерполированные значения на `nowSeconds − delay` (delay = `interpolationDelayTicks=2` / tickRate): пара сэмплов, охватывающая время рендера → lerp по клиентскому времени приёма; вне диапазона — держим ближайший сэмпл (без экстраполяции); kind — только Vector3 (иной interpolated-kind — новейший сэмпл без lerp, ограничение MVP).
 - Full-ресинк переписывает кольца типа; destroy — чистит кольца сущности; пул слотов — куча GlobalAllocator (~interpolationSlotPoolSize = 64×8×6 слотов, ленивое выделение), `reset()` пересобирает свободный список.
-- Игра может перекрывать зеркало своим визуалом/предикшном ПОСЛЕ poll (хук `onNetworkUpdate` — см. CLIENT.md).
+- **`getLatestFieldSample(entityId, componentTypeName, fieldName)`** — новейший СЕРВЕРНЫЙ сэмпл поля (резолв по стабильным именам: wire-id из схемы, индекс поля из дескриптора рефлексии): вход реконсиляции движкового предикшна игрока (см. CLIENT.md «Предикшн игрока»). Сэмпла нет (снапшот не пришёл/тип не реплицируется/имя неверно) — false.
+- Предикшн игрока перекрывает зеркало ПОСЛЕ poll — предикшн-блоком оболочки `ClientApplication` (см. CLIENT.md).
 
 ### WorldManager
 
@@ -111,7 +112,7 @@ poll (accept/recv/отправка очередей)
 - [ ] UDP-канал снапшотов (сейчас TCP для всего).
 - [ ] `loadWorld` на сервере — подъём базы ID после загрузки (сейчас — только buildWorld).
 - [ ] Интерполяция kind'ов кроме Vector3 (Float/Bool — снэп без lerp сегодня).
-- [ ] Предикшн как движковая фича (сейчас предикшн игрока — в gravelands, см. GRAVELANDS.md).
+- [x] Предикшн как движковая фича (2026-10-01) — оболочка `ClientApplication` + `ClientPrediction`/`getLatestFieldSample`, см. CLIENT.md «Предикшн игрока»; группа тестов `client_prediction`.
 
 ## Связанные доки
 
