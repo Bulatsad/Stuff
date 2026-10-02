@@ -78,8 +78,12 @@ M:\Stuff\
 │   ├── shaders/            <-- GLSL шейдеры
 │   ├── test/               <-- тестовые файлы
 │   └── thirdparty/         <-- сторонние библиотеки
-└── obj_spider/             <-- тестовые 3D-ассеты
+├── obj_spider/             <-- тестовые 3D-ассеты
+└── resources/              <-- вне git (.gitignore): контент-плейсхолдеры
+    └── stronghold/         <-- текстуры Stronghold Crusader из sc2img (PNG + доки + manifest.csv)
 ```
+
+**Напоминание:** `resources/stronghold/` — плейсхолдеры из **Stronghold Crusader** (конвертация `sc2img`): PNG по папкам-сущностям, в каждой `<ПАПКА>.MD` с полным описанием и метаданными каждой картинки, плюс `manifest.csv` и индекс `STRONGHOLD.MD`. Это копирайтные материалы Firefly Studios: только временные плейсхолдеры пет-проекта, вне git; до публичного показа заменить собственными/свободными ассетами (см. LAMPHOLD.md, SC2IMG.md).
 
 ## Build
 
